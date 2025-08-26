@@ -1,0 +1,22 @@
+[supervisor]
+
+# Time to terminate execution (seconds since start). Use <= 0 to disable. Default: 0
+exit_time = 0
+
+log = {
+  # Enable/disable automatic local logging
+  enable = false
+
+  # Start logging at this time
+  start = 3,
+
+  # Log every nth module manager cycle (default: 1)
+  period = 1
+
+  # List of variables to log
+  vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_qacc", "MdlSimDriver_ctrl"], 
+
+  # "ascii", "raw" or "matlab"
+  file_format = "matlab",
+  file_name   = "deneme.mat"
+}

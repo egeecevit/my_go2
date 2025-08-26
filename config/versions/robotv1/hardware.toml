@@ -1,0 +1,3 @@
+
+[hardware]
+library = "robothw"  # Required hardware library to be linked against

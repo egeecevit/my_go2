@@ -1,0 +1,6 @@
+[logserver]
+  enabled = true     # Set to false to disable altogether
+  server_port = 5500 # UDP port for LogServer
+  server_channel = 1 # ENet channel for protocol commands
+  buffer_size = 20   # Mb
+  thread_prio = 20   # Priority for the LogServer thread  

@@ -1,0 +1,14 @@
+# --- robotlist.toml ---
+#
+# Robot-specific configuration includes
+
+[robotconfig]
+file_rev = 1              # robotlist.toml file revision
+robot_name = "robotv1r1"  # Name of this robot
+version_name = "robotv1"  # Required version name checked against versionlist.toml
+
+# -- Motor assignments and indices etc.
+%include motor_params.toml
+
+# -- Override definitions for parameters defined in default or version directories
+%include overrides.toml

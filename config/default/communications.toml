@@ -1,0 +1,3 @@
+
+[communications]
+port = 5000  # UDP port for incoming connections

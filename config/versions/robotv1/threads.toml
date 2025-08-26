@@ -1,0 +1,8 @@
+
+[threads]
+main_priority = 99   # Priority for the main thread
+main_cpuset = [0, 1] # CPU ids to assign to the main loop
+
+can_priority = 95    # Priority for the CAN communication threads
+
+vn100_priority = 91 # Priority for the VN100 driver thread

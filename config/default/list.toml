@@ -1,0 +1,38 @@
+# --- list.toml ---
+#
+# Standard include file common to all robots.  Normally located under
+# config/default. In addition to loading default include files, it
+# also includes additional required configuration files that are
+# expected to be located in version and robot specific configuration
+# directories.
+
+deneme = [1.2, 3.4, "asdasd", {}]
+
+[defaultconfig]
+file_rev = 1   # list.toml file revision
+
+# ---- STANDARD INCLUDES
+# These are the standard includes, expected in config/default
+
+%include communications.toml  # Communication configuration
+%include logserver.toml       # LogServer configuration
+%include supervisor.toml      # Top-level supervisor module
+
+# ---- VERSION-SPECIFIC INCLUDES
+# The following files should be present in a version specific directory within
+# config/versions.
+
+# Required includes to define hardware type, hardware specific modules and threads
+%include hardware.toml
+%include threads.toml
+
+# -- These are for fine-tuning of behavior based on robot structure
+%include drawsquare.toml   
+
+# ---- ROBOT-SPECIFIC INCLUDES
+# The following files should be present in a robot specific directory
+# within config/robots. 
+
+# -- All robot specific calibration settings should be in this file,
+%include calibration_params.toml
+
