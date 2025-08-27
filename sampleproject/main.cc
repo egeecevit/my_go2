@@ -89,7 +89,9 @@ int main( int argc, char **argv) {
   res = mm.appendConfigFile("list.toml");
   res = res && mm.appendConfigFile("versionlist.toml");
   res = res && mm.appendConfigFile("robotlist.toml");
-  res = res && mm.appendConfigFile("localoverrides.toml");
+  if (!mm.appendConfigFile("localoverrides.toml")) {
+    mm.warning("main", "Could not find localoverrides.toml, skipping");
+  }
   res = res && mm.appendConfigString(config_string.c_str());
   if (!res) mm.fatalError( "main", "Could not find one or more configuration files!");
   if (! mm.finalizeConfig() )
