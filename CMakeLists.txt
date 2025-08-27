@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(quadcontrol)
 
-
 option(DEBUG_ASAN "Enable ASAN debug option" OFF)
 option(COMPILE_ROBOT "Enable compilation of robot code" ON)
 option(COMPILE_SIMULATION "Enable compilation of simulation code" ON)

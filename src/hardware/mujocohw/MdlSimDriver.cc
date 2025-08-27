@@ -284,7 +284,7 @@ void MdlSimDriver::_createSimulation() {
 
   // Load MuJoCo model
   char error[1000] = "Could not load binary model";
-  std::string model_path = "../models/unitree_go2/scene.xml";
+  std::string model_path = "~/quadcontrol/models/unitree_go2/scene.xml";
 
   // Read simulation configuration from TOML
   ConfigTable simConfig;
