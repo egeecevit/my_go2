@@ -13,7 +13,7 @@
 
 #include "MdlSimDriver.hh"
 
-#include "ModuleDefs.hh"
+#include "quadruped/ModuleDefs.hh"
 
 using namespace rtcore;
 

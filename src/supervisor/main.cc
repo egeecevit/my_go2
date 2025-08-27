@@ -17,7 +17,7 @@
 #include "rtcore/ConfigTable.hh"
 
 #include "hardware/MotorHW.hh"
-#include "CoreModules.hh"
+#include "quadruped/CoreModules.hh"
 
 #include "Supervisor.hh"
 

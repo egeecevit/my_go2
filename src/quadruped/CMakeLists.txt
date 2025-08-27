@@ -1,5 +1,6 @@
 set(CONTROLSRC CoreModules.cc MdlDrawSquare.cc MdlLegControl.cc QuadrupedKinematics.cc)
 
-add_library(control STATIC ${CONTROLSRC})
+add_library(quadruped STATIC ${CONTROLSRC})
+install(TARGETS quadruped)
 
 add_subdirectory(tests)

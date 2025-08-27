@@ -7,9 +7,9 @@
  */
 #include <unistd.h>
 
+#include "quadruped/ModuleDefs.hh"
 #include "CANMotorHW.hh"
 #include "MdlMotorMaster.hh"
-#include "ModuleDefs.hh"
 #include "RobotClockHW.hh"
 #include "RobotIMUHW.hh"
 #include "VN100Driver.hh"

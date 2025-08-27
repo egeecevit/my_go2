@@ -6,11 +6,11 @@
  * strictly prohibited.
  */
 
-#include "QuadrupedKinematics.hh"
-
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+
+#include "quadruped/QuadrupedKinematics.hh"
 
 #define DBGPRINT(...) //printf(__VA_ARGS__)
 

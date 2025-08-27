@@ -6,15 +6,15 @@
  * strictly prohibited.
  */
 
-#include "MdlLegControl.hh"
 
 #include <stdio.h>
 
 #include <cmath>
 
-#include "QuadrupedKinematics.hh"
 #include "hardware/MotorHW.hh"
 #include "rtcore/ModuleManager.hh"
+#include "quadruped/MdlLegControl.hh"
+#include "quadruped/QuadrupedKinematics.hh"
 
 #define DBGPRINT(...) //printf(__VA_ARGS__)
 

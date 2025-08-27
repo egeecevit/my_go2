@@ -6,12 +6,13 @@
  * strictly prohibited.
 */
 
-#include "QuadrupedKinematics.hh"
 #include <Eigen/Dense>
 #include <iostream>
 #include <cassert>
 #include <cmath>
 #include <iomanip>
+
+#include "quadruped/QuadrupedKinematics.hh"
 
 const double TEST_TOLERANCE = 1e-6;
 

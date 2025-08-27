@@ -9,10 +9,10 @@
 #include "rtcore/ModuleManager.hh"
 #include "rtcore/LogServer.hh"
 
-#include "CoreModules.hh"
-#include "MdlDrawSquare.hh"
-#include "MdlLegControl.hh"
-#include "ModuleDefs.hh"
+#include "quadruped/CoreModules.hh"
+#include "quadruped/MdlDrawSquare.hh"
+#include "quadruped/MdlLegControl.hh"
+#include "quadruped/ModuleDefs.hh"
 
 using namespace rtcore;
 

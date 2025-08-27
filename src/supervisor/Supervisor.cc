@@ -15,9 +15,9 @@
 #include "rtclient/WriteRaw.hh"
 #include "rtclient/WriteML.hh"
 
-#include "Supervisor.hh"
+#include "quadruped/MdlDrawSquare.hh"
 
-#include "MdlDrawSquare.hh"
+#include "Supervisor.hh"
 
 // IMPORTANT NOTE: Be careful with enet functions since both rtcore and rtclient
 // has them separately

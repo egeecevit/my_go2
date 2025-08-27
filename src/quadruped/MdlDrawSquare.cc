@@ -6,16 +6,16 @@
  * strictly prohibited.
  */
 
-#include "MdlDrawSquare.hh"
 
 #include <math.h>
 #include <stdio.h>
 
-#include "MdlLegControl.hh"
-#include "QuadrupedKinematics.hh"
 #include "rtcore/ConfigTable.hh"
 #include "rtcore/ModuleManager.hh"
 #include "rtcore/Profiler.hh"
+#include "quadruped/MdlDrawSquare.hh"
+#include "quadruped/MdlLegControl.hh"
+#include "quadruped/QuadrupedKinematics.hh"
 
 using namespace rtcore;
 
