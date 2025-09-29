@@ -226,6 +226,9 @@ void MdlSimDriver::update() {
   double sim_time = _data ? _data->time : 0.0;
   _now = sim_time * 1000000;  // Update current simulation time
 
+  if (!_headless && _window && glfwWindowShouldClose(_window) != 0)
+    _mgr->exitMainLoop();
+  
   // Render the simulation (only if not in headless mode)
   if (!_headless && _window && !glfwWindowShouldClose(_window) &&
       _now - _last_render_time > _render_interval_us) {
