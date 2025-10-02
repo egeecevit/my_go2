@@ -3,18 +3,3 @@
 
 offsets = [0,0,0, 0,0,0, 0,0,0, 0,0,0]
 
-[calibration.deneme]
-
-deneme4 = {
-            a=1
-            b=3
-          }
-
-[[deneme2]]
-a=1
-c=3
-
-[[deneme2]]
-b = 2
-
-e = [{ a=1, c=2}, {d=1}]
