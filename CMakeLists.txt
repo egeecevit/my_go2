@@ -13,11 +13,21 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR} CACHE PATH "install prefix" FORCE)
 endif()
 
-if ( "$ENV{RTROBOT_DIR}" STREQUAL "")
-  message( FATAL_ERROR "Please set RTROBOT_DIR environment variable.")
-else ()
-  set(RTROBOT_DIR "$ENV{RTROBOT_DIR}")
+## RTROBOT_DIR may be provided as an environment variable or as a CMake cache variable.
+## Prefer an explicit CMake configure-time setting. If not provided, default to $HOME/rtrobot
+if(NOT DEFINED RTROBOT_DIR)
+  if(DEFINED ENV{RTROBOT_DIR})
+    set(RTROBOT_DIR "$ENV{RTROBOT_DIR}" CACHE PATH "Path to rtrobot directory")
+  else()
+    set(RTROBOT_DIR "$ENV{HOME}/rtrobot" CACHE PATH "Path to rtrobot directory")
+  endif()
+else()
+  # ensure RTROBOT_DIR is in the cache so it can be modified by the user in cmake-gui or via -D
+  set(RTROBOT_DIR "${RTROBOT_DIR}" CACHE PATH "Path to rtrobot directory" FORCE)
 endif()
+
+message(STATUS "Using RTROBOT_DIR=${RTROBOT_DIR}")
+
 # Configure compilation flags 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${AUXFLAGS} -g -Wall -D_LINUX_ -std=c++14")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${AUXFLAGS}")

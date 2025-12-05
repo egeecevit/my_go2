@@ -6,8 +6,6 @@
 # expected to be located in version and robot specific configuration
 # directories.
 
-deneme = [1.2, 3.4, "asdasd", {}]
-
 [defaultconfig]
 file_rev = 1   # list.toml file revision
 
