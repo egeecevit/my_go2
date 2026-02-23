@@ -21,6 +21,8 @@
 #include "hardware/MotorHW.hh"
 #include "quadruped/CoreModules.hh"
 
+#include "quadruped/MdlSineTest.hh"
+
 #include "Supervisor.hh"
 
 using namespace rtcore;
@@ -178,6 +180,10 @@ int main( int argc, char **argv) {
   Supervisor *sm = new Supervisor;
   mm.addModule(sm, 1, 0, USER_CONTROLLERS);
   mm.activateModule( sm );
+  
+  // MdlSineTest *mst = new MdlSineTest;
+  // mm.addModule(mst, 1, 0, BEHAVIORAL_CONTROLLERS);
+  // mm.activateModule(mst);
 
   mm.message("\n** Current list of modules:");
   mm.printModules();
@@ -193,6 +199,9 @@ int main( int argc, char **argv) {
   mm.deactivateModule( sm );
   mm.removeModule( sm );
   delete sm;
+  // mm.deactivateModule( mst );
+  // mm.removeModule( mst );
+  // delete mst;
 
   DeactivateCoreModules( &mm );
   RemoveCoreModules( &mm );
