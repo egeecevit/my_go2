@@ -1,0 +1,15 @@
+
+[calibration]
+
+# Absolute angular offsets for motors. Reported angles and received
+# commands are adjusted as follows:
+#
+# angle = dynamixel_angle + offset
+# dynamixel_command = command_angle - offset
+offsets = [0,0,0,0,0,0,0,0,0,0,0,0]
+
+# Motor polarities, either -1 or 1 for each motor. Angle, velocity and
+# torque readings and commands are multipled with these when
+# communicting with the motors
+polarity = [1,1,1,1,1,1,1,1,1,1,1,1]
+

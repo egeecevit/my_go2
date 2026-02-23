@@ -1,13 +1,16 @@
-#ifndef GO1MODULE_HH
-#define GO1MODULE_HH
+#ifndef _MDLGO1_HH
+#define _MDLGO1_HH
+#include "hardware/MotorHW.hh"
 #include <rtcore/Module.hh>
+#include "rtcore/ThreadedLoop.hh"
+
 #include "unitree_legged_sdk/unitree_legged_sdk.h"
 
 #define GO1MODULE_NAME "MdlGo1"
 
 class MdlLegControl;
 
-class MdlGo1 : public rtcore::Module {
+class MdlGo1 : public rtcore::Module, public rtcore::ThreadedLoop {
 public:
   MdlGo1();
   ~MdlGo1();
@@ -21,15 +24,55 @@ public:
   void PDControl(double t);
   void TorqueControl(double t);
 
+  // ThreadedLoop methods
+  void threadEnter( void );
+  void threadLoop( void );
+  void threadExit( void );
+
+  bool setEnable( unsigned int index, bool enable );
+  bool isEnabled( unsigned int index );
+
+  void getJointState(unsigned int index, MotorHW::state_t &state);
+
+  void setJointCommand(unsigned int index, MotorHW::cmd_t &cmd);
+  void getJointCommand(unsigned int index, MotorHW::cmd_t &cmd);
+
+  MotorHW::status_t  getJointStatus(unsigned int index);
+
 private:
+  // Unitree SDK related
   UNITREE_LEGGED_SDK::Safety _safe;
   UNITREE_LEGGED_SDK::UDP _udp;
   UNITREE_LEGGED_SDK::LowCmd _cmd = {0};
   UNITREE_LEGGED_SDK::LowState _state = {0};
-  double _motiontime = 0.0;
+  UNITREE_LEGGED_SDK::LoopFunc *_loopSend = nullptr;
+  UNITREE_LEGGED_SDK::LoopFunc *_loopRecv = nullptr;
 
-  MdlLegControl *_leg;
+  typedef struct {
+    unsigned int id;
+    bool enable = false;
+    MotorHW::state_t state;
+    MotorHW::cmd_t cmd;
+    // Axis polarity to multiple position, velocity and torque
+    int polarity = 1;   
+    // Angular offset to be added to readings, and subtracted from commands
+    double offset = 0;
+    MotorHW::status_t status = MotorHW::STATUS_STARTUP;
+  } _motor_t;
 
+  // Motor info 
+  std::vector<_motor_t> _m;
+
+  // Mutex to coordinate data access between the UDP thread and
+  // joint data access methods
+  pthread_mutex_t _data_lock;
+
+  // Triggers for the GO1 comms thread 
+  bool _updateStates = false;
+  bool _updateCommands = false;
+
+  double _time = 0.0;
+  int _motiontime = 0;
 };
 
 #endif

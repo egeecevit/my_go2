@@ -1,0 +1,8 @@
+# --- versionlist.toml ---
+#
+# Version-specific configuration values and includes
+
+[versionconfig]
+file_rev = 1                # versionlist.toml file revision
+version_name = "go1"  # Name of the version to be checked against robotlist.toml
+

@@ -67,6 +67,3 @@ add_subdirectory(src/quadruped)
 
 add_subdirectory(src/supervisor)
 
-add_subdirectory(src/go1supervisor)
-
-

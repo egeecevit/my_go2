@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-set (SOURCES MdlGo1.cc)
+set (SOURCES MdlGo1.cc Go1ClockHW.cc Go1HW.cc Go1MotorHW.cc)
 
 if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "x86_64.*")
   set(UNITREE_ARCH amd64)

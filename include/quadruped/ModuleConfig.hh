@@ -43,6 +43,9 @@ const std::map<ModuleId_t, ModuleConfig_t, ModuleCompare_t> moduleConfig = {
   // Robot HW related modules
   { {"MdlMotorMaster", -1},  { 500, 0, ACTUATOR_MODULES } },
 
+    // Faulhaber Robot HW related modules
+  { {"MdlGo1", -1},  { 1, 0, ACTUATOR_MODULES } },
+
   // Core modules
   { {"LogServer", -1},    { 1, 0, LOGGING_MODULES   } },
   { {"MdlDrawSquare", -1},   { 1, 0, BEHAVIORAL_CONTROLLERS   } },
