@@ -6,10 +6,12 @@
 [simulation]
 
 # Path to the model file
-model_path = "../models/unitree_go2/scene.xml"
+# model_path = "../models/unitree_go2/scene.xml"
+model_path = "../models/unitree_go1/scene_block.xml"
 
 # Initial robot body position [x, y, z] in world coordinates (m), default: [0.0, 0.0, 0.5]
-initial_position = [0,0,0.5]
+# initial_position = [0,0,0.5]
+initial_position = [0.0, 0.0, 1.0]
 
 # Initial Roll (deg): rotation around X-axis (positive = right side down)
 # Initial Pitch (deg): rotation around Y-axis (positive = nose down)  
