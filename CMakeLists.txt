@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
-project(quadcontrol)
+project(go1control)
 
 option(DEBUG_ASAN "Enable ASAN debug option" OFF)
-option(COMPILE_ROBOT "Enable compilation of robot code" ON)
+option(COMPILE_ROBOT "Enable compilation of robot code" OFF)
 option(COMPILE_SIMULATION "Enable compilation of simulation code" ON)
+option(COMPILE_GO1 "Enable compilation of go1 code" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,8 +59,14 @@ if (${COMPILE_SIMULATION})
   add_subdirectory(src/hardware/mujocohw)
 endif()
 
+if (${COMPILE_GO1})
+  add_subdirectory(src/hardware/go1hw)
+endif()
+
 add_subdirectory(src/quadruped)
 
 add_subdirectory(src/supervisor)
+
+add_subdirectory(src/go1supervisor)
 
 
