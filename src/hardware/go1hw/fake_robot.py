@@ -61,7 +61,8 @@ while True:
 
     if len(data) == LOW_CMD_LENGTH:
         print(f"--- dt={dt:6.2f} ms")
-        print_qd(data)
+        # print_qd(data)
+        decode_low_cmd(data)
 
     # Send back a zeroed LowState (CRC will be wrong, SDK counts it
     # as RecvCRCError but won't crash — good enough to verify flow)

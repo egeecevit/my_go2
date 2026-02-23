@@ -18,6 +18,9 @@ public:
   void deactivate();
   void update();
 
+  void PDControl(double t);
+  void TorqueControl(double t);
+
 private:
   UNITREE_LEGGED_SDK::Safety _safe;
   UNITREE_LEGGED_SDK::UDP _udp;
