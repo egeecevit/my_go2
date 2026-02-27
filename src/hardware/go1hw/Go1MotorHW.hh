@@ -46,7 +46,7 @@ public:
 private:
   MdlGo1 *_gm = nullptr;
   
-  bool  _enabled[NUM_MOTORS_GO1];
+  bool  _enabled[NUM_MOTORS_GO1] = {};
 
   cmd_t _cmd_zero;
   state_t _state_zero;
