@@ -12,6 +12,7 @@
 #include "MdlGo1.hh"
 #include "Go1ClockHW.hh"
 #include "Go1MotorHW.hh"
+#include "Go1IMUHW.hh"
 #include "rtcore/ConfigTable.hh"
 #include "rtcore/Module.hh"
 #include "rtcore/ModuleManager.hh"
@@ -20,11 +21,13 @@ using namespace rtcore;
 
 HARDWARE_IMPL(MotorHW);
 HARDWARE_IMPL(ClockHW);
+HARDWARE_IMPL(IMUHW);
 
 static ModuleManager *_mgr = nullptr;
 
 static Go1ClockHW *_clockhw = nullptr;
 static Go1MotorHW *_motorhw = nullptr;
+static Go1IMUHW *_imuhw = nullptr;
 
 static MdlGo1 *_go1 = nullptr;
 
@@ -56,6 +59,8 @@ void initHardware(ModuleManager *mm) {
   
   _motorhw = new Go1MotorHW(_go1);
   MotorHW::registerInstance(_motorhw);
+  _imuhw = new Go1IMUHW(_go1);
+  IMUHW::registerInstance(_imuhw);
   initStatus = true;
 }
 
@@ -63,12 +68,16 @@ void cleanupHardware() {
   _mgr->message("cleanupHardware(Go1): Cleaning up hardware components...");
 
   if (initStatus) {
-    // Deactivate, remove and delele modules.
-    DEACTIVATE_MODULE(_mgr, _go1 );
-    DESTROY_MODULE(_mgr, _go1 );
-    
+    DEACTIVATE_MODULE(_mgr, _go1);
+    DESTROY_MODULE(_mgr, _go1);
+
     ClockHW::clear();
     MotorHW::clear();
+    IMUHW::clear();
+
+    delete _imuhw;   _imuhw = nullptr;
+    delete _motorhw; _motorhw = nullptr;
+    delete _clockhw; _clockhw = nullptr;
 
     _mgr->unlockHardware( HWNAME );
     initStatus = false;
