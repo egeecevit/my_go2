@@ -151,10 +151,10 @@ void MdlGo1::update() {
 
 void MdlGo1::threadEnter(void) {
   _mgr->message("MdlGo1: Communication thread started.");
-  _loopRecv =
-      new LoopFunc("udp_recv", 0.002, 3, boost::bind(&UDP::Recv, &_udp));
-  _loopSend =
-      new LoopFunc("udp_send", 0.002, 3, boost::bind(&UDP::Send, &_udp));
+  _loopRecv = std::make_unique<LoopFunc>(
+      "udp_recv", 0.002, 3, boost::bind(&UDP::Recv, &_udp));
+  _loopSend = std::make_unique<LoopFunc>(
+      "udp_send", 0.002, 3, boost::bind(&UDP::Send, &_udp));
 
   _loopRecv->start();
   _loopSend->start();
@@ -221,6 +221,6 @@ void MdlGo1::threadExit(void) {
   _mgr->message("MdlGo1: Communication thread stopped.");
   _loopRecv->shutdown();
   _loopSend->shutdown();
-  delete _loopRecv;
-  delete _loopSend;
+  _loopRecv.reset();
+  _loopSend.reset();
 }

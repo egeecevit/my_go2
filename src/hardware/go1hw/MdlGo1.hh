@@ -3,6 +3,7 @@
 #include "hardware/MotorHW.hh"
 #include <rtcore/Module.hh>
 #include "rtcore/ThreadedLoop.hh"
+#include <memory>
 #include <mutex>
 
 #include "unitree_legged_sdk/unitree_legged_sdk.h"
@@ -41,8 +42,8 @@ private:
   UNITREE_LEGGED_SDK::UDP _udp;
   UNITREE_LEGGED_SDK::LowCmd _cmd = {0};
   UNITREE_LEGGED_SDK::LowState _state = {0};
-  UNITREE_LEGGED_SDK::LoopFunc *_loopSend = nullptr;
-  UNITREE_LEGGED_SDK::LoopFunc *_loopRecv = nullptr;
+  std::unique_ptr<UNITREE_LEGGED_SDK::LoopFunc> _loopSend;
+  std::unique_ptr<UNITREE_LEGGED_SDK::LoopFunc> _loopRecv;
 
   typedef struct {
     unsigned int id;
