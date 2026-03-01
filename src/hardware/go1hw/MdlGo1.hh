@@ -1,6 +1,7 @@
 #ifndef _MDLGO1_HH
 #define _MDLGO1_HH
 #include "hardware/MotorHW.hh"
+#include "hardware/IMUHW.hh"
 #include <rtcore/Module.hh>
 #include "rtcore/ThreadedLoop.hh"
 #include <memory>
@@ -36,6 +37,8 @@ public:
 
   MotorHW::status_t  getJointStatus(unsigned int index);
 
+  bool getIMUData(IMUHW::imudata_t &data);
+
 private:
   // Unitree SDK related
   UNITREE_LEGGED_SDK::Safety _safe;
@@ -59,6 +62,8 @@ private:
 
   // Motor info
   std::vector<_motor_t> _m;
+
+  IMUHW::imudata_t _imuData;
 
   // Mutex to coordinate data access between the UDP thread and
   // joint data access methods

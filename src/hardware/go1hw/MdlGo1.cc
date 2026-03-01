@@ -133,6 +133,13 @@ void MdlGo1::getJointCommand(unsigned int index, MotorHW::cmd_t &cmd) {
   cmd = _m[index].cmd;
 }
 
+bool MdlGo1::getIMUData(IMUHW::imudata_t &data) {
+  std::lock_guard<std::mutex> lock(_data_mutex);
+  if (_imuData.t < 0) return false;
+  data = _imuData;
+  return true;
+}
+
 void MdlGo1::uninit() {
   _mgr->message("MdlGo1: Shutting down...");
   this->terminate();
@@ -182,6 +189,22 @@ void MdlGo1::threadLoop(void) {
             _m[i].polarity * double(_state.motorState[IdxToJoint[id]].tauEst);
         _m[i].state.temp = double(_state.motorState[IdxToJoint[id]].temperature);
       }
+
+      // Copy IMU data
+      _imuData.t = _mgr->readTime();
+      _imuData.q.v[0] = double(_state.imu.quaternion[0]);
+      _imuData.q.v[1] = double(_state.imu.quaternion[1]);
+      _imuData.q.v[2] = double(_state.imu.quaternion[2]);
+      _imuData.q.v[3] = double(_state.imu.quaternion[3]);
+      _imuData.gyro.v[0] = double(_state.imu.gyroscope[0]);
+      _imuData.gyro.v[1] = double(_state.imu.gyroscope[1]);
+      _imuData.gyro.v[2] = double(_state.imu.gyroscope[2]);
+      _imuData.acc.v[0] = double(_state.imu.accelerometer[0]);
+      _imuData.acc.v[1] = double(_state.imu.accelerometer[1]);
+      _imuData.acc.v[2] = double(_state.imu.accelerometer[2]);
+      _imuData.rpy[0] = double(_state.imu.rpy[0]);
+      _imuData.rpy[1] = double(_state.imu.rpy[1]);
+      _imuData.rpy[2] = double(_state.imu.rpy[2]);
     }
   }
 
