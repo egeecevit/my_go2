@@ -12,6 +12,7 @@
 #include <cmath>
 
 #include "hardware/MotorHW.hh"
+#include "rtcore/ConfigTable.hh"
 #include "rtcore/ModuleManager.hh"
 #include "quadruped/MdlLegControl.hh"
 #include "quadruped/QuadrupedKinematics.hh"
@@ -73,6 +74,57 @@ QuadrupedKinematics::params_t createGo2Config() {
   return params;
 }
 
+QuadrupedKinematics::params_t createGo1Config() {
+  QuadrupedKinematics::params_t params;
+
+  params.robot_name = "Unitree Go1";
+
+  // Go1 dimensions: body length ~0.3762m, body width ~0.0935m
+  params.hip_positions << 0.1881, 0.04675, 0.0,   // Front Left
+      0.1881, -0.04675, 0.0,                       // Front Right
+      -0.1881, 0.04675, 0.0,                       // Rear Left
+      -0.1881, -0.04675, 0.0;                      // Rear Right
+
+  // Go1 link lengths: thigh ~0.213m, calf ~0.213m (same as Go2)
+  params.link_lengths << 0.213, 0.213,
+      0.213, 0.213,
+      0.213, 0.213,
+      0.213, 0.213;
+
+  // Go1 hip flexion offset: 0.08m
+  params.hip_flexion_offset << 0.08,
+      -0.08,
+      0.08,
+      -0.08;
+
+  // Joint limits from go1_const.h
+  // Hip abduction: +/-1.047 rad (+/-60 degrees)
+  params.hip_abduction_limits << -1.047, 1.047,
+      -1.047, 1.047,
+      -1.047, 1.047,
+      -1.047, 1.047;
+
+  // Thigh: -0.663 to 2.966 rad
+  params.hip_flexion_limits << -0.663, 2.966,
+      -0.663, 2.966,
+      -0.663, 2.966,
+      -0.663, 2.966;
+
+  // Calf: -2.721 to -0.837 rad
+  params.knee_limits << -2.721, -0.837,
+      -2.721, -0.837,
+      -2.721, -0.837,
+      -2.721, -0.837;
+
+  // Joint directions (same convention as Go2)
+  params.joint_directions << 1.0, 1.0, 1.0,
+      -1.0, 1.0, 1.0,
+      1.0, 1.0, 1.0,
+      -1.0, 1.0, 1.0;
+
+  return params;
+}
+
 MdlLegControl::MdlLegControl(int ind) : Module(LEGMODULE_NAME, ind, SINGLE_USER) {
   DBGPRINT("MdlLegControl[%d]::MdlLegControl\n", getIndex());
 };
@@ -85,7 +137,15 @@ void MdlLegControl::init() {
   _motorhw = MotorHW::instance();
   for (int i = 0; i < 3; i++) _indices[i] = 3 * getIndex() + i;
 
-  _kinematics = new QuadrupedKinematics(createGo2Config());
+  rtcore::ConfigTable hwConfig;
+  std::string hwlib;
+  if (_mgr->getConfigTable("hardware", hwConfig))
+    hwlib = hwConfig.getString("library", "");
+
+  if (hwlib == "go1hw")
+    _kinematics = new QuadrupedKinematics(createGo1Config());
+  else
+    _kinematics = new QuadrupedKinematics(createGo2Config());
 }
 
 void MdlLegControl::uninit() { 
