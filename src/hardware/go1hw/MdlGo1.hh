@@ -3,12 +3,11 @@
 #include "hardware/MotorHW.hh"
 #include <rtcore/Module.hh>
 #include "rtcore/ThreadedLoop.hh"
+#include <mutex>
 
 #include "unitree_legged_sdk/unitree_legged_sdk.h"
 
 #define GO1MODULE_NAME "MdlGo1"
-
-class MdlLegControl;
 
 class MdlGo1 : public rtcore::Module, public rtcore::ThreadedLoop {
 public:
@@ -20,9 +19,6 @@ public:
   void activate();
   void deactivate();
   void update();
-
-  void PDControl(double t);
-  void TorqueControl(double t);
 
   // ThreadedLoop methods
   void threadEnter( void );
@@ -54,25 +50,22 @@ private:
     MotorHW::state_t state;
     MotorHW::cmd_t cmd;
     // Axis polarity to multiple position, velocity and torque
-    int polarity = 1;   
+    int polarity = 1;
     // Angular offset to be added to readings, and subtracted from commands
     double offset = 0;
     MotorHW::status_t status = MotorHW::STATUS_STARTUP;
   } _motor_t;
 
-  // Motor info 
+  // Motor info
   std::vector<_motor_t> _m;
 
   // Mutex to coordinate data access between the UDP thread and
   // joint data access methods
-  pthread_mutex_t _data_lock;
+  std::mutex _data_mutex;
 
-  // Triggers for the GO1 comms thread 
+  // Triggers for the GO1 comms thread
   bool _updateStates = false;
   bool _updateCommands = false;
-
-  double _time = 0.0;
-  int _motiontime = 0;
 };
 
 #endif
