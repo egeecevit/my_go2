@@ -64,6 +64,14 @@ private:
   double _kd = 1.0;
   double _trackingLimit = 0.5; // rad
 
+  // Home position (optional, from TOML)
+  bool _hasHome = false;
+  double _homePosition[12] = {};
+  double _rampStart[12] = {};
+  bool _ramping = false;
+  double _rampStartTime = 0.0;
+  static constexpr double RAMP_DURATION = 2.0; // seconds
+
   // Sine state
   double _qInit[12] = {};
   MotorHW::cmd_t _cmd[12] = {};

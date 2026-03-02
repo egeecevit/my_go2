@@ -54,6 +54,14 @@ void MdlHWTest::init() {
     _kp = cfg.getDouble("kp", _kp);
     _kd = cfg.getDouble("kd", _kd);
     _trackingLimit = cfg.getDouble("tracking_error_limit", _trackingLimit);
+
+    ConfigArray homeArr;
+    if (cfg.getArray("home_position", homeArr) && homeArr.size() == 12) {
+      _hasHome = true;
+      for (int i = 0; i < 12; i++)
+        _homePosition[i] = homeArr.getDoubleAt(i);
+      _mgr->message("MdlHWTest: Home position configured.");
+    }
   }
 
   resolveLegIndices(_testLeg, _legIndices);
@@ -116,6 +124,7 @@ void MdlHWTest::exitCurrentState() {
   deactivateMotors();
   _warmup = 0;
   _sineInitialized = false;
+  _ramping = false;
 }
 
 void MdlHWTest::enterState(State newState) {
@@ -167,10 +176,75 @@ void MdlHWTest::runSinePattern(const int *indices, int count, int sineIdx) {
   double t = _mgr->readTime();
 
   if (!_sineInitialized) {
+    // Phase 1: Warmup — wait for UDP to stabilize
     _warmup++;
     if (_warmup < 500)
       return;
 
+    // Phase 2: Ramp to home (if configured)
+    if (_hasHome && !_ramping) {
+      // Start the ramp: snapshot current positions
+      _ramping = true;
+      _rampStartTime = t;
+      MotorHW::state_t st;
+      for (int i = 0; i < count; i++) {
+        _motorhw->getState(indices[i], st);
+        _rampStart[i] = st.pos;
+        _cmd[i].kp = _kp;
+        _cmd[i].kd = _kd;
+        _cmd[i].vel = 0.0;
+        _cmd[i].tau = (count == 3 && i == 0) ? -0.65 : 0.0;
+      }
+      printf("  Ramping to home position...\n");
+      return;
+    }
+
+    if (_ramping) {
+      double elapsed = t - _rampStartTime;
+      double alpha = elapsed / RAMP_DURATION;
+      if (alpha > 1.0) alpha = 1.0;
+
+      for (int i = 0; i < count; i++) {
+        double target = _rampStart[i] + alpha * (_homePosition[indices[i]] - _rampStart[i]);
+        _cmd[i].pos = target;
+        _cmd[i].vel = 0.0;
+        _cmd[i].kp = _kp;
+        _cmd[i].kd = _kd;
+        _cmd[i].tau = (count == 3 && i == 0) ? -0.65 : 0.0;
+        _motorhw->setCommand(indices[i], _cmd[i]);
+      }
+
+      // Print progress
+      if (t - _lastPrint >= PRINT_INTERVAL) {
+        _lastPrint = t;
+        printf("  [RAMP] %.0f%%", alpha * 100.0);
+        for (int i = 0; i < count; i++) {
+          MotorHW::state_t st;
+          _motorhw->getState(indices[i], st);
+          printf("  m%d: %.3f->%.3f (at %.3f)", indices[i],
+                 _rampStart[i], _homePosition[indices[i]], st.pos);
+        }
+        printf("\n");
+      }
+
+      // Safety check during ramp
+      if (!checkTrackingError(indices, count)) {
+        enterState(READBACK);
+        return;
+      }
+
+      if (alpha >= 1.0) {
+        _ramping = false;
+        for (int i = 0; i < count; i++)
+          _qInit[i] = _homePosition[indices[i]];
+        _startTime = t;
+        _sineInitialized = true;
+        printf("  Home reached. Starting sine.\n");
+      }
+      return;
+    }
+
+    // No home configured: use current position (original behavior)
     MotorHW::state_t st;
     for (int i = 0; i < count; i++) {
       _motorhw->getState(indices[i], st);
@@ -181,7 +255,6 @@ void MdlHWTest::runSinePattern(const int *indices, int count, int sineIdx) {
       _cmd[i].kp = _kp;
       _cmd[i].kd = _kd;
     }
-    // Gravity compensation on hip joints (index 0 in each leg group of 3)
     if (count == 3) {
       _cmd[0].tau = -0.65;
     }
@@ -280,12 +353,82 @@ void MdlHWTest::updateSingleLeg() {
 void MdlHWTest::updateAllLegs() {
   // Run 4 legs independently — each leg's thigh (index 1 within leg) does sine
   double t = _mgr->readTime();
+  int hips[] = {0, 3, 6, 9};
 
   if (!_sineInitialized) {
+    // Phase 1: Warmup
     _warmup++;
     if (_warmup < 500)
       return;
 
+    // Phase 2: Ramp to home (if configured)
+    if (_hasHome && !_ramping) {
+      _ramping = true;
+      _rampStartTime = t;
+      MotorHW::state_t st;
+      for (int i = 0; i < 12; i++) {
+        _motorhw->getState(i, st);
+        _rampStart[i] = st.pos;
+        _cmd[i].kp = _kp;
+        _cmd[i].kd = _kd;
+        _cmd[i].vel = 0.0;
+        _cmd[i].tau = 0.0;
+      }
+      for (int h : hips) _cmd[h].tau = -0.65;
+      printf("  Ramping all legs to home position...\n");
+      return;
+    }
+
+    if (_ramping) {
+      double elapsed = t - _rampStartTime;
+      double alpha = elapsed / RAMP_DURATION;
+      if (alpha > 1.0) alpha = 1.0;
+
+      for (int i = 0; i < 12; i++) {
+        _cmd[i].pos = _rampStart[i] + alpha * (_homePosition[i] - _rampStart[i]);
+        _cmd[i].vel = 0.0;
+        _cmd[i].kp = _kp;
+        _cmd[i].kd = _kd;
+        _cmd[i].tau = 0.0;
+        _motorhw->setCommand(i, _cmd[i]);
+      }
+      for (int h : hips) {
+        _cmd[h].tau = -0.65;
+        _motorhw->setCommand(h, _cmd[h]);
+      }
+
+      if (t - _lastPrint >= PRINT_INTERVAL) {
+        _lastPrint = t;
+        int thighs[] = {1, 4, 7, 10};
+        printf("  [RAMP] %.0f%%", alpha * 100.0);
+        for (int j : thighs) {
+          MotorHW::state_t st;
+          _motorhw->getState(j, st);
+          printf("  m%d: %.3f->%.3f (at %.3f)", j,
+                 _rampStart[j], _homePosition[j], st.pos);
+        }
+        printf("\n");
+      }
+
+      int allMotors[12];
+      for (int i = 0; i < 12; i++) allMotors[i] = i;
+      if (!checkTrackingError(allMotors, 12)) {
+        enterState(READBACK);
+        return;
+      }
+
+      if (alpha >= 1.0) {
+        _ramping = false;
+        for (int i = 0; i < 12; i++)
+          _qInit[i] = _homePosition[i];
+        _startTime = t;
+        _sineInitialized = true;
+        printf("  Home reached. Starting sine.\n");
+      }
+      return;
+    }
+
+    // No home configured: use current position (original behavior)
     MotorHW::state_t st;
     for (int i = 0; i < 12; i++) {
       _motorhw->getState(i, st);
@@ -296,11 +439,7 @@ void MdlHWTest::updateAllLegs() {
       _cmd[i].kp = _kp;
       _cmd[i].kd = _kd;
     }
-    // Gravity comp on hip joints (0,3,6,9)
-    _cmd[0].tau = -0.65;
-    _cmd[3].tau = -0.65;
-    _cmd[6].tau = -0.65;
-    _cmd[9].tau = -0.65;
+    for (int h : hips) _cmd[h].tau = -0.65;
     _startTime = t;
     _sineInitialized = true;
     printf("  All legs initialized.\n");
