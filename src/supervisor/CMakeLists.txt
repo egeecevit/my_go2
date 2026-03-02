@@ -1,4 +1,4 @@
-set(SOURCES main.cc Supervisor.cc)
+set(SOURCES main.cc Supervisor.cc app_common.cc)
 
 if(${COMPILE_ROBOT})
   set(ROBOTEXE robot)
