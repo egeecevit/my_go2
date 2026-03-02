@@ -31,4 +31,14 @@ if(${COMPILE_GO1})
   file(GLOB binscript LIST_DIRECTORIES false ${CMAKE_CURRENT_SOURCE_DIR}/go1sim.sh)
   install(FILES ${binscript} DESTINATION bin PERMISSIONS OWNER_EXECUTE OWNER_READ GROUP_EXECUTE GROUP_READ)
 
+  # Hardware test binary
+  set(GO1TEST go1test)
+  add_executable(${GO1TEST} test_main.cc app_common.cc)
+  target_link_libraries(${GO1TEST} go1hw quadruped rtcore rtclient)
+  target_link_options(${GO1TEST} PRIVATE -no-pie)
+
+  install(TARGETS ${GO1TEST})
+  file(GLOB go1testscript LIST_DIRECTORIES false ${CMAKE_CURRENT_SOURCE_DIR}/go1test.sh)
+  install(FILES ${go1testscript} DESTINATION bin PERMISSIONS OWNER_EXECUTE OWNER_READ GROUP_EXECUTE GROUP_READ)
+
 endif()
