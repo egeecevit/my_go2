@@ -1,6 +1,6 @@
 set(SOURCES main.cc Supervisor.cc app_common.cc)
 
-if(${COMPILE_ROBOT})
+if(HARDWARE_TARGET STREQUAL "robot")
   set(ROBOTEXE robot)
   add_executable(${ROBOTEXE} ${SOURCES})
   target_link_libraries(${ROBOTEXE} robothw quadruped rtcore rtclient)
@@ -10,7 +10,7 @@ if(${COMPILE_ROBOT})
 
 endif()
 
-if(${COMPILE_SIMULATION})
+if(HARDWARE_TARGET STREQUAL "simulation")
   set(SIMEXE simulation)
   add_executable(${SIMEXE} ${SOURCES})
   target_link_libraries(${SIMEXE} mujocohw quadruped rtcore rtclient)
@@ -21,7 +21,7 @@ if(${COMPILE_SIMULATION})
 
 endif()
 
-if(${COMPILE_GO1})
+if(HARDWARE_TARGET STREQUAL "go1")
   set(SIMEXE go1simulation)
   add_executable(${SIMEXE} ${SOURCES})
   target_link_libraries(${SIMEXE} go1hw quadruped rtcore rtclient)
