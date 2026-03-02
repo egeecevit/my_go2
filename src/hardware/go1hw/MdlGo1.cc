@@ -10,8 +10,7 @@ static constexpr int IdxToJoint[12] = {FR_0, FR_1, FR_2, FL_0, FL_1, FL_2,
                                        RR_0, RR_1, RR_2, RL_0, RL_1, RL_2};
 
 MdlGo1::MdlGo1()
-    : Module(GO1MODULE_NAME, 0, SINGLE_USER), _safe(LeggedType::Go1),
-      _udp(LOWLEVEL, 8090, "192.168.123.10", 8007) {
+    : Module(GO1MODULE_NAME, 0, SINGLE_USER), _safe(LeggedType::Go1) {
 }
 
 MdlGo1::~MdlGo1() {
@@ -45,10 +44,26 @@ bool MdlGo1::isEnabled(unsigned int index) {
 
 void MdlGo1::init() {
   _mgr->message("MdlGo1: Initializing...");
-  _udp.InitCmdData(_cmd);
 
   ConfigTable dc;
   bool hasConfig = _mgr->getConfigTable("go1", dc);
+
+  // Network config with defaults
+  std::string remoteIp = "192.168.123.10";
+  int remotePort = 8007;
+  int localPort = 8090;
+  if (hasConfig) {
+    remoteIp = dc.getString("remote_ip", remoteIp);
+    remotePort = dc.getInt("remote_port", remotePort);
+    localPort = dc.getInt("local_port", localPort);
+  }
+  _udp = std::make_unique<UNITREE_LEGGED_SDK::UDP>(
+      LOWLEVEL, (uint16_t)localPort, remoteIp.c_str(), (uint16_t)remotePort);
+  _mgr->message("MdlGo1: UDP target %s:%d (local port %d)",
+                remoteIp.c_str(), remotePort, localPort);
+
+  _udp->InitCmdData(_cmd);
+
   if (hasConfig) {
     ConfigArray ids;
     bool hasIds = dc.getArray("motor_ids", ids);
@@ -159,9 +174,9 @@ void MdlGo1::update() {
 void MdlGo1::threadEnter(void) {
   _mgr->message("MdlGo1: Communication thread started.");
   _loopRecv = std::make_unique<LoopFunc>(
-      "udp_recv", 0.002, 3, boost::bind(&UDP::Recv, &_udp));
+      "udp_recv", 0.002, 3, boost::bind(&UDP::Recv, _udp.get()));
   _loopSend = std::make_unique<LoopFunc>(
-      "udp_send", 0.002, 3, boost::bind(&UDP::Send, &_udp));
+      "udp_send", 0.002, 3, boost::bind(&UDP::Send, _udp.get()));
 
   _loopRecv->start();
   _loopSend->start();
@@ -173,7 +188,7 @@ void MdlGo1::threadLoop(void) {
   // Section 1: Read states from robot
   {
     std::lock_guard<std::mutex> lock(_data_mutex);
-    _udp.GetRecv(_state);
+    _udp->GetRecv(_state);
     if (_updateStates) {
       _updateStates = false;
       for (unsigned int i = 0; i < _m.size(); i++) {
@@ -235,7 +250,7 @@ void MdlGo1::threadLoop(void) {
       int res = _safe.PowerProtect(_cmd, _state, 1);
       if (res < 0)
         _mgr->fatalError("MdlGo1", "Power Protect Triggered!");
-      _udp.SetSend(_cmd);
+      _udp->SetSend(_cmd);
     }
   }
 }

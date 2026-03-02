@@ -42,7 +42,7 @@ public:
 private:
   // Unitree SDK related
   UNITREE_LEGGED_SDK::Safety _safe;
-  UNITREE_LEGGED_SDK::UDP _udp;
+  std::unique_ptr<UNITREE_LEGGED_SDK::UDP> _udp;
   UNITREE_LEGGED_SDK::LowCmd _cmd = {0};
   UNITREE_LEGGED_SDK::LowState _state = {0};
   std::unique_ptr<UNITREE_LEGGED_SDK::LoopFunc> _loopSend;
