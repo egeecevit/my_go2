@@ -138,10 +138,38 @@ void MdlHWTest::enterState(State newState) {
     _holdInitialized = false;
     break;
   case HOLD: {
+    // Set commands BEFORE enabling motors to avoid one-cycle gap
+    // where motors would be active with default cmd (kp=0, kd=0)
+    int hips[] = {0, 3, 6, 9};
+    for (int i = 0; i < 12; i++) {
+      MotorHW::state_t st;
+      _motorhw->getState(i, st);
+      _holdPosition[i] = st.pos;
+      _cmd[i].pos = st.pos;
+      _cmd[i].vel = 0.0;
+      _cmd[i].kp = _kp;
+      _cmd[i].kd = _kd;
+      _cmd[i].tau = 0.0;
+      _motorhw->setCommand(i, _cmd[i]);
+    }
+    for (int h : hips) {
+      _cmd[h].tau = -0.65;
+      _motorhw->setCommand(h, _cmd[h]);
+    }
+    // NOW enable motors — commands are already set
     int all[12];
     for (int i = 0; i < 12; i++)
       all[i] = i;
     activateMotors(all, 12);
+    _holdInitialized = true;
+    printf("  Holding all motors at current positions.\n");
+    if (_hasHome) {
+      _ramping = true;
+      _rampStartTime = _mgr->readTime();
+      for (int i = 0; i < 12; i++)
+        _rampStart[i] = _holdPosition[i];
+      printf("  Ramping to home position...\n");
+    }
     break;
   }
   case SINGLE_JOINT:
