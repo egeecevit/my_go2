@@ -29,7 +29,8 @@ case "$1" in
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
     echo "Configuring for target: $1"
-    cmake .. -DHARDWARE_TARGET="$1"
+    cmake .. -DHARDWARE_TARGET="$1" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    ln -sf build/compile_commands.json "$SCRIPT_DIR/compile_commands.json"
     echo "Building..."
     cmake --build .
     echo "Installing..."
