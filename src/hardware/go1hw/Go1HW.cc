@@ -71,10 +71,6 @@ void cleanupHardware() {
     DEACTIVATE_MODULE(_mgr, _go1);
     DESTROY_MODULE(_mgr, _go1);
 
-    ClockHW::clear();
-    MotorHW::clear();
-    IMUHW::clear();
-
     delete _imuhw;   _imuhw = nullptr;
     delete _motorhw; _motorhw = nullptr;
     delete _clockhw; _clockhw = nullptr;
