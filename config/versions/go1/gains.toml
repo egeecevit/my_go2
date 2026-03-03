@@ -1,5 +1,10 @@
 [hwtest]
+kp = 20.0
+kd = 0.5
+
 # FR(hip,thigh,calf), FL, RR, RL
-home_position = [0.0, 0.8, -1.6, 0.0, 0.8, -1.6, 0.0, 0.8, -1.6, 0.0, 0.8, -1.6]
+# SDK standing pose: [0.0, 1.2, -2.0] per leg
+# Hip signs: FR/RR negative = outward, FL/RL positive = outward
+home_position = [-0.1, 1.2, -2.0, 0.1, 1.2, -2.0, -0.1, 1.2, -2.0, 0.1, 1.2, -2.0]
 
 [go1walk]
