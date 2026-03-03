@@ -1,11 +1,11 @@
 #ifndef MDLHWTEST_HH
 #define MDLHWTEST_HH
 
-#include "rtcore/Module.hh"
-#include "hardware/MotorHW.hh"
 #include "hardware/IMUHW.hh"
-#include <termios.h>
+#include "hardware/MotorHW.hh"
+#include "rtcore/Module.hh"
 #include <string>
+#include <termios.h>
 
 #define HWTESTMODULE_NAME "MdlHWTest"
 
@@ -23,8 +23,8 @@ public:
 private:
   // State machine
   enum State { READBACK, SINGLE_JOINT, SINGLE_LEG, ALL_LEGS };
-  static constexpr const char *stateNames[] = {
-      "READBACK", "SINGLE_JOINT", "SINGLE_LEG", "ALL_LEGS"};
+  static constexpr const char *stateNames[] = {"READBACK", "SINGLE_JOINT",
+                                               "SINGLE_LEG", "ALL_LEGS"};
 
   State _state = READBACK;
 
@@ -55,11 +55,11 @@ private:
   int readKey(); // Returns char or -1 if no key pressed
 
   // Configuration (from TOML [hwtest])
-  int _testJoint = 0;        // motor index for SINGLE_JOINT
-  std::string _testLeg = "FR"; // leg name for SINGLE_LEG
+  int _testJoint = 0;             // motor index for SINGLE_JOINT
+  std::string _testLeg = "FR";    // leg name for SINGLE_LEG
   int _legIndices[3] = {0, 1, 2}; // resolved motor indices for leg
-  double _amplitude = 0.2;   // rad
-  double _frequency = 0.2;   // Hz
+  double _amplitude = 0.2;        // rad
+  double _frequency = 0.2;        // Hz
   double _kp = 5.0;
   double _kd = 1.0;
   double _trackingLimit = 0.5; // rad
@@ -70,7 +70,7 @@ private:
   double _rampStart[12] = {};
   bool _ramping = false;
   double _rampStartTime = 0.0;
-  static constexpr double RAMP_DURATION = 2.0; // seconds
+  static constexpr double RAMP_DURATION = 5.0; // seconds
 
   // Sine state
   double _qInit[12] = {};

@@ -1,1 +1,5 @@
+[hwtest]
+# FR(hip,thigh,calf), FL, RR, RL
+home_position = [0.0, 0.8, -1.6, 0.0, 0.8, -1.6, 0.0, 0.8, -1.6, 0.0, 0.8, -1.6]
+
 [go1walk]
