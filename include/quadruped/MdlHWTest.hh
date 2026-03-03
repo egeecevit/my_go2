@@ -22,9 +22,10 @@ public:
 
 private:
   // State machine
-  enum State { READBACK, SINGLE_JOINT, SINGLE_LEG, ALL_LEGS };
-  static constexpr const char *stateNames[] = {"READBACK", "SINGLE_JOINT",
-                                               "SINGLE_LEG", "ALL_LEGS"};
+  enum State { READBACK, HOLD, SINGLE_JOINT, SINGLE_LEG, ALL_LEGS };
+  static constexpr const char *stateNames[] = {"READBACK", "HOLD",
+                                               "SINGLE_JOINT", "SINGLE_LEG",
+                                               "ALL_LEGS"};
 
   State _state = READBACK;
 
@@ -33,6 +34,7 @@ private:
 
   // Per-state update functions
   void updateReadback();
+  void updateHold();
   void updateSingleJoint();
   void updateSingleLeg();
   void updateAllLegs();
@@ -71,6 +73,10 @@ private:
   bool _ramping = false;
   double _rampStartTime = 0.0;
   static constexpr double RAMP_DURATION = 5.0; // seconds
+
+  // Hold state
+  bool _holdInitialized = false;
+  double _holdPosition[12] = {};
 
   // Sine state
   double _qInit[12] = {};
