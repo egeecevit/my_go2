@@ -22,15 +22,6 @@ if(HARDWARE_TARGET STREQUAL "simulation")
 endif()
 
 if(HARDWARE_TARGET STREQUAL "go1")
-  set(SIMEXE go1simulation)
-  add_executable(${SIMEXE} ${SOURCES})
-  target_link_libraries(${SIMEXE} go1hw quadruped rtcore rtclient)
-  target_link_options(${SIMEXE} PRIVATE -no-pie) # Required since unitree_legged_sdk.a is a precompiled library built without -fPIC
-
-  install(TARGETS ${SIMEXE})
-  file(GLOB binscript LIST_DIRECTORIES false ${CMAKE_CURRENT_SOURCE_DIR}/go1sim.sh)
-  install(FILES ${binscript} DESTINATION bin PERMISSIONS OWNER_EXECUTE OWNER_READ GROUP_EXECUTE GROUP_READ)
-
   # Hardware test binary
   set(GO1TEST go1test)
   add_executable(${GO1TEST} test_main.cc app_common.cc)
