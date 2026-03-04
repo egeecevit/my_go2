@@ -290,10 +290,15 @@ void MdlHWTest::updateHold() {
     bool allHome = true;
     for (int i = 0; i < 12; i++) {
       double diff = _homePosition[i] - _cmd[i].pos;
-      if (diff > step) { _cmd[i].pos += step; allHome = false; }
-      else if (diff < -step) { _cmd[i].pos -= step; allHome = false; }
-      else { _cmd[i].pos = _homePosition[i]; }
-      _cmd[i].vel = 0.0;
+      if (fabs(diff) > step) {
+        double dir = (diff > 0.0) ? 1.0 : -1.0;
+        _cmd[i].pos += dir * step;
+        _cmd[i].vel = dir * RAMP_RATE;
+        allHome = false;
+      } else {
+        _cmd[i].pos = _homePosition[i];
+        _cmd[i].vel = 0.0;
+      }
     }
     sendAllCommands();
 
