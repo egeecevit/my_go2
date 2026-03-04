@@ -107,7 +107,7 @@ int MdlHWTest::readKey() {
 }
 
 void MdlHWTest::activateMotors(const int *indices, int count) {
-  for (int i = 0; i < count; i++) {
+  for (int i = 0; i < count && _activeCount < MAX_MOTORS; i++) {
     _motorhw->enable(indices[i]);
     _activeMotors[_activeCount++] = indices[i];
   }
@@ -121,7 +121,6 @@ void MdlHWTest::deactivateMotors() {
 }
 
 void MdlHWTest::exitCurrentState() {
-  _warmup = 0;
   _sineInitialized = false;
   _ramping = false;
 }
@@ -135,39 +134,27 @@ void MdlHWTest::enterState(State newState) {
   switch (_state) {
   case READBACK:
     deactivateMotors();
-    _holdInitialized = false;
     break;
   case HOLD: {
-    // Set commands BEFORE enabling motors to avoid one-cycle gap
-    // where motors would be active with default cmd (kp=0, kd=0)
-    int hips[] = {0, 3, 6, 9};
+    // Read current positions, set up hold commands
     for (int i = 0; i < 12; i++) {
       MotorHW::state_t st;
       _motorhw->getState(i, st);
       _holdPosition[i] = st.pos;
       _cmd[i].pos = st.pos;
       _cmd[i].vel = 0.0;
-      _cmd[i].kp = _kp;
-      _cmd[i].kd = _kd;
-      _cmd[i].tau = 0.0;
-      _motorhw->setCommand(i, _cmd[i]);
     }
-    for (int h : hips) {
-      _cmd[h].tau = -0.65;
-      _motorhw->setCommand(h, _cmd[h]);
-    }
+    // Set commands BEFORE enabling motors to avoid one-cycle gap
+    sendAllCommands();
     // NOW enable motors — commands are already set
     int all[12];
     for (int i = 0; i < 12; i++)
       all[i] = i;
     activateMotors(all, 12);
-    _holdInitialized = true;
     printf("  Holding all motors at current positions.\n");
     if (_hasHome) {
       _ramping = true;
-      _rampStartTime = _mgr->readTime();
-      for (int i = 0; i < 12; i++)
-        _rampStart[i] = _holdPosition[i];
+      _rampLastTime = _mgr->readTime();
       printf("  Ramping to home position...\n");
     }
     break;
@@ -180,16 +167,23 @@ void MdlHWTest::enterState(State newState) {
   }
 }
 
-bool MdlHWTest::checkTrackingError(const int *indices, int count) {
-  for (int i = 0; i < count; i++) {
+void MdlHWTest::sendAllCommands() {
+  for (int i = 0; i < 12; i++) {
+    _cmd[i].kp = _kp;
+    _cmd[i].kd = _kd;
+    _cmd[i].tau = (i % 3 == 0) ? HIP_GRAVITY_COMP : 0.0;
+    _motorhw->setCommand(i, _cmd[i]);
+  }
+}
+
+bool MdlHWTest::checkTrackingError() {
+  for (int i = 0; i < 12; i++) {
     MotorHW::state_t st;
-    _motorhw->getState(indices[i], st);
-    MotorHW::cmd_t cmd;
-    _motorhw->getCommand(indices[i], cmd);
-    double err = fabs(st.pos - cmd.pos);
+    _motorhw->getState(i, st);
+    double err = fabs(st.pos - _cmd[i].pos);
     if (err > _trackingLimit) {
       printf("\n!!! TRACKING ERROR on motor %d: err=%.3f rad (limit=%.3f) !!!\n",
-             indices[i], err, _trackingLimit);
+             i, err, _trackingLimit);
       printf("    Falling back to READBACK for safety.\n");
       return false;
     }
@@ -197,83 +191,56 @@ bool MdlHWTest::checkTrackingError(const int *indices, int count) {
   return true;
 }
 
-void MdlHWTest::runSinePattern(const int *indices, int count, int sineIdx) {
+void MdlHWTest::runSinePattern(const int *sineIndices, int sineCount) {
   double t = _mgr->readTime();
-  int hips[] = {0, 3, 6, 9};
 
   if (!_sineInitialized) {
-    for (int i = 0; i < count; i++)
-      _qInit[i] = _holdPosition[indices[i]];
     _startTime = t;
     _sineInitialized = true;
-    printf("  Sine on motor %d from hold position.\n", indices[sineIdx]);
+    printf("  Sine on motor(s):");
+    for (int i = 0; i < sineCount; i++)
+      printf(" %d", sineIndices[i]);
+    printf(" from hold position.\n");
     return;
   }
 
   double dt = t - _startTime;
-  double q_ref = _qInit[sineIdx] +
-                 _amplitude * sin(2.0 * M_PI * _frequency * dt);
-  double dq_ref =
-      _amplitude * 2.0 * M_PI * _frequency * cos(2.0 * M_PI * _frequency * dt);
+  double q_sin = _amplitude * sin(2.0 * M_PI * _frequency * dt);
+  double dq_sin = _amplitude * 2.0 * M_PI * _frequency *
+                  cos(2.0 * M_PI * _frequency * dt);
 
-  // Command all 12 motors: hold at _holdPosition
+  // All 12 motors hold at _holdPosition
   for (int i = 0; i < 12; i++) {
-    MotorHW::cmd_t cmd;
-    cmd.pos = _holdPosition[i];
-    cmd.vel = 0.0;
-    cmd.kp = _kp;
-    cmd.kd = _kd;
-    cmd.tau = 0.0;
-    _motorhw->setCommand(i, cmd);
+    _cmd[i].pos = _holdPosition[i];
+    _cmd[i].vel = 0.0;
   }
 
-  // Overlay: test motors hold at _qInit, sine motor oscillates
-  for (int i = 0; i < count; i++) {
-    MotorHW::cmd_t cmd;
-    cmd.pos = _qInit[i];
-    cmd.vel = 0.0;
-    cmd.kp = _kp;
-    cmd.kd = _kd;
-    cmd.tau = 0.0;
-    _motorhw->setCommand(indices[i], cmd);
-  }
-  {
-    MotorHW::cmd_t cmd;
-    cmd.pos = q_ref;
-    cmd.vel = dq_ref;
-    cmd.kp = _kp;
-    cmd.kd = _kd;
-    cmd.tau = 0.0;
-    _motorhw->setCommand(indices[sineIdx], cmd);
+  // Overlay sine on designated motors
+  for (int k = 0; k < sineCount; k++) {
+    int j = sineIndices[k];
+    _cmd[j].pos = _holdPosition[j] + q_sin;
+    _cmd[j].vel = dq_sin;
   }
 
-  // Gravity comp on hips
-  for (int h : hips) {
-    MotorHW::cmd_t cmd;
-    _motorhw->getCommand(h, cmd);
-    cmd.tau = -0.65;
-    _motorhw->setCommand(h, cmd);
+  sendAllCommands();
+
+  if (!checkTrackingError()) {
+    enterState(READBACK);
+    return;
   }
 
-  // Print
   if (t - _lastPrint >= PRINT_INTERVAL) {
     _lastPrint = t;
     printf("  [%s] t=%.1f", stateNames[_state], dt);
-    for (int i = 0; i < count; i++) {
+    for (int k = 0; k < sineCount; k++) {
+      int j = sineIndices[k];
       MotorHW::state_t st;
-      _motorhw->getState(indices[i], st);
-      MotorHW::cmd_t c;
-      _motorhw->getCommand(indices[i], c);
-      printf("  m%d: cmd=%.3f act=%.3f err=%.3f", indices[i], c.pos,
-             st.pos, fabs(c.pos - st.pos));
+      _motorhw->getState(j, st);
+      printf("  m%d: cmd=%.3f act=%.3f err=%.3f",
+             j, _cmd[j].pos, st.pos, fabs(_cmd[j].pos - st.pos));
     }
     printf("\n");
   }
-
-  int all[12];
-  for (int i = 0; i < 12; i++) all[i] = i;
-  if (!checkTrackingError(all, 12))
-    enterState(READBACK);
 }
 
 void MdlHWTest::updateReadback() {
@@ -315,76 +282,44 @@ void MdlHWTest::updateReadback() {
 
 void MdlHWTest::updateHold() {
   double t = _mgr->readTime();
-  int hips[] = {0, 3, 6, 9};
-
-  if (!_holdInitialized) {
-    for (int i = 0; i < 12; i++) {
-      MotorHW::state_t st;
-      _motorhw->getState(i, st);
-      _holdPosition[i] = st.pos;
-      _cmd[i].pos = st.pos;
-      _cmd[i].vel = 0.0;
-      _cmd[i].kp = _kp;
-      _cmd[i].kd = _kd;
-      _cmd[i].tau = 0.0;
-      _motorhw->setCommand(i, _cmd[i]);
-    }
-    for (int h : hips) {
-      _cmd[h].tau = -0.65;
-      _motorhw->setCommand(h, _cmd[h]);
-    }
-    _holdInitialized = true;
-    printf("  Holding all motors at current positions.\n");
-
-    if (_hasHome) {
-      _ramping = true;
-      _rampStartTime = t;
-      for (int i = 0; i < 12; i++)
-        _rampStart[i] = _holdPosition[i];
-      printf("  Ramping to home position...\n");
-    }
-    return;
-  }
 
   if (_ramping) {
-    double elapsed = t - _rampStartTime;
-    double alpha = elapsed / RAMP_DURATION;
-    if (alpha > 1.0) alpha = 1.0;
-
+    double dt = t - _rampLastTime;
+    _rampLastTime = t;
+    double step = RAMP_RATE * dt;
+    bool allHome = true;
     for (int i = 0; i < 12; i++) {
-      _cmd[i].pos = _rampStart[i] + alpha * (_homePosition[i] - _rampStart[i]);
+      double diff = _homePosition[i] - _cmd[i].pos;
+      if (diff > step) { _cmd[i].pos += step; allHome = false; }
+      else if (diff < -step) { _cmd[i].pos -= step; allHome = false; }
+      else { _cmd[i].pos = _homePosition[i]; }
       _cmd[i].vel = 0.0;
-      _cmd[i].kp = _kp;
-      _cmd[i].kd = _kd;
-      _cmd[i].tau = 0.0;
-      _motorhw->setCommand(i, _cmd[i]);
     }
-    for (int h : hips) {
-      _cmd[h].tau = -0.65;
-      _motorhw->setCommand(h, _cmd[h]);
-    }
+    sendAllCommands();
 
-    if (t - _lastPrint >= PRINT_INTERVAL) {
-      _lastPrint = t;
-      int thighs[] = {1, 4, 7, 10};
-      printf("  [RAMP] %.0f%%", alpha * 100.0);
-      for (int j : thighs) {
-        MotorHW::state_t st;
-        _motorhw->getState(j, st);
-        printf("  m%d: %.3f->%.3f (at %.3f)", j,
-               _rampStart[j], _homePosition[j], st.pos);
-      }
-      printf("\n");
-    }
-
-    int all[12];
-    for (int i = 0; i < 12; i++) all[i] = i;
-    if (!checkTrackingError(all, 12)) {
+    if (!checkTrackingError()) {
       enterState(READBACK);
       return;
     }
 
-    if (alpha >= 1.0) {
+    if (t - _lastPrint >= PRINT_INTERVAL) {
+      _lastPrint = t;
+      int worstIdx = 0;
+      double worstErr = 0.0;
+      for (int i = 0; i < 12; i++) {
+        MotorHW::state_t st;
+        _motorhw->getState(i, st);
+        double err = fabs(st.pos - _cmd[i].pos);
+        if (err > worstErr) { worstErr = err; worstIdx = i; }
+      }
+      MotorHW::state_t wst;
+      _motorhw->getState(worstIdx, wst);
+      printf("  [RAMP] worst: m%d err=%.3f (act=%.3f cmd=%.3f -> %.3f)\n",
+             worstIdx, worstErr, wst.pos, _cmd[worstIdx].pos,
+             _homePosition[worstIdx]);
+    }
+
+    if (allHome) {
       _ramping = false;
       for (int i = 0; i < 12; i++)
         _holdPosition[i] = _homePosition[i];
@@ -397,14 +332,12 @@ void MdlHWTest::updateHold() {
   for (int i = 0; i < 12; i++) {
     _cmd[i].pos = _holdPosition[i];
     _cmd[i].vel = 0.0;
-    _cmd[i].kp = _kp;
-    _cmd[i].kd = _kd;
-    _cmd[i].tau = 0.0;
-    _motorhw->setCommand(i, _cmd[i]);
   }
-  for (int h : hips) {
-    _cmd[h].tau = -0.65;
-    _motorhw->setCommand(h, _cmd[h]);
+  sendAllCommands();
+
+  if (!checkTrackingError()) {
+    enterState(READBACK);
+    return;
   }
 
   if (t - _lastPrint >= PRINT_INTERVAL) {
@@ -418,89 +351,20 @@ void MdlHWTest::updateHold() {
     printf("\n");
     printf("  [N]ext state  [B]ack to readback  [Q]uit\n");
   }
-
-  int all[12];
-  for (int i = 0; i < 12; i++) all[i] = i;
-  if (!checkTrackingError(all, 12))
-    enterState(READBACK);
 }
 
 void MdlHWTest::updateSingleJoint() {
-  runSinePattern(&_testJoint, 1, 0);
+  runSinePattern(&_testJoint, 1);
 }
 
 void MdlHWTest::updateSingleLeg() {
-  // sineIdx=1 means thigh gets the sine (hip=0 holds, calf=2 holds)
-  runSinePattern(_legIndices, 3, 1);
+  int sineMotor = _legIndices[1]; // thigh gets the sine
+  runSinePattern(&sineMotor, 1);
 }
 
 void MdlHWTest::updateAllLegs() {
-  double t = _mgr->readTime();
-  int hips[] = {0, 3, 6, 9};
   int thighs[] = {1, 4, 7, 10};
-
-  if (!_sineInitialized) {
-    for (int i = 0; i < 12; i++)
-      _qInit[i] = _holdPosition[i];
-    _startTime = t;
-    _sineInitialized = true;
-    printf("  All legs sine from hold positions.\n");
-    return;
-  }
-
-  double dt = t - _startTime;
-  double q_sin = _amplitude * sin(2.0 * M_PI * _frequency * dt);
-  double dq_sin =
-      _amplitude * 2.0 * M_PI * _frequency * cos(2.0 * M_PI * _frequency * dt);
-
-  // Command all 12 motors: hold at _qInit
-  for (int i = 0; i < 12; i++) {
-    MotorHW::cmd_t cmd;
-    cmd.pos = _qInit[i];
-    cmd.vel = 0.0;
-    cmd.kp = _kp;
-    cmd.kd = _kd;
-    cmd.tau = 0.0;
-    _motorhw->setCommand(i, cmd);
-  }
-
-  // Overlay sine on thighs
-  for (int j : thighs) {
-    MotorHW::cmd_t cmd;
-    cmd.pos = _qInit[j] + q_sin;
-    cmd.vel = dq_sin;
-    cmd.kp = _kp;
-    cmd.kd = _kd;
-    cmd.tau = 0.0;
-    _motorhw->setCommand(j, cmd);
-  }
-
-  // Gravity comp on hips
-  for (int h : hips) {
-    MotorHW::cmd_t cmd;
-    _motorhw->getCommand(h, cmd);
-    cmd.tau = -0.65;
-    _motorhw->setCommand(h, cmd);
-  }
-
-  // Print
-  if (t - _lastPrint >= PRINT_INTERVAL) {
-    _lastPrint = t;
-    printf("  [ALL_LEGS] t=%.1f", dt);
-    for (int j : thighs) {
-      MotorHW::state_t st;
-      _motorhw->getState(j, st);
-      MotorHW::cmd_t c;
-      _motorhw->getCommand(j, c);
-      printf("  m%d:err=%.3f", j, fabs(c.pos - st.pos));
-    }
-    printf("\n");
-  }
-
-  int all[12];
-  for (int i = 0; i < 12; i++) all[i] = i;
-  if (!checkTrackingError(all, 12))
-    enterState(READBACK);
+  runSinePattern(thighs, 4);
 }
 
 void MdlHWTest::update() {

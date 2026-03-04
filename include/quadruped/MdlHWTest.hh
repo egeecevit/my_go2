@@ -23,9 +23,8 @@ public:
 private:
   // State machine
   enum State { READBACK, HOLD, SINGLE_JOINT, SINGLE_LEG, ALL_LEGS };
-  static constexpr const char *stateNames[] = {"READBACK", "HOLD",
-                                               "SINGLE_JOINT", "SINGLE_LEG",
-                                               "ALL_LEGS"};
+  static constexpr const char *stateNames[] = {
+      "READBACK", "HOLD", "SINGLE_JOINT", "SINGLE_LEG", "ALL_LEGS"};
 
   State _state = READBACK;
 
@@ -39,13 +38,14 @@ private:
   void updateSingleLeg();
   void updateAllLegs();
 
-  // Sine test helper: run sine on a set of motors
-  // indices: array of motor indices, count: number of motors
-  // sineIdx: which motor in the set gets the sine (others hold)
-  void runSinePattern(const int *indices, int count, int sineIdx);
+  // Sine test helper: overlay sine on designated motors, hold all others
+  void runSinePattern(const int *sineIndices, int sineCount);
 
-  // Tracking error check for active motors. Returns true if safe.
-  bool checkTrackingError(const int *indices, int count);
+  // Build and send all 12 motor commands (sets kp/kd, gravity comp on hips)
+  void sendAllCommands();
+
+  // Tracking error check for all 12 motors. Returns true if safe.
+  bool checkTrackingError();
 
   // Hardware singletons
   MotorHW *_motorhw = nullptr;
@@ -69,19 +69,16 @@ private:
   // Home position (optional, from TOML)
   bool _hasHome = false;
   double _homePosition[12] = {};
-  double _rampStart[12] = {};
   bool _ramping = false;
-  double _rampStartTime = 0.0;
-  static constexpr double RAMP_DURATION = 5.0; // seconds
+  double _rampLastTime = 0.0;
+  static constexpr double RAMP_RATE = 0.5;          // rad/s
+  static constexpr double HIP_GRAVITY_COMP = -0.65; // Nm
 
   // Hold state
-  bool _holdInitialized = false;
   double _holdPosition[12] = {};
 
   // Sine state
-  double _qInit[12] = {};
   MotorHW::cmd_t _cmd[12] = {};
-  int _warmup = 0;
   bool _sineInitialized = false;
   double _startTime = 0.0;
 
