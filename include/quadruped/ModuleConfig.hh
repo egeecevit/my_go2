@@ -48,6 +48,7 @@ const std::map<ModuleId_t, ModuleConfig_t, ModuleCompare_t> moduleConfig = {
 
   // Core modules
   { {"LogServer", -1},    { 1, 0, LOGGING_MODULES   } },
+  { {"MdlHWTest", -1},       { 2, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlDrawSquare", -1},   { 1, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlLegControl", 0},     { 1, 0, BEHAVIORAL_CONTROLLERS+1 } },
   { {"MdlLegControl", 1},     { 1, 0, BEHAVIORAL_CONTROLLERS+2 } },

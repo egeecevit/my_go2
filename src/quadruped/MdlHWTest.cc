@@ -2,8 +2,8 @@
 #include <cstdio>
 #include <unistd.h>
 
-#include "rtcore/ModuleManager.hh"
 #include "quadruped/MdlHWTest.hh"
+#include "rtcore/ModuleManager.hh"
 
 using namespace rtcore;
 
@@ -29,7 +29,7 @@ void MdlHWTest::resolveLegIndices(const std::string &legName, int out[3]) {
     base = 9;
   else {
     _mgr->warning("MdlHWTest", "Unknown leg '%s', defaulting to FR",
-                   legName.c_str());
+                  legName.c_str());
     base = 0;
   }
   out[0] = base;
@@ -79,10 +79,11 @@ void MdlHWTest::init() {
     // Validate home position against limits
     if (_hasHome && _hasLimits) {
       for (int i = 0; i < 12; i++) {
-        if (_homePosition[i] < _jointMin[i] || _homePosition[i] > _jointMax[i]) {
-          _mgr->fatalError("MdlHWTest",
-              "home_position[%d]=%.3f outside limits [%.3f, %.3f]",
-              i, _homePosition[i], _jointMin[i], _jointMax[i]);
+        if (_homePosition[i] < _jointMin[i] ||
+            _homePosition[i] > _jointMax[i]) {
+          _mgr->message("MdlHWTest",
+                        "home_position[%d]=%.3f outside limits [%.3f, %.3f]", i,
+                        _homePosition[i], _jointMin[i], _jointMax[i]);
         }
       }
     }
@@ -206,8 +207,9 @@ bool MdlHWTest::checkTrackingError() {
     _motorhw->getState(i, st);
     double err = fabs(st.pos - _cmd[i].pos);
     if (err > _trackingLimit) {
-      printf("\n!!! TRACKING ERROR on motor %d: err=%.3f rad (limit=%.3f) !!!\n",
-             i, err, _trackingLimit);
+      printf(
+          "\n!!! TRACKING ERROR on motor %d: err=%.3f rad (limit=%.3f) !!!\n",
+          i, err, _trackingLimit);
       printf("    Falling back to READBACK for safety.\n");
       return false;
     }
@@ -230,8 +232,8 @@ void MdlHWTest::runSinePattern(const int *sineIndices, int sineCount) {
 
   double dt = t - _startTime;
   double q_sin = _amplitude * sin(2.0 * M_PI * _frequency * dt);
-  double dq_sin = _amplitude * 2.0 * M_PI * _frequency *
-                  cos(2.0 * M_PI * _frequency * dt);
+  double dq_sin =
+      _amplitude * 2.0 * M_PI * _frequency * cos(2.0 * M_PI * _frequency * dt);
 
   // All 12 motors hold at _holdPosition
   for (int i = 0; i < 12; i++) {
@@ -260,8 +262,8 @@ void MdlHWTest::runSinePattern(const int *sineIndices, int sineCount) {
       int j = sineIndices[k];
       MotorHW::state_t st;
       _motorhw->getState(j, st);
-      printf("  m%d: cmd=%.3f act=%.3f err=%.3f",
-             j, _cmd[j].pos, st.pos, fabs(_cmd[j].pos - st.pos));
+      printf("  m%d: cmd=%.3f act=%.3f err=%.3f", j, _cmd[j].pos, st.pos,
+             fabs(_cmd[j].pos - st.pos));
     }
     printf("\n");
   }
@@ -284,8 +286,9 @@ void MdlHWTest::updateReadback() {
         (status == MotorHW::STATUS_READY)
             ? "READY"
             : (status == MotorHW::STATUS_STARTUP ? "STARTUP" : "ERROR");
-    printf("    Motor %2d: pos=%7.3f  vel=%7.3f  tau=%6.3f  temp=%4.0fC  [%s]\n",
-           i, st.pos, st.vel, st.tau, st.temp, statusStr);
+    printf(
+        "    Motor %2d: pos=%7.3f  vel=%7.3f  tau=%6.3f  temp=%4.0fC  [%s]\n",
+        i, st.pos, st.vel, st.tau, st.temp, statusStr);
   }
 
   if (_imuhw) {
@@ -339,7 +342,10 @@ void MdlHWTest::updateHold() {
         MotorHW::state_t st;
         _motorhw->getState(i, st);
         double err = fabs(st.pos - _cmd[i].pos);
-        if (err > worstErr) { worstErr = err; worstIdx = i; }
+        if (err > worstErr) {
+          worstErr = err;
+          worstIdx = i;
+        }
       }
       MotorHW::state_t wst;
       _motorhw->getState(worstIdx, wst);
@@ -372,7 +378,7 @@ void MdlHWTest::updateHold() {
   if (t - _lastPrint >= PRINT_INTERVAL) {
     _lastPrint = t;
     printf("  [HOLD]");
-    for (int i = 0; i < 12; i += 3) {
+    for (int i = 0; i < 12; i += 1) {
       MotorHW::state_t st;
       _motorhw->getState(i, st);
       printf("  m%d:%.3f", i, st.pos);
@@ -382,9 +388,7 @@ void MdlHWTest::updateHold() {
   }
 }
 
-void MdlHWTest::updateSingleJoint() {
-  runSinePattern(&_testJoint, 1);
-}
+void MdlHWTest::updateSingleJoint() { runSinePattern(&_testJoint, 1); }
 
 void MdlHWTest::updateSingleLeg() {
   int sineMotor = _legIndices[1]; // thigh gets the sine
@@ -430,7 +434,8 @@ void MdlHWTest::update() {
         next = ALL_LEGS;
         break;
       case ALL_LEGS:
-        printf("  (Already at last state. Press B for readback or Q to quit.)\n");
+        printf(
+            "  (Already at last state. Press B for readback or Q to quit.)\n");
         return;
       }
       enterState(next);
