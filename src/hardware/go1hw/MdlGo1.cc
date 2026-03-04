@@ -185,10 +185,14 @@ void MdlGo1::threadEnter(void) {
 void MdlGo1::threadLoop(void) {
   waitSync();
 
-  // Section 1: Read states from robot
+  // Read latest UDP state. _state is only accessed by this thread,
+  // so no _data_mutex needed. Avoids holding _data_mutex while the
+  // SDK acquires its internal recvMutex.
+  _udp->GetRecv(_state);
+
+  // Unpack motor and IMU state into shared _m[] and _imuData
   {
     std::lock_guard<std::mutex> lock(_data_mutex);
-    _udp->GetRecv(_state);
     if (_updateStates) {
       _updateStates = false;
       for (unsigned int i = 0; i < _m.size(); i++) {
@@ -205,7 +209,6 @@ void MdlGo1::threadLoop(void) {
         _m[i].state.temp = double(_state.motorState[IdxToJoint[id]].temperature);
       }
 
-      // Copy IMU data
       _imuData.t = _mgr->readTime();
       _imuData.q.v[0] = double(_state.imu.quaternion[0]);
       _imuData.q.v[1] = double(_state.imu.quaternion[1]);
@@ -223,11 +226,13 @@ void MdlGo1::threadLoop(void) {
     }
   }
 
-  // Section 2: Send commands to robot
+  // Build command packet from shared _m[].cmd
+  bool sendCmd = false;
   {
     std::lock_guard<std::mutex> lock(_data_mutex);
     if (_updateCommands) {
       _updateCommands = false;
+      sendCmd = true;
       for (unsigned int i = 0; i < _m.size(); i++) {
         int id = _m[i].id;
         if (_m[i].enable) {
@@ -250,9 +255,14 @@ void MdlGo1::threadLoop(void) {
       int res = _safe.PowerProtect(_cmd, _state, 1);
       if (res < 0)
         _mgr->fatalError("MdlGo1", "Power Protect Triggered!");
-      _udp->SetSend(_cmd);
     }
   }
+
+  // Send command via UDP. _cmd is only accessed by this thread,
+  // so no _data_mutex needed. Avoids holding _data_mutex while the
+  // SDK acquires its internal sendMutex.
+  if (sendCmd)
+    _udp->SetSend(_cmd);
 }
 
 void MdlGo1::threadExit(void) {
