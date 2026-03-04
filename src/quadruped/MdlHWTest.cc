@@ -62,6 +62,30 @@ void MdlHWTest::init() {
         _homePosition[i] = homeArr.getDoubleAt(i);
       _mgr->message("MdlHWTest: Home position configured.");
     }
+
+    // Joint limits (optional)
+    ConfigArray minArr, maxArr;
+    bool hasMin = cfg.getArray("joint_min", minArr) && minArr.size() == 12;
+    bool hasMax = cfg.getArray("joint_max", maxArr) && maxArr.size() == 12;
+    if (hasMin && hasMax) {
+      _hasLimits = true;
+      for (int i = 0; i < 12; i++) {
+        _jointMin[i] = minArr.getDoubleAt(i);
+        _jointMax[i] = maxArr.getDoubleAt(i);
+      }
+      _mgr->message("MdlHWTest: Joint limits configured.");
+    }
+
+    // Validate home position against limits
+    if (_hasHome && _hasLimits) {
+      for (int i = 0; i < 12; i++) {
+        if (_homePosition[i] < _jointMin[i] || _homePosition[i] > _jointMax[i]) {
+          _mgr->fatalError("MdlHWTest",
+              "home_position[%d]=%.3f outside limits [%.3f, %.3f]",
+              i, _homePosition[i], _jointMin[i], _jointMax[i]);
+        }
+      }
+    }
   }
 
   resolveLegIndices(_testLeg, _legIndices);

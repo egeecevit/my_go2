@@ -74,6 +74,11 @@ private:
   static constexpr double RAMP_RATE = 0.5;          // rad/s
   static constexpr double HIP_GRAVITY_COMP = -0.65; // Nm
 
+  // Joint limits (optional, from TOML)
+  bool _hasLimits = false;
+  double _jointMin[12] = {};
+  double _jointMax[12] = {};
+
   // Hold state
   double _holdPosition[12] = {};
 
