@@ -10,17 +10,14 @@ static constexpr int IdxToJoint[12] = {FR_0, FR_1, FR_2, FL_0, FL_1, FL_2,
                                        RR_0, RR_1, RR_2, RL_0, RL_1, RL_2};
 
 MdlGo1::MdlGo1()
-    : Module(GO1MODULE_NAME, 0, SINGLE_USER), _safe(LeggedType::Go1) {
-}
+    : Module(GO1MODULE_NAME, 0, SINGLE_USER), _safe(LeggedType::Go1) {}
 
-MdlGo1::~MdlGo1() {
-}
+MdlGo1::~MdlGo1() {}
 
 bool MdlGo1::setEnable(unsigned int index, bool enable) {
   if (index >= _m.size())
     return false;
 
-  bool changed = false;
   bool prev;
   {
     std::lock_guard<std::mutex> lock(_data_mutex);
@@ -28,10 +25,8 @@ bool MdlGo1::setEnable(unsigned int index, bool enable) {
     _m[index].enable = enable;
     if (prev != enable) {
       _updateStates = true;
-      changed = true;
     }
   }
-  if (changed) sendSync();
   return prev;
 }
 
@@ -59,8 +54,8 @@ void MdlGo1::init() {
   }
   _udp = std::make_unique<UNITREE_LEGGED_SDK::UDP>(
       LOWLEVEL, (uint16_t)localPort, remoteIp.c_str(), (uint16_t)remotePort);
-  _mgr->message("MdlGo1: UDP target %s:%d (local port %d)",
-                remoteIp.c_str(), remotePort, localPort);
+  _mgr->message("MdlGo1: UDP target %s:%d (local port %d)", remoteIp.c_str(),
+                remotePort, localPort);
 
   _udp->InitCmdData(_cmd);
 
@@ -117,7 +112,14 @@ void MdlGo1::init() {
     }
   }
 
-  this->start("dmcomm", dc.getInt("thread_priority", 98));
+  _mgr->message("MdlGo1: Communication thread started.");
+  _loopRecv = std::make_unique<LoopFunc>("udp_recv", 0.002, 3,
+                                         boost::bind(&UDP::Recv, _udp.get()));
+  _loopSend = std::make_unique<LoopFunc>("udp_send", 0.002, 3,
+                                         boost::bind(&UDP::Send, _udp.get()));
+
+  _loopRecv->start();
+  _loopSend->start();
 }
 
 MotorHW::status_t MdlGo1::getJointStatus(unsigned int index) {
@@ -150,14 +152,19 @@ void MdlGo1::getJointCommand(unsigned int index, MotorHW::cmd_t &cmd) {
 
 bool MdlGo1::getIMUData(IMUHW::imudata_t &data) {
   std::lock_guard<std::mutex> lock(_data_mutex);
-  if (_imuData.t < 0) return false;
+  if (_imuData.t < 0)
+    return false;
   data = _imuData;
   return true;
 }
 
 void MdlGo1::uninit() {
   _mgr->message("MdlGo1: Shutting down...");
-  this->terminate();
+  _mgr->message("MdlGo1: Communication thread stopped.");
+  _loopRecv->shutdown();
+  _loopSend->shutdown();
+  _loopRecv.reset();
+  _loopSend.reset();
 }
 void MdlGo1::activate() {}
 void MdlGo1::deactivate() {}
@@ -168,26 +175,7 @@ void MdlGo1::update() {
     _updateStates = true;
     _updateCommands = true;
   }
-  sendSync();
-}
 
-void MdlGo1::threadEnter(void) {
-  _mgr->message("MdlGo1: Communication thread started.");
-  _loopRecv = std::make_unique<LoopFunc>(
-      "udp_recv", 0.002, 3, boost::bind(&UDP::Recv, _udp.get()));
-  _loopSend = std::make_unique<LoopFunc>(
-      "udp_send", 0.002, 3, boost::bind(&UDP::Send, _udp.get()));
-
-  _loopRecv->start();
-  _loopSend->start();
-}
-
-void MdlGo1::threadLoop(void) {
-  waitSync();
-
-  // Read latest UDP state. _state is only accessed by this thread,
-  // so no _data_mutex needed. Avoids holding _data_mutex while the
-  // SDK acquires its internal recvMutex.
   _udp->GetRecv(_state);
 
   // Unpack motor and IMU state into shared _m[] and _imuData
@@ -206,7 +194,8 @@ void MdlGo1::threadLoop(void) {
             _m[i].polarity * double(_state.motorState[IdxToJoint[id]].dq);
         _m[i].state.tau =
             _m[i].polarity * double(_state.motorState[IdxToJoint[id]].tauEst);
-        _m[i].state.temp = double(_state.motorState[IdxToJoint[id]].temperature);
+        _m[i].state.temp =
+            double(_state.motorState[IdxToJoint[id]].temperature);
       }
 
       _imuData.t = _mgr->readTime();
@@ -263,12 +252,4 @@ void MdlGo1::threadLoop(void) {
   // SDK acquires its internal sendMutex.
   if (sendCmd)
     _udp->SetSend(_cmd);
-}
-
-void MdlGo1::threadExit(void) {
-  _mgr->message("MdlGo1: Communication thread stopped.");
-  _loopRecv->shutdown();
-  _loopSend->shutdown();
-  _loopRecv.reset();
-  _loopSend.reset();
 }

@@ -1,17 +1,17 @@
 #ifndef _MDLGO1_HH
 #define _MDLGO1_HH
-#include "hardware/MotorHW.hh"
 #include "hardware/IMUHW.hh"
-#include <rtcore/Module.hh>
+#include "hardware/MotorHW.hh"
 #include "rtcore/ThreadedLoop.hh"
 #include <memory>
 #include <mutex>
+#include <rtcore/Module.hh>
 
 #include "unitree_legged_sdk/unitree_legged_sdk.h"
 
 #define GO1MODULE_NAME "MdlGo1"
 
-class MdlGo1 : public rtcore::Module, public rtcore::ThreadedLoop {
+class MdlGo1 : public rtcore::Module {
 public:
   MdlGo1();
   ~MdlGo1();
@@ -22,20 +22,15 @@ public:
   void deactivate();
   void update();
 
-  // ThreadedLoop methods
-  void threadEnter( void );
-  void threadLoop( void );
-  void threadExit( void );
-
-  bool setEnable( unsigned int index, bool enable );
-  bool isEnabled( unsigned int index );
+  bool setEnable(unsigned int index, bool enable);
+  bool isEnabled(unsigned int index);
 
   void getJointState(unsigned int index, MotorHW::state_t &state);
 
   void setJointCommand(unsigned int index, MotorHW::cmd_t &cmd);
   void getJointCommand(unsigned int index, MotorHW::cmd_t &cmd);
 
-  MotorHW::status_t  getJointStatus(unsigned int index);
+  MotorHW::status_t getJointStatus(unsigned int index);
 
   bool getIMUData(IMUHW::imudata_t &data);
 
