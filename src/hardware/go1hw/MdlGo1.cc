@@ -18,11 +18,8 @@ bool MdlGo1::setEnable(unsigned int index, bool enable) {
   if (index >= _m.size())
     return false;
 
-  bool prev;
-  {
-    prev = _m[index].enable;
-    _m[index].enable = enable;
-  }
+  bool prev = _m[index].enable;
+  _m[index].enable = enable;
   return prev;
 }
 
@@ -108,14 +105,13 @@ void MdlGo1::init() {
     }
   }
 
-  _mgr->message("MdlGo1: Communication thread started.");
   _loopRecv = std::make_unique<LoopFunc>("udp_recv", 0.002, 3,
                                          boost::bind(&UDP::Recv, _udp.get()));
   _loopSend = std::make_unique<LoopFunc>("udp_send", 0.002, 3,
                                          boost::bind(&UDP::Send, _udp.get()));
-
   _loopRecv->start();
   _loopSend->start();
+  _mgr->message("MdlGo1: UDP send/recv threads started.");
 }
 
 MotorHW::status_t MdlGo1::getJointStatus(unsigned int index) {
@@ -155,80 +151,72 @@ bool MdlGo1::getIMUData(IMUHW::imudata_t &data) {
 
 void MdlGo1::uninit() {
   _mgr->message("MdlGo1: Shutting down...");
-  _mgr->message("MdlGo1: Communication thread stopped.");
   _loopRecv->shutdown();
   _loopSend->shutdown();
   _loopRecv.reset();
   _loopSend.reset();
+  _mgr->message("MdlGo1: UDP threads stopped.");
 }
 void MdlGo1::activate() {}
 void MdlGo1::deactivate() {}
 
 void MdlGo1::update() {
-
   _udp->GetRecv(_state);
 
-  // Unpack motor and IMU state into shared _m[] and _imuData
-  {
-    for (unsigned int i = 0; i < _m.size(); i++) {
-      int id = _m[i].id;
-      _m[i].status = MotorHW::STATUS_READY;
-      _m[i].state.t = _mgr->readTime();
-      _m[i].state.pos =
-          _m[i].polarity * double(_state.motorState[IdxToJoint[id]].q) +
-          _m[i].offset;
-      _m[i].state.vel =
-          _m[i].polarity * double(_state.motorState[IdxToJoint[id]].dq);
-      _m[i].state.tau =
-          _m[i].polarity * double(_state.motorState[IdxToJoint[id]].tauEst);
-      _m[i].state.temp =
-          double(_state.motorState[IdxToJoint[id]].temperature);
-    }
-
-    _imuData.t = _mgr->readTime();
-    _imuData.q.v[0] = double(_state.imu.quaternion[0]);
-    _imuData.q.v[1] = double(_state.imu.quaternion[1]);
-    _imuData.q.v[2] = double(_state.imu.quaternion[2]);
-    _imuData.q.v[3] = double(_state.imu.quaternion[3]);
-    _imuData.gyro.v[0] = double(_state.imu.gyroscope[0]);
-    _imuData.gyro.v[1] = double(_state.imu.gyroscope[1]);
-    _imuData.gyro.v[2] = double(_state.imu.gyroscope[2]);
-    _imuData.acc.v[0] = double(_state.imu.accelerometer[0]);
-    _imuData.acc.v[1] = double(_state.imu.accelerometer[1]);
-    _imuData.acc.v[2] = double(_state.imu.accelerometer[2]);
-    _imuData.rpy[0] = double(_state.imu.rpy[0]);
-    _imuData.rpy[1] = double(_state.imu.rpy[1]);
-    _imuData.rpy[2] = double(_state.imu.rpy[2]);
+  // Unpack motor and IMU state
+  for (unsigned int i = 0; i < _m.size(); i++) {
+    int id = _m[i].id;
+    _m[i].status = MotorHW::STATUS_READY;
+    _m[i].state.t = _mgr->readTime();
+    _m[i].state.pos =
+        _m[i].polarity * double(_state.motorState[IdxToJoint[id]].q) +
+        _m[i].offset;
+    _m[i].state.vel =
+        _m[i].polarity * double(_state.motorState[IdxToJoint[id]].dq);
+    _m[i].state.tau =
+        _m[i].polarity * double(_state.motorState[IdxToJoint[id]].tauEst);
+    _m[i].state.temp =
+        double(_state.motorState[IdxToJoint[id]].temperature);
   }
 
-  // Build command packet from shared _m[].cmd
-  {
-    for (unsigned int i = 0; i < _m.size(); i++) {
-      int id = _m[i].id;
-      if (_m[i].enable) {
-        _cmd.motorCmd[IdxToJoint[id]].mode = 0x0A;
-        _cmd.motorCmd[IdxToJoint[id]].q =
-            (_m[i].cmd.pos * _m[i].polarity) - _m[i].offset;
-        _cmd.motorCmd[IdxToJoint[id]].dq = _m[i].cmd.vel * _m[i].polarity;
-        _cmd.motorCmd[IdxToJoint[id]].tau = _m[i].cmd.tau * _m[i].polarity;
-        _cmd.motorCmd[IdxToJoint[id]].Kp = _m[i].cmd.kp;
-        _cmd.motorCmd[IdxToJoint[id]].Kd = _m[i].cmd.kd;
-      } else {
-        _cmd.motorCmd[IdxToJoint[id]].mode = 0x00;
-        _cmd.motorCmd[IdxToJoint[id]].q = 0;
-        _cmd.motorCmd[IdxToJoint[id]].dq = 0;
-        _cmd.motorCmd[IdxToJoint[id]].tau = 0;
-        _cmd.motorCmd[IdxToJoint[id]].Kp = 0;
-        _cmd.motorCmd[IdxToJoint[id]].Kd = 0;
-      }
-    }
-    int res = _safe.PowerProtect(_cmd, _state, 1);
-    if (res < 0)
-      _mgr->fatalError("MdlGo1", "Power Protect Triggered!");
-  }
+  _imuData.t = _mgr->readTime();
+  _imuData.q.v[0] = double(_state.imu.quaternion[0]);
+  _imuData.q.v[1] = double(_state.imu.quaternion[1]);
+  _imuData.q.v[2] = double(_state.imu.quaternion[2]);
+  _imuData.q.v[3] = double(_state.imu.quaternion[3]);
+  _imuData.gyro.v[0] = double(_state.imu.gyroscope[0]);
+  _imuData.gyro.v[1] = double(_state.imu.gyroscope[1]);
+  _imuData.gyro.v[2] = double(_state.imu.gyroscope[2]);
+  _imuData.acc.v[0] = double(_state.imu.accelerometer[0]);
+  _imuData.acc.v[1] = double(_state.imu.accelerometer[1]);
+  _imuData.acc.v[2] = double(_state.imu.accelerometer[2]);
+  _imuData.rpy[0] = double(_state.imu.rpy[0]);
+  _imuData.rpy[1] = double(_state.imu.rpy[1]);
+  _imuData.rpy[2] = double(_state.imu.rpy[2]);
 
-  // Send command via UDP. _cmd is only accessed by this thread,
-  // so no _data_mutex needed. Avoids holding _data_mutex while the
-  // SDK acquires its internal sendMutex.
+  // Build and send command packet
+  for (unsigned int i = 0; i < _m.size(); i++) {
+    int id = _m[i].id;
+    if (_m[i].enable) {
+      _cmd.motorCmd[IdxToJoint[id]].mode = 0x0A;
+      _cmd.motorCmd[IdxToJoint[id]].q =
+          (_m[i].cmd.pos * _m[i].polarity) - _m[i].offset;
+      _cmd.motorCmd[IdxToJoint[id]].dq = _m[i].cmd.vel * _m[i].polarity;
+      _cmd.motorCmd[IdxToJoint[id]].tau = _m[i].cmd.tau * _m[i].polarity;
+      _cmd.motorCmd[IdxToJoint[id]].Kp = _m[i].cmd.kp;
+      _cmd.motorCmd[IdxToJoint[id]].Kd = _m[i].cmd.kd;
+    } else {
+      _cmd.motorCmd[IdxToJoint[id]].mode = 0x00;
+      _cmd.motorCmd[IdxToJoint[id]].q = 0;
+      _cmd.motorCmd[IdxToJoint[id]].dq = 0;
+      _cmd.motorCmd[IdxToJoint[id]].tau = 0;
+      _cmd.motorCmd[IdxToJoint[id]].Kp = 0;
+      _cmd.motorCmd[IdxToJoint[id]].Kd = 0;
+    }
+  }
+  int res = _safe.PowerProtect(_cmd, _state, 1);
+  if (res < 0)
+    _mgr->fatalError("MdlGo1", "Power Protect Triggered!");
+
   _udp->SetSend(_cmd);
 }

@@ -46,7 +46,7 @@ private:
     bool enable = false;
     MotorHW::state_t state;
     MotorHW::cmd_t cmd;
-    // Axis polarity to multiple position, velocity and torque
+    // Axis polarity to multiply position, velocity and torque
     int polarity = 1;
     // Angular offset to be added to readings, and subtracted from commands
     double offset = 0;
