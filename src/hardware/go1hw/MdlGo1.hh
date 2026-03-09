@@ -2,9 +2,7 @@
 #define _MDLGO1_HH
 #include "hardware/IMUHW.hh"
 #include "hardware/MotorHW.hh"
-#include "rtcore/ThreadedLoop.hh"
 #include <memory>
-#include <mutex>
 #include <rtcore/Module.hh>
 
 #include "unitree_legged_sdk/unitree_legged_sdk.h"
@@ -59,14 +57,6 @@ private:
   std::vector<_motor_t> _m;
 
   IMUHW::imudata_t _imuData;
-
-  // Mutex to coordinate data access between the UDP thread and
-  // joint data access methods
-  std::mutex _data_mutex;
-
-  // Triggers for the GO1 comms thread
-  bool _updateStates = false;
-  bool _updateCommands = false;
 };
 
 #endif
