@@ -61,7 +61,7 @@ Only one hardware target can be built at a time: `simulation`, `go1` or `robot`.
 ### Using build.sh (recommended)
 
 ```
-./build.sh go1          # Build Go1 binaries (go1simulation, go1test)
+./build.sh go1          # Build Go1 hardware test binary (go1test)
 ./build.sh simulation   # Build MuJoCo simulation binary
 ./build.sh robot        # Build CAN robot binary
 ./build.sh clean        # Remove the build directory
@@ -92,7 +92,7 @@ cmake .. -DHARDWARE_TARGET=go1 -DRTROBOT_DIR=/path/to/rtrobot
 | Target | Binaries | Launch scripts |
 |--------|----------|----------------|
 | `simulation` | `simulation` | `sim.sh` |
-| `go1` | `go1simulation`, `go1test` | `go1sim.sh`, `go1test.sh` |
+| `go1` | `go1test` | `go1test.sh` |
 | `robot` | `robot` | `robot.sh` |
 
 ## 5. Configuration
@@ -162,7 +162,6 @@ From the install directory:
 ```
 cd ~/quadcontrol/bin
 ./sim.sh                # MuJoCo simulation
-./go1sim.sh             # Go1 simulation
 ./go1test.sh            # Go1 hardware test
 ./robot.sh              # CAN robot
 ```

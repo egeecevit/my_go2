@@ -9,7 +9,7 @@ usage() {
   echo ""
   echo "Commands:"
   echo "  simulation   Build MuJoCo simulation binary"
-  echo "  go1          Build Go1 binaries (go1simulation, go1test)"
+  echo "  go1          Build Go1 hardware test binary (go1test)"
   echo "  robot        Build CAN robot binary"
   echo "  clean        Remove build directory"
   exit 1
@@ -34,6 +34,7 @@ case "$1" in
     echo "Building..."
     cmake --build .
     echo "Installing..."
+    rm -rf "$SCRIPT_DIR/bin"
     cmake --install .
     echo ""
     echo "Done. Binaries installed to $SCRIPT_DIR/bin/"
