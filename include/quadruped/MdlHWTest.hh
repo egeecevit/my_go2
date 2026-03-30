@@ -101,6 +101,9 @@ private:
 
   // Leg name -> motor index mapping
   void resolveLegIndices(const std::string &legName, int out[3]);
+
+  // Snapshot current joint positions to gains.toml as home_position
+  void snapshotHomePosition();
 };
 
 #endif

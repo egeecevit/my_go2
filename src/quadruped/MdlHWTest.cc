@@ -1,5 +1,8 @@
 #include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <unistd.h>
 
 #include "quadruped/MdlHWTest.hh"
@@ -113,7 +116,7 @@ void MdlHWTest::activate() {
   _state = READBACK;
   _lastPrint = -10.0;
   printf("\n=== Go1 Hardware Test ===\n");
-  printf("  [N]ext state  [B]ack to readback  [Q]uit\n\n");
+  printf("  [N]ext state  [B]ack to readback  [S]napshot home  [Q]uit\n\n");
 }
 
 void MdlHWTest::deactivate() { deactivateMotors(); }
@@ -217,6 +220,78 @@ bool MdlHWTest::checkTrackingError() {
   return true;
 }
 
+void MdlHWTest::snapshotHomePosition() {
+  const char *versionDir = getenv("VERSION_DIR");
+  if (!versionDir) {
+    printf("  ERROR: VERSION_DIR not set, cannot write gains.toml\n");
+    return;
+  }
+
+  std::string gainsPath = std::string(versionDir) + "/gains.toml";
+
+  // Read current motor positions
+  double pos[12];
+  for (int i = 0; i < 12; i++) {
+    MotorHW::state_t st;
+    _motorhw->getState(i, st);
+    pos[i] = st.pos;
+  }
+
+  // Build replacement line
+  char buf[256];
+  snprintf(buf, sizeof(buf),
+           "home_position = [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, "
+           "%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+           pos[0], pos[1], pos[2], pos[3], pos[4], pos[5], pos[6], pos[7],
+           pos[8], pos[9], pos[10], pos[11]);
+  std::string newLine = buf;
+
+  // Read gains.toml
+  std::ifstream in(gainsPath);
+  if (!in.is_open()) {
+    printf("  ERROR: Cannot open %s\n", gainsPath.c_str());
+    return;
+  }
+  std::ostringstream contents;
+  std::string line;
+  bool replaced = false;
+  while (std::getline(in, line)) {
+    // Match uncommented home_position line
+    std::string trimmed = line;
+    size_t start = trimmed.find_first_not_of(" \t");
+    if (start != std::string::npos && trimmed[start] != '#' &&
+        trimmed.find("home_position") != std::string::npos) {
+      contents << newLine << "\n";
+      replaced = true;
+    } else {
+      contents << line << "\n";
+    }
+  }
+  in.close();
+
+  if (!replaced) {
+    printf("  ERROR: home_position line not found in %s\n", gainsPath.c_str());
+    return;
+  }
+
+  // Write back
+  std::ofstream out(gainsPath);
+  if (!out.is_open()) {
+    printf("  ERROR: Cannot write %s\n", gainsPath.c_str());
+    return;
+  }
+  out << contents.str();
+  out.close();
+
+  // Update in-memory home position so it takes effect without restart
+  for (int i = 0; i < 12; i++)
+    _homePosition[i] = pos[i];
+  _hasHome = true;
+
+  printf("  Snapshot saved to %s:\n", gainsPath.c_str());
+  printf("  %s\n", newLine.c_str());
+}
+
 void MdlHWTest::runSinePattern(const int *sineIndices, int sineCount) {
   double t = _mgr->readTime();
 
@@ -304,7 +379,7 @@ void MdlHWTest::updateReadback() {
       printf("    IMU: no data\n");
     }
   }
-  printf("  [N]ext state  [B]ack to readback  [Q]uit\n");
+  printf("  [N]ext state  [B]ack to readback  [S]napshot home  [Q]uit\n");
 }
 
 void MdlHWTest::updateHold() {
@@ -384,7 +459,7 @@ void MdlHWTest::updateHold() {
       printf("  m%d:%.3f", i, st.pos);
     }
     printf("\n");
-    printf("  [N]ext state  [B]ack to readback  [Q]uit\n");
+    printf("  [N]ext state  [B]ack to readback  [S]napshot home  [Q]uit\n");
   }
 }
 
@@ -417,6 +492,9 @@ void MdlHWTest::update() {
     } else if (c == 'b' || c == 'B') {
       printf("\n--- Back to READBACK ---\n");
       enterState(READBACK);
+      return;
+    } else if ((c == 's' || c == 'S') && _state == READBACK) {
+      snapshotHomePosition();
       return;
     } else if (c == 'n' || c == 'N') {
       State next = READBACK;
