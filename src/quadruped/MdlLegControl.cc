@@ -146,10 +146,19 @@ void MdlLegControl::init() {
     _kinematics = new QuadrupedKinematics(createGo1Config());
   else
     _kinematics = new QuadrupedKinematics(createGo2Config());
+
+  rtcore::ConfigTable lcConfig;
+  if (_mgr->getConfigTable("legcontrol", lcConfig)) {
+    double kp = lcConfig.getDouble("default_kp", 100.0);
+    double kd = lcConfig.getDouble("default_kd", 5.0);
+    _default_kp = Eigen::Vector3d(kp, kp, kp);
+    _default_kd = Eigen::Vector3d(kd, kd, kd);
+    _jacobian_damping = lcConfig.getDouble("jacobian_damping", 0.01);
+  }
 }
 
-void MdlLegControl::uninit() { 
-  DBGPRINT("MdlLegControl[%d]::uninit\n", getIndex()); 
+void MdlLegControl::uninit() {
+  DBGPRINT("MdlLegControl[%d]::uninit\n", getIndex());
   if (_kinematics) delete _kinematics;
   _kinematics = nullptr;
 }
@@ -159,23 +168,23 @@ void MdlLegControl::activate() {
 
   MotorHW::state_t state;
 
-  // Each module uses only the three motors for the corresponding leg
   for (int i = 0; i < 3; i++) {
     _motorhw->grab(_indices[i]);
-    _motorhw->enable(_indices[i]);
     _motorhw->getState(_indices[i], state);
-    _cmd[i].kp = 100.0;
-    _cmd[i].pos = state.pos + M_PI / 6;  // Set initial position to current position
-    _cmd[i].kd = 5;
+    _cmd[i].pos = state.pos;
     _cmd[i].vel = 0.0;
     _cmd[i].tau = 0.0;
+    _cmd[i].kp = _default_kp[i];
+    _cmd[i].kd = _default_kd[i];
+    // Stage command before enabling — no stale-command gap
+    _motorhw->setCommand(_indices[i], _cmd[i]);
+    _motorhw->enable(_indices[i]);
   }
 }
 
 void MdlLegControl::deactivate() {
   DBGPRINT("MdlLegControl[%d]::deactivate\n", getIndex());
 
-  // Each module uses only the three motors for the corresponding leg
   for (int i = 0; i < 3; i++) {
     _motorhw->release(_indices[i]);
     _motorhw->disable(_indices[i]);
@@ -183,46 +192,73 @@ void MdlLegControl::deactivate() {
 }
 
 void MdlLegControl::update() {
-  MotorHW::state_t state;
-
-  // Increment update counter
-  _update_counter++;
-
-  // _footpos = _kinematics->getKinematicParams().hip_positions.row(getIndex()).transpose();
-  // _footpos[0] += 0.1 * sin(0.5 * M_PI * _mgr->readTime()) - 0.03;
-  // _footpos[1] +=
-  //     0.1 * (getIndex() % 2 == 0 ? 1 : -1) + 0.05 * cos(0.5 * M_PI * _mgr->readTime());
-  // _footpos[2] -= 0.26 + 0.04 * sin(1.7 * M_PI * _mgr->readTime());
-  // Eigen::Vector3d joint_angles;
-  // bool res = _kinematics->inverseKinematics(getIndex(), _footpos, joint_angles);
-
-  // if (res) {
-  //   for (int i = 0; i < 3; i++) {
-  //     _cmd[i].pos = joint_angles[i];
-  //     _motorhw->setCommand(_indices[i], _cmd[i]);
-  //   }
-  // }
 }
 
-void MdlLegControl::setTargetAngles( Eigen::Vector3d &a, Eigen::Vector3d &adot ) {
-  DBGPRINT("MdlLegControl[%d]::setTargetAngles [%f,%f,%f], [%f,%f,%f]\n", getIndex(),
-           a[0], a[1], a[2], adot[0], adot[1], adot[2]);
+void MdlLegControl::_emitCommands() {
+  for (int i = 0; i < 3; i++)
+    _motorhw->setCommand(_indices[i], _cmd[i]);
+}
+
+bool MdlLegControl::setJointCommand(const Eigen::Vector3d &a, const Eigen::Vector3d &adot,
+                                     const Eigen::Vector3d &kp, const Eigen::Vector3d &kd,
+                                     const Eigen::Vector3d &tau_ff) {
+  if (!_kinematics->checkJointLimits(getIndex(), a))
+    return false;
 
   for (int i = 0; i < 3; i++) {
     _cmd[i].pos = a[i];
     _cmd[i].vel = adot[i];
-    _motorhw->setCommand(_indices[i], _cmd[i]);
+    _cmd[i].kp = kp[i];
+    _cmd[i].kd = kd[i];
+    _cmd[i].tau = tau_ff[i];
   }
+  _emitCommands();
+  return true;
 }
 
-void MdlLegControl::setTargetPosition( Eigen::Vector3d &p, Eigen::Vector3d &pdot ) {
-  DBGPRINT("MdlLegControl[%d]::setTargetPosition [%f,%f,%f], [%f,%f,%f]\n", getIndex(),
-           p[0], p[1], p[2], pdot[0], pdot[1], pdot[2]);
-
+bool MdlLegControl::setFootCommand(const Eigen::Vector3d &p, const Eigen::Vector3d &pdot,
+                                    const Eigen::Vector3d &kp, const Eigen::Vector3d &kd,
+                                    const Eigen::Vector3d &tau_ff) {
   Eigen::Vector3d a, adot;
-  Eigen::Matrix3d J, Jinv;
-  if (!_kinematics->inverseKinematics(getIndex(), p, a)) return;
-  if (!_kinematics->jacobian(getIndex(), a, J)) return;
-  adot = J.inverse() * pdot;
-  setTargetAngles(a, adot);
+  Eigen::Matrix3d J;
+
+  if (!_kinematics->inverseKinematics(getIndex(), p, a))
+    return false;
+  if (!_kinematics->jacobian(getIndex(), a, J))
+    return false;
+
+  // Damped pseudoinverse: J^T (J J^T + lambda^2 I)^{-1}
+  double lam2 = _jacobian_damping * _jacobian_damping;
+  Eigen::Matrix3d JJT = J * J.transpose();
+  JJT.diagonal().array() += lam2;
+  adot = J.transpose() * JJT.inverse() * pdot;
+
+  return setJointCommand(a, adot, kp, kd, tau_ff);
+}
+
+bool MdlLegControl::getFootPosition(Eigen::Vector3d &pos) const {
+  for (int i = 0; i < 3; i++) {
+    if (_motorhw->getStatus(_indices[i]) != MotorHW::STATUS_READY)
+      return false;
+  }
+
+  Eigen::Vector3d angles;
+  for (int i = 0; i < 3; i++) {
+    MotorHW::state_t state;
+    _motorhw->getState(_indices[i], state);
+    angles[i] = state.pos;
+  }
+
+  int leg = _indices[0] / 3;
+  return _kinematics->forwardKinematics(leg, angles, pos);
+}
+
+bool MdlLegControl::setTargetAngles(const Eigen::Vector3d &a, const Eigen::Vector3d &adot) {
+  static const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
+  return setJointCommand(a, adot, _default_kp, _default_kd, zero);
+}
+
+bool MdlLegControl::setTargetPosition(const Eigen::Vector3d &p, const Eigen::Vector3d &pdot) {
+  static const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
+  return setFootCommand(p, pdot, _default_kp, _default_kd, zero);
 }
