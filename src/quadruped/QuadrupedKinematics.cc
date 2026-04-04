@@ -57,6 +57,27 @@ QuadrupedKinematics::QuadrupedKinematics(const params_t& params) : params_(param
   }
 }
 
+void QuadrupedKinematics::computeFK(int leg_id,
+                                    const Eigen::Vector3d& joint_angles,
+                                    Eigen::Vector3d& footpos) const {
+  Eigen::Vector3d q =
+      joint_angles.cwiseProduct(params_.joint_directions.row(leg_id).transpose());
+
+  double q1 = q(0), q2 = q(1), q3 = q(2);
+  double l1 = params_.link_lengths(leg_id, 0);
+  double l2 = params_.link_lengths(leg_id, 1);
+  double offset = params_.hip_flexion_offset(leg_id);
+  Eigen::Vector3d hip_pos = params_.hip_positions.row(leg_id).transpose();
+
+  double flex_x = hip_pos(0);
+  double flex_y = hip_pos(1) + offset * std::cos(q1);
+  double flex_z = hip_pos(2) + offset * std::sin(q1);
+
+  footpos(0) = flex_x - l1 * std::sin(q2) - l2 * std::sin(q2 + q3);
+  footpos(1) = flex_y - (-l1 * std::cos(q2) - l2 * std::cos(q2 + q3)) * std::sin(q1);
+  footpos(2) = flex_z + (-l1 * std::cos(q2) - l2 * std::cos(q2 + q3)) * std::cos(q1);
+}
+
 bool QuadrupedKinematics::forwardKinematics(int leg_id,
                                             const Eigen::Vector3d& joint_angles,
                                             Eigen::Vector3d& footpos) const {
@@ -67,34 +88,16 @@ bool QuadrupedKinematics::forwardKinematics(int leg_id,
         leg_id);
     return false;
   }
-  // Apply joint directions. Abduction joints are reversed for legs on the left
-  // side so that rotation around the foreaft x axis is positive
-  Eigen::Vector3d q =
-      joint_angles.cwiseProduct(params_.joint_directions.row(leg_id).transpose());
+  computeFK(leg_id, joint_angles, footpos);
+  return true;
+}
 
-  double q1 = q(0);  // Hip abduction
-  double q2 = q(1);  // Hip flexion
-  double q3 = q(2);  // Knee
-
-  double l1 = params_.link_lengths(leg_id, 0);  // Thigh length
-  double l2 = params_.link_lengths(leg_id, 1);  // Calf length
-  double offset =
-      params_.hip_flexion_offset(leg_id);  // Offset between abduction and flexion axes
-
-  // Hip position in body frame
-  Eigen::Vector3d hip_pos = params_.hip_positions.row(leg_id).transpose();
-
-  // Forward kinematics calculation including hip offset
-  // First, compute the flexion joint position after abduction
-  double flex_x = hip_pos(0);
-  double flex_y = hip_pos(1) + offset * std::cos(q1);
-  double flex_z = hip_pos(2) + offset * std::sin(q1);
-
-  // Then compute the foot position from the flexion joint
-  footpos(0) = flex_x - l1 * std::sin(q2) - l2 * std::sin(q2 + q3);
-  footpos(1) = flex_y - (-l1 * std::cos(q2) - l2 * std::cos(q2 + q3)) * std::sin(q1);
-  footpos(2) = flex_z + (-l1 * std::cos(q2) - l2 * std::cos(q2 + q3)) * std::cos(q1);
-
+bool QuadrupedKinematics::forwardKinematicsUnchecked(int leg_id,
+                                                      const Eigen::Vector3d& joint_angles,
+                                                      Eigen::Vector3d& footpos) const {
+  if (leg_id < 0 || leg_id >= NUM_LEGS)
+    return false;
+  computeFK(leg_id, joint_angles, footpos);
   return true;
 }
 

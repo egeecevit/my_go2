@@ -250,7 +250,7 @@ bool MdlLegControl::getFootPosition(Eigen::Vector3d &pos) const {
   }
 
   int leg = _indices[0] / 3;
-  return _kinematics->forwardKinematics(leg, angles, pos);
+  return _kinematics->forwardKinematicsUnchecked(leg, angles, pos);
 }
 
 bool MdlLegControl::setTargetAngles(const Eigen::Vector3d &a, const Eigen::Vector3d &adot) {
