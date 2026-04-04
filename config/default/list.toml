@@ -25,7 +25,8 @@ file_rev = 1   # list.toml file revision
 %include threads.toml
 
 # -- These are for fine-tuning of behavior based on robot structure
-%include drawsquare.toml   
+%include drawsquare.toml
+%include legcontrol.toml
 
 # ---- ROBOT-SPECIFIC INCLUDES
 # The following files should be present in a robot specific directory

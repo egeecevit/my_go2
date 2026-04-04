@@ -1,0 +1,4 @@
+[legcontrol]
+default_kp = 100.0          # Nm/rad
+default_kd = 5.0            # Nm/(rad/s)
+jacobian_damping = 0.01     # dimensionless
