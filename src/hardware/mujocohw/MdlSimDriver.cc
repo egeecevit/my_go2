@@ -315,6 +315,30 @@ void MdlSimDriver::_createSimulation() {
 
   _data = mj_makeData(_model);
 
+  // Try to load "home" keyframe as default initial state
+  bool keyframeLoaded = false;
+  for (int i = 0; i < _model->nkey; i++) {
+    const char *name = mj_id2name(_model, mjOBJ_KEY, i);
+    if (name && std::string(name) == "home") {
+      mj_resetDataKeyframe(_model, _data, i);
+      keyframeLoaded = true;
+      break;
+    }
+  }
+  if (!keyframeLoaded) {
+    // Keyframe not found (may happen with <include> in some MuJoCo versions).
+    // Apply Go2 home pose directly: z=0.27, joints=[0,0.9,-1.8] x4
+    _data->qpos[2] = 0.27;
+    for (int leg = 0; leg < 4; leg++) {
+      _data->qpos[7 + leg * 3 + 0] = 0.0;
+      _data->qpos[7 + leg * 3 + 1] = 0.9;
+      _data->qpos[7 + leg * 3 + 2] = -1.8;
+    }
+  }
+
+  bool hasExplicitPos = false;
+  bool hasExplicitOri = false;
+
   if (hasSimConfig) {
     ConfigArray gravityArray;
     if (simConfig.getArray("gravity", gravityArray)) {
@@ -324,40 +348,29 @@ void MdlSimDriver::_createSimulation() {
         gravity[2] = gravityArray.getDoubleAt(2, gravity[2]);
         DBGPRINT("MdlSimDriver: Using configured gravity: [%.3f, %.3f, %.3f]\n",
                  gravity[0], gravity[1], gravity[2]);
-      } else {
-        DBGPRINT("MdlSimDriver: Warning - gravity array has %d elements, expected 3\n",
-                 gravityArray.size());
       }
     }
 
     ConfigArray posArray;
-    if (simConfig.getArray("initial_position", posArray)) {
-      if (posArray.size() >= 3) {
-        initial_position[0] = posArray.getDoubleAt(0, initial_position[0]);
-        initial_position[1] = posArray.getDoubleAt(1, initial_position[1]);
-        initial_position[2] = posArray.getDoubleAt(2, initial_position[2]);
-        DBGPRINT("MdlSimDriver: Using configured initial position: [%.3f, %.3f, %.3f]\n",
-                 initial_position[0], initial_position[1], initial_position[2]);
-      } else {
-        DBGPRINT(
-            "MdlSimDriver: Warning - initial_position array has %d elements, expected "
-            "3\n",
-            posArray.size());
-      }
+    if (simConfig.getArray("initial_position", posArray) && posArray.size() >= 3) {
+      initial_position[0] = posArray.getDoubleAt(0, initial_position[0]);
+      initial_position[1] = posArray.getDoubleAt(1, initial_position[1]);
+      initial_position[2] = posArray.getDoubleAt(2, initial_position[2]);
+      hasExplicitPos = true;
+      DBGPRINT("MdlSimDriver: Using configured initial position: [%.3f, %.3f, %.3f]\n",
+               initial_position[0], initial_position[1], initial_position[2]);
     }
-    simConfig.getDouble("initial_roll", initial_roll);
-    simConfig.getDouble("initial_pitch", initial_pitch);
-    simConfig.getDouble("initial_yaw", initial_yaw);
-    DBGPRINT(
-        "MdlSimDriver: Using configured initial orientation: roll=%.1f°, pitch=%.1f°, "
-        "yaw=%.1f°\n",
-        initial_roll, initial_pitch, initial_yaw);
+
+    // Only override orientation if explicitly configured
+    ConfigTable oriTable;
+    if (simConfig.getDouble("initial_roll", initial_roll) ||
+        simConfig.getDouble("initial_pitch", initial_pitch) ||
+        simConfig.getDouble("initial_yaw", initial_yaw)) {
+      hasExplicitOri = true;
+    }
 
     framerate = simConfig.getDouble("framerate", framerate);
-    DBGPRINT("MdlSimDriver: Using configured framerate: %.1f fps\n", framerate);
-
     _headless = simConfig.getBool("headless", _headless);
-    DBGPRINT("MdlSimDriver: Headless mode %s\n", _headless ? "enabled" : "disabled");
   }
 
   // Store configured gravity values for use in _integrate()
@@ -365,33 +378,29 @@ void MdlSimDriver::_createSimulation() {
   _configured_gravity[1] = gravity[1];
   _configured_gravity[2] = gravity[2];
 
-  // Calculate render interval in microseconds from framerate
   _render_interval_us = (CLOCK)(1000000.0 / framerate);
-  DBGPRINT("MdlSimDriver: Render interval set to %ld microseconds\n",
-           _render_interval_us);
 
-  _data->qpos[0] = initial_position[0];  // X pos
-  _data->qpos[1] = initial_position[1];  // Y pos
-  _data->qpos[2] = initial_position[2];  // Z pos
+  // Only override base pose if explicitly configured (otherwise keep keyframe values)
+  if (hasExplicitPos) {
+    _data->qpos[0] = initial_position[0];
+    _data->qpos[1] = initial_position[1];
+    _data->qpos[2] = initial_position[2];
+  }
 
-  // Convert angles from degrees to radians and calculate quaternion
-  double pitch_rad = initial_pitch * M_PI / 180.0;
-  double roll_rad = initial_roll * M_PI / 180.0;
-  double yaw_rad = initial_yaw * M_PI / 180.0;
+  if (hasExplicitOri) {
+    double pitch_rad = initial_pitch * M_PI / 180.0;
+    double roll_rad = initial_roll * M_PI / 180.0;
+    double yaw_rad = initial_yaw * M_PI / 180.0;
 
-  // Calculate quaternion components for combined rotation
-  double cp = cos(pitch_rad / 2.0);
-  double sp = sin(pitch_rad / 2.0);
-  double cr = cos(roll_rad / 2.0);
-  double sr = sin(roll_rad / 2.0);
-  double cy = cos(yaw_rad / 2.0);
-  double sy = sin(yaw_rad / 2.0);
+    double cp = cos(pitch_rad / 2.0), sp = sin(pitch_rad / 2.0);
+    double cr = cos(roll_rad / 2.0), sr = sin(roll_rad / 2.0);
+    double cy = cos(yaw_rad / 2.0), sy = sin(yaw_rad / 2.0);
 
-  // Combined quaternion: q = qz * qy * qx (yaw * pitch * roll)
-  _data->qpos[3] = cr * cp * cy + sr * sp * sy;  // w
-  _data->qpos[4] = sr * cp * cy - cr * sp * sy;  // x (roll component)
-  _data->qpos[5] = cr * sp * cy + sr * cp * sy;  // y (pitch component)
-  _data->qpos[6] = cr * cp * sy - sr * sp * cy;  // z (yaw component)
+    _data->qpos[3] = cr * cp * cy + sr * sp * sy;
+    _data->qpos[4] = sr * cp * cy - cr * sp * sy;
+    _data->qpos[5] = cr * sp * cy + sr * cp * sy;
+    _data->qpos[6] = cr * cp * sy - sr * sp * cy;
+  }
 
   // Apply gravity configuration to model
   _model->opt.gravity[0] = gravity[0];

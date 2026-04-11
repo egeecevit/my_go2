@@ -6,19 +6,9 @@
 [simulation]
 
 # Path to the model file
-# model_path = "../models/unitree_go2/scene.xml"
-model_path = "../models/unitree_go1/scene_block.xml"
+model_path = "../models/unitree_go2/scene.xml"
 
-# Initial robot body position [x, y, z] in world coordinates (m), default: [0.0, 0.0, 0.5]
-# initial_position = [0,0,0.5]
-initial_position = [0.0, 0.0, 1.0]
-
-# Initial Roll (deg): rotation around X-axis (positive = right side down)
-# Initial Pitch (deg): rotation around Y-axis (positive = nose down)  
-# Initial Yaw (deg): rotation around Z-axis (positive = counterclockwise from above)
-initial_roll = 30.0
-initial_pitch = 30.0
-initial_yaw = 30.0
+# Omit initial_position/orientation to use model's home keyframe (standing on ground)
 
 # Gravity vector, default: [0.0, 0.0, -9.81]
 gravity = [0.0, 0.0, -9.81]
@@ -30,4 +20,4 @@ framerate = 30
 headless = false
 
 # Real-time simulation. Slows down simulation if faster than realtime. Default: false
-realtime = false
+realtime = true
