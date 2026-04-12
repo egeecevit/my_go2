@@ -97,6 +97,10 @@ static void _scrollCallback(GLFWwindow* window, double xoffset, double yoffset) 
   if (driver) driver->_handleMouseScroll(xoffset, yoffset);
 }
 
+// Global key buffer for cross-module keyboard polling
+static int g_lastKey = -1;
+int simPollKey() { int k = g_lastKey; g_lastKey = -1; return k; }
+
 // Static callback function for GLFW keyboard interaction
 static void _keyCallback(GLFWwindow* window, int key, int scancode, int action,
                          int mods) {
@@ -105,16 +109,11 @@ static void _keyCallback(GLFWwindow* window, int key, int scancode, int action,
 }
 
 void MdlSimDriver::_handleKeyboard(int key, int scancode, int action, int mods) {
-  // Handle keyboard input for controlling the simulation
   if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-    switch (key) {
-      case GLFW_KEY_Q:
-      case GLFW_KEY_ESCAPE:
-        // Exit the main loop when 'q' is pressed
-        DBGPRINT("MdlSimDriver: 'q' key pressed - exiting main loop\n");
-        _mgr->exitMainLoop();
-        break;
-    }
+    if (key >= GLFW_KEY_A && key <= GLFW_KEY_Z)
+      g_lastKey = 'a' + (key - GLFW_KEY_A);
+    else if (key == GLFW_KEY_ESCAPE)
+      g_lastKey = 'q';
   }
 }
 
@@ -326,14 +325,16 @@ void MdlSimDriver::_createSimulation() {
     }
   }
   if (!keyframeLoaded) {
-    // Keyframe not found (may happen with <include> in some MuJoCo versions).
-    // Apply Go2 home pose directly: z=0.27, joints=[0,0.9,-1.8] x4
-    _data->qpos[2] = 0.27;
-    for (int leg = 0; leg < 4; leg++) {
-      _data->qpos[7 + leg * 3 + 0] = 0.0;
-      _data->qpos[7 + leg * 3 + 1] = 0.9;
-      _data->qpos[7 + leg * 3 + 2] = -1.8;
-    }
+    // Go2 resting pose: belly on ground, legs splayed
+    _data->qpos[2] = 0.077;
+    // FL
+    _data->qpos[7] = 0.18;  _data->qpos[8] = 1.22;  _data->qpos[9] = -2.70;
+    // FR
+    _data->qpos[10] = -0.18; _data->qpos[11] = 1.22; _data->qpos[12] = -2.70;
+    // RL
+    _data->qpos[13] = 0.48;  _data->qpos[14] = 1.25; _data->qpos[15] = -2.72;
+    // RR
+    _data->qpos[16] = -0.48; _data->qpos[17] = 1.25; _data->qpos[18] = -2.72;
   }
 
   bool hasExplicitPos = false;
@@ -409,6 +410,9 @@ void MdlSimDriver::_createSimulation() {
 
   // Forward the simulation state to ensure consistency
   mj_forward(_model, _data);
+
+  // Populate _state[] so getJointState works before first update
+  _readJointStates();
 
   // Initialize GLFW and create window only if not in headless mode
   if (!_headless) {

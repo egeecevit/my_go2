@@ -51,15 +51,17 @@ public:
   void threadExit();
 
 private:
-  /** \brief Possible states for the supervisory state machine */
-  typedef enum { S_INIT, S_WALK, S_EXIT } _state_t;
-  /** \brief Current state */
-  int _state = S_INIT;
-  
+  typedef enum { S_IDLE, S_STAND, S_SIT, S_EXIT } _state_t;
+  int _state = S_IDLE;
+
   MdlDrawSquare *_wm = nullptr;
-  double _mark = 0; // Temporary variable to store time of state transitions
-  double _last_print = 0; // Track last time we printed the current time
-  double _exitTime = 0;   // Exit ModuleManager main loop after this much time
+  double _standHeight = 0.08;
+  double _sitHeight = -0.05;
+  double _mark = 0;
+  double _last_print = 0;
+  double _exitTime = 0;
+
+  int _readKey();
 
   // Configuration and components for local data logging
   rtcore::LogServer *_logserver = nullptr;

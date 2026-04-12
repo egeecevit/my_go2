@@ -93,13 +93,9 @@ int main(int argc, char **argv) {
   AddCoreModules(&mm);
   ActivateCoreModules(&mm);
 
-  SafetyModule *smod = nullptr;
-  if (safety) {
-    smod = new SafetyModule;
-    mm.addModule( smod, 10, 0, OTHER_MODULES );
-    mm.activateModule( smod );
-  }
-  
+  // Keyboard input is handled by Supervisor (s/d/q keys)
+  // SafetyModule is not used — Ctrl-C is handled by signal handler
+
   Supervisor *sm = new Supervisor;
   mm.addModule(sm, 1, 0, USER_CONTROLLERS);
   mm.activateModule(sm);

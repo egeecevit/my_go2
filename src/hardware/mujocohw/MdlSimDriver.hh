@@ -83,6 +83,7 @@ public:
   // Keyboard interaction method
   void _handleKeyboard(int key, int scancode, int action, int mods);
 
+
   // MuJoCo controller callback method
   void _controllerCallback(const mjModel* m, mjData* d);
 
@@ -112,6 +113,7 @@ private:
   
   // Gravity control flag
   bool _gravityFlag = true;
+
   
   // Configured gravity values from TOML (stored for use when _gravityFlag is true)
   double _configured_gravity[3] = {0.0, 0.0, -9.81};
