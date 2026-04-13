@@ -32,4 +32,14 @@ if(HARDWARE_TARGET STREQUAL "go1")
   file(GLOB go1testscript LIST_DIRECTORIES false ${CMAKE_CURRENT_SOURCE_DIR}/go1test.sh)
   install(FILES ${go1testscript} DESTINATION bin PERMISSIONS OWNER_EXECUTE OWNER_READ GROUP_EXECUTE GROUP_READ)
 
+  # Supervisor binary for Go1
+  set(GO1EXE go1)
+  add_executable(${GO1EXE} ${SOURCES})
+  target_link_libraries(${GO1EXE} go1hw quadruped rtcore rtclient)
+  target_link_options(${GO1EXE} PRIVATE -no-pie)
+
+  install(TARGETS ${GO1EXE})
+  file(GLOB go1script LIST_DIRECTORIES false ${CMAKE_CURRENT_SOURCE_DIR}/go1.sh)
+  install(FILES ${go1script} DESTINATION bin PERMISSIONS OWNER_EXECUTE OWNER_READ GROUP_EXECUTE GROUP_READ)
+
 endif()
