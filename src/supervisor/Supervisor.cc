@@ -296,14 +296,16 @@ void Supervisor::update() {
       _mgr->message("Supervisor: ERROR during stand");
       _mgr->releaseModule(_stand, this);
       _state = S_IDLE;
-    } else if (_stand->getStatus() == MdlStand::SETTLED && !_standSettled) {
-      _mgr->message("Supervisor: standing settled");
-      _standSettled = true;
-    }
-    if (key == 'd' || key == 'D') {
-      _mgr->message("Supervisor: -> S_SIT");
-      _stand->setTargetHeight(0.0);  // return to activation pose
-      _state = S_SIT;
+    } else {
+      if (_stand->getStatus() == MdlStand::SETTLED && !_standSettled) {
+        _mgr->message("Supervisor: standing settled");
+        _standSettled = true;
+      }
+      if (key == 'd' || key == 'D') {
+        _mgr->message("Supervisor: -> S_SIT");
+        _stand->setTargetHeight(0.0);  // return to activation pose
+        _state = S_SIT;
+      }
     }
     break;
 

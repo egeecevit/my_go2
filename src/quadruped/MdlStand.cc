@@ -15,7 +15,7 @@ void MdlStand::init() {
 
   rtcore::ConfigTable config;
   if (_mgr->getConfigTable("stand", config)) {
-    _duration = config.getDouble("duration", 2.0);
+    _configDuration = config.getDouble("duration", 2.0);
     _trackingErrorLimit = config.getDouble("tracking_error_limit", 0.5);
   }
 }
@@ -24,7 +24,8 @@ void MdlStand::uninit() {}
 
 void MdlStand::activate() {
   _status = IDLE;
-  _trajectoryActive = false;
+  _deltaHStart = 0.0;
+  _deltaHEnd = 0.0;
   _footCaptured = false;
 
   // Grab all legs first, then capture FK.
@@ -42,16 +43,25 @@ void MdlStand::activate() {
     }
   }
   _footCaptured = true;
+
+  // Debug: print captured state so we can diagnose IK failures
+  for (int i = 0; i < 4; i++) {
+    MotorHW::state_t s[3];
+    for (int j = 0; j < 3; j++)
+      MotorHW::instance()->getState(i * 3 + j, s[j]);
+    _mgr->message("MdlStand: leg %d joints=[%.4f, %.4f, %.4f] foot=[%.4f, %.4f, %.4f]",
+                   i, s[0].pos, s[1].pos, s[2].pos,
+                   _footB0[i](0), _footB0[i](1), _footB0[i](2));
+  }
 }
 
 void MdlStand::deactivate() {
-  _trajectoryActive = false;
   for (int i = 0; i < 4; i++)
     _mgr->releaseModule(_legs[i], this);
 }
 
 void MdlStand::setTargetHeight(double delta_h) {
-  setTargetHeight(delta_h, _duration);  // use config-loaded duration
+  setTargetHeight(delta_h, _configDuration);
 }
 
 void MdlStand::setTargetHeight(double delta_h, double duration) {
@@ -59,10 +69,15 @@ void MdlStand::setTargetHeight(double delta_h, double duration) {
     _status = ERROR;
     return;
   }
-  _deltaH = delta_h;
-  if (duration > 0.0) _duration = duration;
-  _startTime = _mgr->readTime();
-  _trajectoryActive = true;
+  // Interpolate from wherever we are now to the new target.
+  // If mid-transition, _deltaHStart snaps to current achieved delta.
+  double t = _mgr->readTime();
+  double tau = (_status == ACTIVE && _duration > 0.0)
+      ? (t - _startTime) / _duration : 1.0;
+  _deltaHStart = _deltaHStart + (_deltaHEnd - _deltaHStart) * _quintic(tau);
+  _deltaHEnd = delta_h;
+  _duration = (duration > 0.0) ? duration : _configDuration;
+  _startTime = t;
   _status = ACTIVE;
 }
 
@@ -104,10 +119,12 @@ void MdlStand::update() {
   double sigma = _quintic(tau);
   double sigma_dot = _quinticDot(tau) / _duration;
 
-  // Activation-relative: p_des = p_footB0 - [0, 0, deltaH * sigma]
-  // Body moves UP by deltaH -> feet go DOWN in body frame
-  Eigen::Vector3d delta(0.0, 0.0, _deltaH * sigma);
-  Eigen::Vector3d delta_dot(0.0, 0.0, _deltaH * sigma_dot);
+  // Interpolate from _deltaHStart to _deltaHEnd using quintic.
+  // Body moves UP by delta_h -> feet go DOWN in body frame.
+  double delta_h = _deltaHStart + (_deltaHEnd - _deltaHStart) * sigma;
+  double delta_hd = (_deltaHEnd - _deltaHStart) * sigma_dot;
+  Eigen::Vector3d delta(0.0, 0.0, delta_h);
+  Eigen::Vector3d delta_dot(0.0, 0.0, delta_hd);
 
   for (int i = 0; i < 4; i++) {
     Eigen::Vector3d target = _footB0[i] - delta;
@@ -115,7 +132,8 @@ void MdlStand::update() {
 
     if (!_legs[i]->setTargetPosition(target, pdot)) {
       _status = ERROR;
-      _mgr->warning("MdlStand", "Leg %d command failed at t=%.3f", i, t);
+      _mgr->warning("MdlStand", "Leg %d IK fail t=%.3f tau=%.4f target=[%.4f,%.4f,%.4f]",
+                     i, t, tau, target(0), target(1), target(2));
       return;
     }
   }

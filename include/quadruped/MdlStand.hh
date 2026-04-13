@@ -32,10 +32,11 @@ private:
   Eigen::Vector3d _footB0[4];
   bool _footCaptured = false;
 
-  double _deltaH = 0.0;
+  double _deltaHStart = 0.0;  // height offset at start of current transition
+  double _deltaHEnd = 0.0;    // target height offset
+  double _configDuration = 2.0;
   double _duration = 2.0;
   double _startTime = 0.0;
-  bool _trajectoryActive = false;
 
   double _trackingErrorLimit = 0.5;
 
