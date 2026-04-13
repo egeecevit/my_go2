@@ -186,7 +186,7 @@ bool QuadrupedKinematics::inverseKinematicsClamped(int leg_idx,
 // Check if joint angles are within limits
 // Small tolerance for floating-point limit comparisons. MuJoCo (and real
 // encoders) can report angles a hair past the configured limits.
-static constexpr double JOINT_LIMIT_TOL = 1e-3;  // ~0.06 deg
+static constexpr double JOINT_LIMIT_TOL = 0.1;  // ~5.7 deg — real hardware needs more slack than sim
 
 bool QuadrupedKinematics::checkJointLimits(int leg_id,
                                            const Eigen::Vector3d& joint_angles) const {
