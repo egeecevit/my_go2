@@ -190,6 +190,45 @@ void test_ik_rejects_unreachable() {
   std::cout << "  PASS" << std::endl;
 }
 
+void test_activation_frame_height_trajectory() {
+  std::cout << "test_activation_frame_height_trajectory..." << std::endl;
+  QuadrupedKinematics kin(makeGo1Params());
+
+  // Capture foot position at a known pose (simulates activation)
+  Eigen::Vector3d angles0(0.0, 0.8, -1.6);
+  Eigen::Vector3d footB0;
+  if (!kin.forwardKinematics(0, angles0, footB0)) {
+    std::cerr << "  FAIL: baseline FK failed" << std::endl;
+    std::exit(1);
+  }
+
+  // Body moves up 0.03m -> feet go down in body frame
+  double delta_h = 0.03;
+  Eigen::Vector3d target = footB0 - Eigen::Vector3d(0.0, 0.0, delta_h);
+
+  // IK should succeed and FK roundtrip should match
+  Eigen::Vector3d angles_new;
+  if (!kin.inverseKinematics(0, target, angles_new)) {
+    std::cerr << "  FAIL: IK failed for height-shifted target" << std::endl;
+    std::exit(1);
+  }
+
+  Eigen::Vector3d verify;
+  if (!kin.forwardKinematics(0, angles_new, verify)) {
+    std::cerr << "  FAIL: FK of IK result failed" << std::endl;
+    std::exit(1);
+  }
+  for (int i = 0; i < 3; i++) {
+    if (std::abs(verify[i] - target[i]) >= 1e-4) {
+      std::cerr << "  FAIL: FK roundtrip mismatch at index " << i
+                << ": got " << verify[i] << " want " << target[i] << std::endl;
+      std::exit(1);
+    }
+  }
+
+  std::cout << "  PASS" << std::endl;
+}
+
 int main() {
   std::cout << "=== Posture Math Tests ===" << std::endl;
   test_fk_ik_roundtrip();
@@ -199,6 +238,7 @@ int main() {
   test_joint_limit_check();
   test_ik_rejects_limit_violation();
   test_ik_rejects_unreachable();
+  test_activation_frame_height_trajectory();
   std::cout << "=== All tests passed ===" << std::endl;
   return 0;
 }
