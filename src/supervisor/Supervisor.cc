@@ -250,12 +250,14 @@ void Supervisor::uninit() {
 
 void Supervisor::activate() {
   _state = S_IDLE;
-  printf("\n  [S]tand  [D]own(sit)  [Q]uit\n\n");
+  printf("\n  [S]tand  [W]alk(draw)  [D]own(sit)  [Q]uit\n\n");
 }
 
 void Supervisor::deactivate() {
   if (_state == S_STAND || _state == S_SIT)
     _mgr->releaseModule(_stand, this);
+  if (_state == S_DRAW)
+    _mgr->releaseModule(_wm, this);
 }
 
 void Supervisor::update() {
@@ -276,6 +278,8 @@ void Supervisor::update() {
     _mgr->message("Supervisor: quit");
     if (_state == S_STAND || _state == S_SIT)
       _mgr->releaseModule(_stand, this);
+    if (_state == S_DRAW)
+      _mgr->releaseModule(_wm, this);
     _state = S_EXIT;
     _mark = t;
   }
@@ -301,11 +305,27 @@ void Supervisor::update() {
         _mgr->message("Supervisor: standing settled");
         _standSettled = true;
       }
-      if (key == 'd' || key == 'D') {
+      if (key == 'w' || key == 'W') {
+        _mgr->message("Supervisor: -> S_DRAW");
+        _mgr->releaseModule(_stand, this);
+        _mgr->grabModule(_wm, this);
+        _state = S_DRAW;
+      } else if (key == 'd' || key == 'D') {
         _mgr->message("Supervisor: -> S_SIT");
-        _stand->setTargetHeight(0.0);  // return to activation pose
+        _stand->setTargetHeight(0.0);
         _state = S_SIT;
       }
+    }
+    break;
+
+  case S_DRAW:
+    // MdlDrawSquare runs indefinitely; press D to stop and sit
+    if (key == 'd' || key == 'D') {
+      _mgr->message("Supervisor: -> S_SIT (from draw)");
+      _mgr->releaseModule(_wm, this);
+      _mgr->grabModule(_stand, this);
+      _stand->setTargetHeight(0.0);
+      _state = S_SIT;
     }
     break;
 

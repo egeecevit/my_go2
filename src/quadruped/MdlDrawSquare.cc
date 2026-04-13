@@ -92,7 +92,9 @@ bool MdlDrawSquare::_preplegs_done(double t) {
 
 // State methods
 void MdlDrawSquare::_wait_entry() {
-  _resetTarget();
+  // Hold whatever position the legs are currently at (e.g. after standing)
+  for (int i = 0; i < 4; i++)
+    _legs[i]->getFootPosition(_footpos[i]);
 }
 void MdlDrawSquare::_wait_during() {
   _sendTarget();

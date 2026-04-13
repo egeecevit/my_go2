@@ -52,7 +52,7 @@ public:
   void threadExit();
 
 private:
-  typedef enum { S_IDLE, S_STAND, S_SIT, S_EXIT } _state_t;
+  typedef enum { S_IDLE, S_STAND, S_DRAW, S_SIT, S_EXIT } _state_t;
   int _state = S_IDLE;
 
   MdlDrawSquare *_wm = nullptr;
