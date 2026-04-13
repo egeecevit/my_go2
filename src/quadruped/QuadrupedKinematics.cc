@@ -184,15 +184,18 @@ bool QuadrupedKinematics::inverseKinematicsClamped(int leg_idx,
 }
 
 // Check if joint angles are within limits
+// Small tolerance for floating-point limit comparisons. MuJoCo (and real
+// encoders) can report angles a hair past the configured limits.
+static constexpr double JOINT_LIMIT_TOL = 1e-3;  // ~0.06 deg
+
 bool QuadrupedKinematics::checkJointLimits(int leg_id,
                                            const Eigen::Vector3d& joint_angles) const {
   if (leg_id < 0 || leg_id >= NUM_LEGS) {
     return false;
   }
 
-  // Check hip abduction limits
-  if (joint_angles(0) < params_.hip_abduction_limits(leg_id, 0) ||
-      joint_angles(0) > params_.hip_abduction_limits(leg_id, 1)) {
+  if (joint_angles(0) < params_.hip_abduction_limits(leg_id, 0) - JOINT_LIMIT_TOL ||
+      joint_angles(0) > params_.hip_abduction_limits(leg_id, 1) + JOINT_LIMIT_TOL) {
     DBGPRINT(
         "QuadrupedKinematics: Joint angle out of hip abduction limits for leg "
         "%d\n",
@@ -200,9 +203,8 @@ bool QuadrupedKinematics::checkJointLimits(int leg_id,
     return false;
   }
 
-  // Check hip flexion limits
-  if (joint_angles(1) < params_.hip_flexion_limits(leg_id, 0) ||
-      joint_angles(1) > params_.hip_flexion_limits(leg_id, 1)) {
+  if (joint_angles(1) < params_.hip_flexion_limits(leg_id, 0) - JOINT_LIMIT_TOL ||
+      joint_angles(1) > params_.hip_flexion_limits(leg_id, 1) + JOINT_LIMIT_TOL) {
     DBGPRINT(
         "QuadrupedKinematics: Joint angle out of hip flexion limits for leg "
         "%d\n",
@@ -210,9 +212,8 @@ bool QuadrupedKinematics::checkJointLimits(int leg_id,
     return false;
   }
 
-  // Check knee limits
-  if (joint_angles(2) < params_.knee_limits(leg_id, 0) ||
-      joint_angles(2) > params_.knee_limits(leg_id, 1)) {
+  if (joint_angles(2) < params_.knee_limits(leg_id, 0) - JOINT_LIMIT_TOL ||
+      joint_angles(2) > params_.knee_limits(leg_id, 1) + JOINT_LIMIT_TOL) {
     DBGPRINT("QuadrupedKinematics: Joint angle out of knee limits for leg %d\n", leg_id);
     return false;
   }
