@@ -17,6 +17,7 @@
 #include "rtclient/LogWriter.hh"
 
 class MdlDrawSquare;
+class MdlStand;
 
 /** \brief Top-level supervisor module for quadruped control
 
@@ -55,6 +56,8 @@ private:
   int _state = S_IDLE;
 
   MdlDrawSquare *_wm = nullptr;
+  MdlStand *_stand = nullptr;
+  bool _standSettled = false;
   double _standHeight = 0.08;
   double _sitHeight = -0.05;
   double _mark = 0;
