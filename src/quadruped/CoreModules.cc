@@ -11,6 +11,7 @@
 
 #include "quadruped/CoreModules.hh"
 #include "quadruped/MdlDrawSquare.hh"
+#include "quadruped/MdlStand.hh"
 #include "quadruped/MdlLegControl.hh"
 #include "quadruped/ModuleDefs.hh"
 
@@ -18,6 +19,7 @@ using namespace rtcore;
 
 static LogServer  *_logserver = nullptr;
 static MdlDrawSquare *_wm = nullptr;
+static MdlStand *_sm = nullptr;
 static MdlLegControl  *_lm[4] = {nullptr, nullptr, nullptr, nullptr};
 
 void AddCoreModules( ModuleManager *mgr ) {
@@ -27,6 +29,7 @@ void AddCoreModules( ModuleManager *mgr ) {
     CREATE_MODULE(mgr, MdlLegControl(i), _lm[i] );
 
   CREATE_MODULE(mgr, MdlDrawSquare, _wm );
+  CREATE_MODULE(mgr, MdlStand, _sm);
 }
 
 void ActivateCoreModules(ModuleManager *mgr ) {
@@ -34,12 +37,14 @@ void ActivateCoreModules(ModuleManager *mgr ) {
 }
 
 void DeactivateCoreModules(ModuleManager *mgr ) {
+  DEACTIVATE_MODULE(mgr, _sm);
   DEACTIVATE_MODULE(mgr, _wm);
   for (int i = 0; i < 4; i++) DEACTIVATE_MODULE(mgr, _lm[i]);
   DEACTIVATE_MODULE(mgr, _logserver);
 }
 
 void RemoveCoreModules(ModuleManager *mgr ) {
+  DESTROY_MODULE(mgr, _sm);
   DESTROY_MODULE(mgr, _wm);
   for (int i = 0; i < 4; i++) DESTROY_MODULE(mgr, _lm[i]);
   DESTROY_MODULE(mgr, _logserver);
