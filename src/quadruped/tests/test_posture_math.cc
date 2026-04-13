@@ -132,6 +132,64 @@ void test_joint_limit_check() {
   std::cout << "  PASS" << std::endl;
 }
 
+void test_ik_rejects_limit_violation() {
+  std::cout << "test_ik_rejects_limit_violation..." << std::endl;
+  QuadrupedKinematics kin(makeGo1Params());
+
+  // Start from a valid pose, then push foot into the clamp window.
+  // Empirically validated on current code (2026-04-13):
+  //   dz=0.10 -> IK returns true, FK roundtrip error 0.020 (silent clamp)
+  //   dz=0.11 -> IK returns true, FK roundtrip error 0.050 (silent clamp)
+  //   dz=0.13 -> IK returns false (NaN path, not the clamp bug)
+  // So dz=0.11 is in the clamp window and will NOT hit the NaN path.
+  Eigen::Vector3d angles_in(0.0, 0.8, -1.6);
+  Eigen::Vector3d footpos;
+  if (!kin.forwardKinematics(0, angles_in, footpos)) {
+    std::cerr << "  FAIL: baseline FK failed" << std::endl;
+    std::exit(1);
+  }
+
+  Eigen::Vector3d target = footpos;
+  target(2) -= 0.11;
+
+  // Current code: returns true (clamped). After fix: must return false.
+  Eigen::Vector3d angles_out;
+  bool result = kin.inverseKinematics(0, target, angles_out);
+
+  // If IK claims success, the FK roundtrip must be exact.
+  // Current code fails this: FK of clamped angles != target.
+  if (result) {
+    Eigen::Vector3d verify;
+    if (!kin.forwardKinematicsUnchecked(0, angles_out, verify)) {
+      std::cerr << "  FAIL: FK of IK result failed" << std::endl;
+      std::exit(1);
+    }
+    double err = (verify - target).norm();
+    if (err >= 1e-4) {
+      std::cerr << "  FAIL: IK returned true but FK(IK(target)) != target"
+                << " (err=" << err << ") — silent clamping" << std::endl;
+      std::exit(1);
+    }
+  }
+
+  std::cout << "  PASS" << std::endl;
+}
+
+void test_ik_rejects_unreachable() {
+  std::cout << "test_ik_rejects_unreachable..." << std::endl;
+  QuadrupedKinematics kin(makeGo1Params());
+
+  // Target 1m below the hip — well beyond max reach (l1+l2 = 0.426m)
+  Eigen::Vector3d too_far(0.1881, 0.04675 + 0.08, -1.0);
+  Eigen::Vector3d angles;
+  if (kin.inverseKinematics(0, too_far, angles)) {
+    std::cerr << "  FAIL: IK should reject geometrically unreachable target" << std::endl;
+    std::exit(1);
+  }
+
+  std::cout << "  PASS" << std::endl;
+}
+
 int main() {
   std::cout << "=== Posture Math Tests ===" << std::endl;
   test_fk_ik_roundtrip();
@@ -139,6 +197,8 @@ int main() {
   test_damped_matches_raw();
   test_inverse_pose_transform();
   test_joint_limit_check();
+  test_ik_rejects_limit_violation();
+  test_ik_rejects_unreachable();
   std::cout << "=== All tests passed ===" << std::endl;
   return 0;
 }
