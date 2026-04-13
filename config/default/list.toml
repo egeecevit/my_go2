@@ -15,6 +15,7 @@ file_rev = 1   # list.toml file revision
 %include communications.toml  # Communication configuration
 %include logserver.toml       # LogServer configuration
 %include supervisor.toml      # Top-level supervisor module
+%include stand.toml
 
 # ---- VERSION-SPECIFIC INCLUDES
 # The following files should be present in a version specific directory within
