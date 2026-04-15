@@ -45,6 +45,13 @@ void MdlDrawSquare::init() {
     _sq_period = config.getDouble("period", _sq_period);
     _sq_xedge = config.getDouble("xedge", _sq_xedge);
     _sq_yedge = config.getDouble("yedge", _sq_yedge);
+    _wait_duration = config.getDouble("wait_duration", _wait_duration);
+    _preplegs_duration = config.getDouble("preplegs_duration", _preplegs_duration);
+    _centering_duration = config.getDouble("centering_duration", _centering_duration);
+
+    // Zero / negative durations would divide-by-zero in the blend math
+    if (_preplegs_duration <= 0.0) _preplegs_duration = 0.01;
+    if (_centering_duration <= 0.0) _centering_duration = 0.01;
 
     ConfigArray origin;
     bool hasOrigin = config.getArray("origin", origin);
@@ -84,17 +91,21 @@ void MdlDrawSquare::deactivate() {
 
 // Event methods
 bool MdlDrawSquare::_wait_done(double t) {
-  return (t - _mark > 3);
+  return (t - _mark) > _wait_duration;
 }
 bool MdlDrawSquare::_preplegs_done(double t) {
-  return (t - _mark > _sq_period / 4);
+  return (t - _mark) > _preplegs_duration;
 }
 
 // State methods
 void MdlDrawSquare::_wait_entry() {
-  // Hold whatever position the legs are currently at (e.g. after standing)
-  for (int i = 0; i < 4; i++)
-    _legs[i]->getFootPosition(_footpos[i]);
+  // Snapshot whatever pose we activated in. PREPLEGS will blend out of this
+  // toward the first point of the square, so the handoff has no discontinuity.
+  for (int i = 0; i < 4; i++) {
+    _legs[i]->getFootPosition(_footpos_start[i]);
+    _footpos[i] = _footpos_start[i];
+    _footvel[i] = Eigen::Vector3d::Zero();
+  }
 }
 void MdlDrawSquare::_wait_during() {
   _sendTarget();
@@ -103,15 +114,24 @@ void MdlDrawSquare::_wait_exit() {}
 
 void MdlDrawSquare::_preplegs_entry() {
   _mark = _mgr->readTime();
-  for (int i = 0; i < 3; i++) {
-    _profiler[i]->clear();
-    _profiler[i]->add(0, 0);
-    _profiler[i]->add(_sq_period / 4, _fpos[0][i]);
-  }
+  // End pose is exactly where DRAWSQUARE will begin — origin foot + first corner —
+  // so the velocity and position match across the state boundary.
+  for (int i = 0; i < 4; i++)
+    _footpos_end[i] = _originFoot(i) + _fpos[0];
 }
 void MdlDrawSquare::_preplegs_during() {
-  _resetTarget();
-  _computeProfile();
+  double t = _mgr->readTime();
+  double tau = (t - _mark) / _preplegs_duration;
+  if (tau < 0.0) tau = 0.0;
+  if (tau > 1.0) tau = 1.0;
+  // Smoothstep: zero velocity at both ends, peak at the middle.
+  double s     = tau * tau * (3.0 - 2.0 * tau);
+  double s_dot = 6.0 * tau * (1.0 - tau) / _preplegs_duration;
+  for (int i = 0; i < 4; i++) {
+    Eigen::Vector3d diff = _footpos_end[i] - _footpos_start[i];
+    _footpos[i] = _footpos_start[i] + s * diff;
+    _footvel[i] = s_dot * diff;
+  }
   _sendTarget();
 }
 void MdlDrawSquare::_preplegs_exit() {}
@@ -132,6 +152,59 @@ void MdlDrawSquare::_drawsquare_during() {
 }
 void MdlDrawSquare::_drawsquare_exit() {}
 
+bool MdlDrawSquare::_centering_done(double t) {
+  return (t - _mark) > _centering_duration;
+}
+
+void MdlDrawSquare::_centering_entry() {
+  _mark = _mgr->readTime();
+  // Capture whatever the reference trajectory is right now. This is what we
+  // decelerate out of so the handoff has no velocity kink.
+  for (int i = 0; i < 4; i++) {
+    _footpos_start_c[i] = _footpos[i];
+    _footvel_start_c[i] = _footvel[i];
+    _footpos_end_c[i] = _originFoot(i);
+  }
+}
+
+void MdlDrawSquare::_centering_during() {
+  double t = _mgr->readTime();
+  double tau = (t - _mark) / _centering_duration;
+  if (tau < 0.0) tau = 0.0;
+  if (tau > 1.0) tau = 1.0;
+
+  // Cubic Hermite between (start pos, start vel) and (end pos, zero vel).
+  // The h11 term drops out since the end velocity is zero.
+  double tau2 = tau * tau;
+  double tau3 = tau2 * tau;
+  double h00 = 2.0 * tau3 - 3.0 * tau2 + 1.0;
+  double h10 = tau3 - 2.0 * tau2 + tau;
+  double h01 = -2.0 * tau3 + 3.0 * tau2;
+  double dh00 = 6.0 * tau2 - 6.0 * tau;
+  double dh10 = 3.0 * tau2 - 4.0 * tau + 1.0;
+  double dh01 = -6.0 * tau2 + 6.0 * tau;
+
+  double T = _centering_duration;
+  for (int i = 0; i < 4; i++) {
+    _footpos[i] = h00 * _footpos_start_c[i]
+                + h10 * _footvel_start_c[i] * T
+                + h01 * _footpos_end_c[i];
+    _footvel[i] = (dh00 * _footpos_start_c[i]
+                 + dh10 * _footvel_start_c[i] * T
+                 + dh01 * _footpos_end_c[i]) / T;
+  }
+  _sendTarget();
+}
+
+void MdlDrawSquare::_centering_exit() {}
+
+void MdlDrawSquare::stopDrawing() {
+  // No-op if we're already stopping or stopped
+  if (_state == _state_t::CENTERING || _state == _state_t::DONE) return;
+  _state = _state_t::CENTERING;
+  _centering_entry();
+}
+
 void MdlDrawSquare::_computeProfile() {
   double t = _mgr->readTime();
 
@@ -151,15 +224,18 @@ void MdlDrawSquare::_sendTarget() {
   }
 }
 
+Eigen::Vector3d MdlDrawSquare::_originFoot(int leg) const {
+  // Nominal resting foot position for this leg, relative to the body.
+  // Same geometry as _resetTarget, just per-leg so PREPLEGS can target it directly.
+  Eigen::Vector3d p = _kinematics->getKinematicParams().hip_positions.row(leg).transpose();
+  p[0] += _origin[0];
+  p[1] += _origin[1] * (leg % 2 == 0 ? 1 : -1);
+  p[2] += _origin[2];
+  return p;
+}
+
 void MdlDrawSquare::_resetTarget() {
-  // Reset the foot positions to the initial state
-  for (int i = 0; i < 4; i++) {
-    _footpos[i] = _kinematics->getKinematicParams().hip_positions.row(i).transpose();
-    // Adjust abduction joint so that the feet are slightly outside and below the hip
-    _footpos[i][0] += _origin[0];
-    _footpos[i][1] += _origin[1] * (i % 2 == 0 ? 1 : -1);
-    _footpos[i][2] += _origin[2];
-  }
+  for (int i = 0; i < 4; i++) _footpos[i] = _originFoot(i);
 }
 
 void MdlDrawSquare::update() {
@@ -189,8 +265,16 @@ void MdlDrawSquare::update() {
     case _state_t::DRAWSQUARE:
       _drawsquare_during();
       break;
+    case _state_t::CENTERING:
+      if (_centering_done(t)) {
+        _state = _state_t::DONE;
+        _centering_exit();
+        break;
+      }
+      _centering_during();
+      break;
     case _state_t::DONE:
-      // Do nothing, we are done
+      // Hold the centered pose — last _sendTarget from CENTERING persists in MotorHW
       break;
   }
 

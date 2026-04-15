@@ -9,3 +9,13 @@ yedge = 0.1
 
 # Starting positions of each feet relative to its corresponding hip_positions
 origin = [-0.05, 0.15, -0.26]
+
+# How long WAIT holds the activation pose before PREPLEGS starts blending.
+wait_duration = 0.5
+
+# How long PREPLEGS takes to blend from activation pose to the first square point.
+preplegs_duration = 2.0
+
+# How long CENTERING takes to smoothly stop the square and return to the nominal
+# centered footprint with zero velocity (used on D press during draw).
+centering_duration = 1.5
