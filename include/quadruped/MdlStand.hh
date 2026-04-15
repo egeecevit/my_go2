@@ -32,6 +32,10 @@ private:
   Eigen::Vector3d _footB0[4];
   bool _footCaptured = false;
 
+  // World-up in body frame, snapshot at activation from IMU.
+  // Stand moves along this direction instead of body-z.
+  Eigen::Vector3d _worldUpInBody = Eigen::Vector3d::UnitZ();
+
   double _deltaHStart = 0.0;  // height offset at start of current transition
   double _deltaHEnd = 0.0;    // target height offset
   double _configDuration = 2.0;

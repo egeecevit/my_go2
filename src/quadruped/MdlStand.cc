@@ -3,6 +3,7 @@
 #include "quadruped/MdlStand.hh"
 #include "quadruped/MdlLegControl.hh"
 #include "hardware/MotorHW.hh"
+#include "hardware/IMUHW.hh"
 
 #define DBGPRINT(...) //printf(__VA_ARGS__)
 
@@ -44,15 +45,20 @@ void MdlStand::activate() {
   }
   _footCaptured = true;
 
-  // Debug: print captured state so we can diagnose IK failures
-  for (int i = 0; i < 4; i++) {
-    MotorHW::state_t s[3];
-    for (int j = 0; j < 3; j++)
-      MotorHW::instance()->getState(i * 3 + j, s[j]);
-    _mgr->message("MdlStand: leg %d joints=[%.4f, %.4f, %.4f] foot=[%.4f, %.4f, %.4f]",
-                   i, s[0].pos, s[1].pos, s[2].pos,
-                   _footB0[i](0), _footB0[i](1), _footB0[i](2));
+  // Figure out which way is "up" so we stand along gravity, not body-z.
+  // One-time snapshot — not a feedback loop.
+  _worldUpInBody = Eigen::Vector3d::UnitZ();
+  IMUHW::imudata_t imu;
+  if (IMUHW::instance() && IMUHW::instance()->getLastReading(0, imu)) {
+    Eigen::Quaterniond q_BW(imu.q.v[0], imu.q.v[1], imu.q.v[2], imu.q.v[3]);
+    double norm = q_BW.norm();
+    if (std::isfinite(norm) && norm > 0.5) {
+      q_BW.normalize();
+      _worldUpInBody = (q_BW.conjugate() * Eigen::Vector3d::UnitZ()).normalized();
+    }
   }
+  double tilt = std::acos(std::min(1.0, _worldUpInBody.dot(Eigen::Vector3d::UnitZ())));
+  _mgr->message("MdlStand: activation tilt=%.1f deg", tilt * 180.0 / M_PI);
 }
 
 void MdlStand::deactivate() {
@@ -119,12 +125,11 @@ void MdlStand::update() {
   double sigma = _quintic(tau);
   double sigma_dot = _quinticDot(tau) / _duration;
 
-  // Interpolate from _deltaHStart to _deltaHEnd using quintic.
-  // Body moves UP by delta_h -> feet go DOWN in body frame.
+  // Move along gravity (not body-z) so the robot levels out
   double delta_h = _deltaHStart + (_deltaHEnd - _deltaHStart) * sigma;
   double delta_hd = (_deltaHEnd - _deltaHStart) * sigma_dot;
-  Eigen::Vector3d delta(0.0, 0.0, delta_h);
-  Eigen::Vector3d delta_dot(0.0, 0.0, delta_hd);
+  Eigen::Vector3d delta = _worldUpInBody * delta_h;
+  Eigen::Vector3d delta_dot = _worldUpInBody * delta_hd;
 
   for (int i = 0; i < 4; i++) {
     Eigen::Vector3d target = _footB0[i] - delta;
