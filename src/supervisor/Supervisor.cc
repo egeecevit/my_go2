@@ -256,7 +256,7 @@ void Supervisor::activate() {
 void Supervisor::deactivate() {
   if (_state == S_STAND || _state == S_SIT)
     _mgr->releaseModule(_stand, this);
-  if (_state == S_DRAW)
+  if (_state == S_DRAW || _state == S_DRAW_STOPPING)
     _mgr->releaseModule(_wm, this);
 }
 
@@ -278,7 +278,7 @@ void Supervisor::update() {
     _mgr->message("Supervisor: quit");
     if (_state == S_STAND || _state == S_SIT)
       _mgr->releaseModule(_stand, this);
-    if (_state == S_DRAW)
+    if (_state == S_DRAW || _state == S_DRAW_STOPPING)
       _mgr->releaseModule(_wm, this);
     _state = S_EXIT;
     _mark = t;
@@ -319,12 +319,22 @@ void Supervisor::update() {
     break;
 
   case S_DRAW:
-    // MdlDrawSquare runs indefinitely; press D to stop and sit
+    // MdlDrawSquare runs indefinitely; press D to ask it to stop and recenter
     if (key == 'd' || key == 'D') {
+      _mgr->message("Supervisor: -> S_DRAW_STOPPING");
+      _wm->stopDrawing();
+      _state = S_DRAW_STOPPING;
+    }
+    break;
+
+  case S_DRAW_STOPPING:
+    // Wait until MdlDrawSquare finishes its centering blend, then sit
+    if (_wm->isStopped()) {
       _mgr->message("Supervisor: -> S_SIT (from draw)");
       _mgr->releaseModule(_wm, this);
       _mgr->grabModule(_stand, this);
-      _stand->setTargetHeight(0.0);
+      // Draw is height-neutral, so dropping by _standHeight gets us back to belly
+      _stand->setTargetHeight(-_standHeight);
       _state = S_SIT;
     }
     break;
