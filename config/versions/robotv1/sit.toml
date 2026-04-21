@@ -1,0 +1,9 @@
+[sit]
+duration = 2.0
+tracking_error_limit = 0.5
+
+# TODO: configure for robotv1 hardware.
+fl_joints = [0.0, 1.0, -2.5]
+fr_joints = [0.0, 1.0, -2.5]
+rl_joints = [0.0, 1.0, -2.5]
+rr_joints = [0.0, 1.0, -2.5]
