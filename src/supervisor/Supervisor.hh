@@ -18,6 +18,7 @@
 
 class MdlDrawSquare;
 class MdlStand;
+class MdlSit;
 
 /** \brief Top-level supervisor module for quadruped control
 
@@ -57,6 +58,7 @@ private:
 
   MdlDrawSquare *_wm = nullptr;
   MdlStand *_stand = nullptr;
+  MdlSit *_sit = nullptr;
   bool _standSettled = false;
   double _standHeight = 0.08;
   double _sitHeight = -0.05;

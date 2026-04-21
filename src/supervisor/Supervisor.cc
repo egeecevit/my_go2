@@ -19,6 +19,7 @@
 
 #include "quadruped/MdlDrawSquare.hh"
 #include "quadruped/MdlStand.hh"
+#include "quadruped/MdlSit.hh"
 
 #include "Supervisor.hh"
 
@@ -184,6 +185,7 @@ void Supervisor::init() {
   _logserver = (LogServer*) _mgr->findModule(LOGSERVER_NAME, 0);
   _wm = (MdlDrawSquare*) _mgr->findModule(WALKMODULE_NAME, 0);
   _stand = (MdlStand *)_mgr->findModule(STANDMODULE_NAME, 0);
+  _sit = (MdlSit *)_mgr->findModule(SITMODULE_NAME, 0);
 
   ConfigTable config;
   bool hasConfig = _mgr->getConfigTable("supervisor", config);
@@ -254,8 +256,10 @@ void Supervisor::activate() {
 }
 
 void Supervisor::deactivate() {
-  if (_state == S_STAND || _state == S_SIT)
+  if (_state == S_STAND)
     _mgr->releaseModule(_stand, this);
+  if (_state == S_SIT)
+    _mgr->releaseModule(_sit, this);
   if (_state == S_DRAW || _state == S_DRAW_STOPPING)
     _mgr->releaseModule(_wm, this);
 }
@@ -276,8 +280,10 @@ void Supervisor::update() {
   // Quit from any state
   if (key == 'q' || key == 'Q') {
     _mgr->message("Supervisor: quit");
-    if (_state == S_STAND || _state == S_SIT)
+    if (_state == S_STAND)
       _mgr->releaseModule(_stand, this);
+    if (_state == S_SIT)
+      _mgr->releaseModule(_sit, this);
     if (_state == S_DRAW || _state == S_DRAW_STOPPING)
       _mgr->releaseModule(_wm, this);
     _state = S_EXIT;
@@ -305,15 +311,19 @@ void Supervisor::update() {
         _mgr->message("Supervisor: standing settled");
         _standSettled = true;
       }
-      if (key == 'w' || key == 'W') {
-        _mgr->message("Supervisor: -> S_DRAW");
-        _mgr->releaseModule(_stand, this);
-        _mgr->grabModule(_wm, this);
-        _state = S_DRAW;
-      } else if (key == 'd' || key == 'D') {
-        _mgr->message("Supervisor: -> S_SIT");
-        _stand->setTargetHeight(0.0);
-        _state = S_SIT;
+      // Only allow transitions once standing is stable
+      if (_standSettled) {
+        if (key == 'w' || key == 'W') {
+          _mgr->message("Supervisor: -> S_DRAW");
+          _mgr->releaseModule(_stand, this);
+          _mgr->grabModule(_wm, this);
+          _state = S_DRAW;
+        } else if (key == 'd' || key == 'D') {
+          _mgr->message("Supervisor: -> S_SIT");
+          _mgr->releaseModule(_stand, this);
+          _mgr->grabModule(_sit, this);
+          _state = S_SIT;
+        }
       }
     }
     break;
@@ -328,25 +338,22 @@ void Supervisor::update() {
     break;
 
   case S_DRAW_STOPPING:
-    // Wait until MdlDrawSquare finishes its centering blend, then sit
     if (_wm->isStopped()) {
       _mgr->message("Supervisor: -> S_SIT (from draw)");
       _mgr->releaseModule(_wm, this);
-      _mgr->grabModule(_stand, this);
-      // Draw is height-neutral, so dropping by _standHeight gets us back to belly
-      _stand->setTargetHeight(-_standHeight);
+      _mgr->grabModule(_sit, this);
       _state = S_SIT;
     }
     break;
 
   case S_SIT:
-    if (_stand->getStatus() == MdlStand::ERROR) {
+    if (_sit->getStatus() == MdlSit::ERROR) {
       _mgr->message("Supervisor: ERROR during sit");
-      _mgr->releaseModule(_stand, this);
+      _mgr->releaseModule(_sit, this);
       _state = S_IDLE;
-    } else if (_stand->getStatus() == MdlStand::SETTLED) {
+    } else if (_sit->getStatus() == MdlSit::SETTLED) {
       _mgr->message("Supervisor: sitting settled, releasing");
-      _mgr->releaseModule(_stand, this);
+      _mgr->releaseModule(_sit, this);
       _state = S_IDLE;
     }
     break;
