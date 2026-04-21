@@ -19,7 +19,7 @@
 
 using namespace rtcore;
 
-extern QuadrupedKinematics::params_t createGo2Config();
+#include "quadruped/QuadrupedConfigs.hh"
 
 // Comment in/out beyond printf to enable/disable debug messages
 #define DBGPRINT(...) printf(__VA_ARGS__)
