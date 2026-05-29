@@ -101,37 +101,21 @@ bool QuadrupedKinematics::forwardKinematicsUnchecked(int leg_id,
   return true;
 }
 
-// Inverse kinematics for a single leg
-bool QuadrupedKinematics::inverseKinematics(int leg_idx,
-                                            const Eigen::Vector3d& foot_position,
-                                            Eigen::Vector3d& joint_angles) const {
-  if (leg_idx < 0 || leg_idx >= NUM_LEGS) {
-    DBGPRINT("QuadrupedKinematics: Invalid leg index %d\n", leg_idx);
-    return false;
-  }
-
-  // Hip position in body frame
+bool QuadrupedKinematics::computeIK(int leg_idx,
+                                     const Eigen::Vector3d& foot_position,
+                                     Eigen::Vector3d& joint_angles) const {
   Eigen::Vector3d hip_pos = params_.hip_positions.row(leg_idx).transpose();
 
-  // Get link lengths
-  double l1 = params_.link_lengths(leg_idx, 0);  // Thigh length
-  double l2 = params_.link_lengths(leg_idx, 1);  // Calf length
-
-  // Get hip flexion offset
+  double l1 = params_.link_lengths(leg_idx, 0);
+  double l2 = params_.link_lengths(leg_idx, 1);
   double offset = params_.hip_flexion_offset(leg_idx);
 
-  // Vector from hip to foot in body frame
   Eigen::Vector3d rel_pos = foot_position - hip_pos;
 
-  // Step 1: Calculate abduction angle (q1)
   double hip_dist = std::sqrt(rel_pos(1) * rel_pos(1) + rel_pos(2) * rel_pos(2));
   if (hip_dist < offset - 1e-6) {
-    // If the foot is too close to the hip, we cannot compute a valid q1
-    DBGPRINT(
-        "QuadrupedKinematics: Target foot position too close to hip for leg "
-        "%d\n",
-        leg_idx);
-    return false;  // Target not reachable
+    DBGPRINT("QuadrupedKinematics: Target foot position too close to hip for leg %d\n", leg_idx);
+    return false;
   } else
     hip_dist = offset;
 
@@ -144,56 +128,74 @@ bool QuadrupedKinematics::inverseKinematics(int leg_idx,
   else
     q1 = -q1 + alpha;
 
-  // Step 2: Calculate the position of flexion joint considering the offset
   Eigen::Vector3d flex_pos = hip_pos;
   flex_pos(1) += offset * std::cos(q1);
   flex_pos(2) += offset * std::sin(q1);
 
-  // Vector from flexion joint to foot
   Eigen::Vector3d rel_flex_pos = foot_position - flex_pos;
 
-  // Solving for leg_in_plane:
   double xbar = -rel_flex_pos(2) / std::cos(q1);
   double ybar = -rel_flex_pos(0);
 
   double q3 = -std::acos((xbar * xbar + ybar * ybar - l1 * l1 - l2 * l2) / (2 * l1 * l2));
   if (std::isnan(q3) || std::isinf(q3)) {
-    // If q3 is not a valid number, the target is unreachable
     DBGPRINT("QuadrupedKinematics: Invalid q3 calculation for leg %d\n", leg_idx);
-    return false;  // Target not reachable
+    return false;
   }
   double q2 =
       std::atan2(ybar, xbar) - std::atan2(l2 * std::sin(q3), (l1 + l2 * std::cos(q3)));
   if (std::isnan(q2) || std::isinf(q2)) {
-    // If q2 is not a valid number, the target is unreachable
     DBGPRINT("QuadrupedKinematics: Invalid q2 calculation for leg %d\n", leg_idx);
-    return false;  // Target not reachable
+    return false;
   }
 
-  // Set joint angles
   joint_angles = Eigen::Vector3d(q1, q2, q3);
 
-  // Apply inverse of joint directions
   for (int i = 0; i < 3; ++i) {
     joint_angles(i) /= params_.joint_directions(leg_idx, i);
   }
 
-  // Apply joint limits
-  clampToJointLimits(leg_idx, joint_angles);
+  return true;
+}
 
+bool QuadrupedKinematics::inverseKinematics(int leg_idx,
+                                            const Eigen::Vector3d& foot_position,
+                                            Eigen::Vector3d& joint_angles) const {
+  if (leg_idx < 0 || leg_idx >= NUM_LEGS) {
+    DBGPRINT("QuadrupedKinematics: Invalid leg index %d\n", leg_idx);
+    return false;
+  }
+  if (!computeIK(leg_idx, foot_position, joint_angles))
+    return false;
+  return checkJointLimits(leg_idx, joint_angles);
+}
+
+bool QuadrupedKinematics::inverseKinematicsClamped(int leg_idx,
+                                                    const Eigen::Vector3d& foot_position,
+                                                    Eigen::Vector3d& joint_angles) const {
+  if (leg_idx < 0 || leg_idx >= NUM_LEGS) {
+    DBGPRINT("QuadrupedKinematics: Invalid leg index %d\n", leg_idx);
+    return false;
+  }
+  if (!computeIK(leg_idx, foot_position, joint_angles))
+    return false;
+  clampToJointLimits(leg_idx, joint_angles);
   return true;
 }
 
 // Check if joint angles are within limits
+// Small tolerance for floating-point limit comparisons. MuJoCo (and real
+// encoders) can report angles a hair past the configured limits.
+static constexpr double JOINT_LIMIT_TOL = 0.1;  // ~5.7 deg — real hardware needs more slack than sim
+
 bool QuadrupedKinematics::checkJointLimits(int leg_id,
                                            const Eigen::Vector3d& joint_angles) const {
   if (leg_id < 0 || leg_id >= NUM_LEGS) {
     return false;
   }
 
-  // Check hip abduction limits
-  if (joint_angles(0) < params_.hip_abduction_limits(leg_id, 0) ||
-      joint_angles(0) > params_.hip_abduction_limits(leg_id, 1)) {
+  if (joint_angles(0) < params_.hip_abduction_limits(leg_id, 0) - JOINT_LIMIT_TOL ||
+      joint_angles(0) > params_.hip_abduction_limits(leg_id, 1) + JOINT_LIMIT_TOL) {
     DBGPRINT(
         "QuadrupedKinematics: Joint angle out of hip abduction limits for leg "
         "%d\n",
@@ -201,9 +203,8 @@ bool QuadrupedKinematics::checkJointLimits(int leg_id,
     return false;
   }
 
-  // Check hip flexion limits
-  if (joint_angles(1) < params_.hip_flexion_limits(leg_id, 0) ||
-      joint_angles(1) > params_.hip_flexion_limits(leg_id, 1)) {
+  if (joint_angles(1) < params_.hip_flexion_limits(leg_id, 0) - JOINT_LIMIT_TOL ||
+      joint_angles(1) > params_.hip_flexion_limits(leg_id, 1) + JOINT_LIMIT_TOL) {
     DBGPRINT(
         "QuadrupedKinematics: Joint angle out of hip flexion limits for leg "
         "%d\n",
@@ -211,9 +212,8 @@ bool QuadrupedKinematics::checkJointLimits(int leg_id,
     return false;
   }
 
-  // Check knee limits
-  if (joint_angles(2) < params_.knee_limits(leg_id, 0) ||
-      joint_angles(2) > params_.knee_limits(leg_id, 1)) {
+  if (joint_angles(2) < params_.knee_limits(leg_id, 0) - JOINT_LIMIT_TOL ||
+      joint_angles(2) > params_.knee_limits(leg_id, 1) + JOINT_LIMIT_TOL) {
     DBGPRINT("QuadrupedKinematics: Joint angle out of knee limits for leg %d\n", leg_id);
     return false;
   }

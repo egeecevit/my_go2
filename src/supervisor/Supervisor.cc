@@ -18,6 +18,8 @@
 #include "rtclient/WriteML.hh"
 
 #include "quadruped/MdlDrawSquare.hh"
+#include "quadruped/MdlStand.hh"
+#include "quadruped/MdlSit.hh"
 
 #include "Supervisor.hh"
 
@@ -182,6 +184,8 @@ void Supervisor::init() {
 
   _logserver = (LogServer*) _mgr->findModule(LOGSERVER_NAME, 0);
   _wm = (MdlDrawSquare*) _mgr->findModule(WALKMODULE_NAME, 0);
+  _stand = (MdlStand *)_mgr->findModule(STANDMODULE_NAME, 0);
+  _sit = (MdlSit *)_mgr->findModule(SITMODULE_NAME, 0);
 
   ConfigTable config;
   bool hasConfig = _mgr->getConfigTable("supervisor", config);
@@ -248,11 +252,16 @@ void Supervisor::uninit() {
 
 void Supervisor::activate() {
   _state = S_IDLE;
-  printf("\n  [S]tand  [D]own(sit)  [Q]uit\n\n");
+  printf("\n  [S]tand  [W]alk(draw)  [D]own(sit)  [Q]uit\n\n");
 }
 
 void Supervisor::deactivate() {
-  // TODO(MdlStand/MdlSit): release grabbed posture module on shutdown
+  if (_state == S_STAND)
+    _mgr->releaseModule(_stand, this);
+  if (_state == S_SIT)
+    _mgr->releaseModule(_sit, this);
+  if (_state == S_DRAW || _state == S_DRAW_STOPPING)
+    _mgr->releaseModule(_wm, this);
 }
 
 void Supervisor::update() {
@@ -271,7 +280,12 @@ void Supervisor::update() {
   // Quit from any state
   if (key == 'q' || key == 'Q') {
     _mgr->message("Supervisor: quit");
-    // TODO(MdlStand/MdlSit): release any grabbed posture module
+    if (_state == S_STAND)
+      _mgr->releaseModule(_stand, this);
+    if (_state == S_SIT)
+      _mgr->releaseModule(_sit, this);
+    if (_state == S_DRAW || _state == S_DRAW_STOPPING)
+      _mgr->releaseModule(_wm, this);
     _state = S_EXIT;
     _mark = t;
   }
@@ -280,26 +294,68 @@ void Supervisor::update() {
   case S_IDLE:
     if (key == 's' || key == 'S') {
       _mgr->message("Supervisor: -> S_STAND");
-      // TODO(MdlStand): grabModule(_stand, this); _stand->activate() at _standHeight
+      _mgr->grabModule(_stand, this);
+      _stand->setTargetHeight(_standHeight);
+      _standSettled = false;
       _state = S_STAND;
     }
     break;
 
   case S_STAND:
-    // TODO(MdlStand): check _stand->getStatus() for ERROR -> release and S_IDLE,
-    // SETTLED -> stay in S_STAND (hold pose, wait for 'd' or 'q')
+    if (_stand->getStatus() == MdlStand::ERROR) {
+      _mgr->message("Supervisor: ERROR during stand");
+      _mgr->releaseModule(_stand, this);
+      _state = S_IDLE;
+    } else {
+      if (_stand->getStatus() == MdlStand::SETTLED && !_standSettled) {
+        _mgr->message("Supervisor: standing settled");
+        _standSettled = true;
+      }
+      // Only allow transitions once standing is stable
+      if (_standSettled) {
+        if (key == 'w' || key == 'W') {
+          _mgr->message("Supervisor: -> S_DRAW");
+          _mgr->releaseModule(_stand, this);
+          _mgr->grabModule(_wm, this);
+          _state = S_DRAW;
+        } else if (key == 'd' || key == 'D') {
+          _mgr->message("Supervisor: -> S_SIT");
+          _mgr->releaseModule(_stand, this);
+          _mgr->grabModule(_sit, this);
+          _state = S_SIT;
+        }
+      }
+    }
+    break;
+
+  case S_DRAW:
+    // MdlDrawSquare runs indefinitely; press D to ask it to stop and recenter
     if (key == 'd' || key == 'D') {
-      _mgr->message("Supervisor: -> S_SIT");
-      // TODO(MdlSit): releaseModule(_stand, this); grabModule(_sit, this);
-      //               _sit->activate() at _sitHeight
+      _mgr->message("Supervisor: -> S_DRAW_STOPPING");
+      _wm->stopDrawing();
+      _state = S_DRAW_STOPPING;
+    }
+    break;
+
+  case S_DRAW_STOPPING:
+    if (_wm->isStopped()) {
+      _mgr->message("Supervisor: -> S_SIT (from draw)");
+      _mgr->releaseModule(_wm, this);
+      _mgr->grabModule(_sit, this);
       _state = S_SIT;
     }
     break;
 
   case S_SIT:
-    // TODO(MdlSit): check _sit->getStatus() for ERROR/SETTLED
-    _mgr->message("Supervisor: sit placeholder, -> S_IDLE");
-    _state = S_IDLE;
+    if (_sit->getStatus() == MdlSit::ERROR) {
+      _mgr->message("Supervisor: ERROR during sit");
+      _mgr->releaseModule(_sit, this);
+      _state = S_IDLE;
+    } else if (_sit->getStatus() == MdlSit::SETTLED) {
+      _mgr->message("Supervisor: sitting settled, releasing");
+      _mgr->releaseModule(_sit, this);
+      _state = S_IDLE;
+    }
     break;
 
   case S_EXIT:

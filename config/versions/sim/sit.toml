@@ -1,0 +1,13 @@
+[sit]
+duration = 2.0
+tracking_error_limit = 0.5
+
+# Controller-convention joint angles (what MotorHW::getState returns after
+# polarity normalization). Hip abduction is positive-outward on both sides.
+# Do NOT copy raw MuJoCo XML signs — FR/RR hip_abd are positive here.
+# These are Go2 home-keyframe values as a first pass. Replace with measured
+# settled pose from sim once MdlSit is validated.
+fl_joints = [0.18, 1.22, -2.70]
+fr_joints = [0.18, 1.22, -2.70]
+rl_joints = [0.48, 1.25, -2.72]
+rr_joints = [0.48, 1.25, -2.72]

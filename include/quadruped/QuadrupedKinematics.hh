@@ -120,6 +120,12 @@ class QuadrupedKinematics {
   bool inverseKinematics(int leg_idx, const Eigen::Vector3d& footpos,
                          Eigen::Vector3d& angles) const;
 
+  /** @brief IK with clamping — solves geometry then clamps to joint limits.
+   *  Returns false only if geometry is unsolvable (NaN / unreachable).
+   *  Use when you want nearest-feasible angles instead of hard failure. */
+  bool inverseKinematicsClamped(int leg_idx, const Eigen::Vector3d& footpos,
+                                Eigen::Vector3d& angles) const;
+
   /** @brief Computes the Jacobian matrix from joint angles to foot position for a single
    * leg, Returns true if computation was successful
    *
@@ -148,6 +154,10 @@ class QuadrupedKinematics {
   // Core FK geometry — no validation
   void computeFK(int leg_idx, const Eigen::Vector3d& angles,
                  Eigen::Vector3d& footpos) const;
+
+  // Geometric IK solve without limit checks. False on NaN / unreachable.
+  bool computeIK(int leg_idx, const Eigen::Vector3d& foot_position,
+                 Eigen::Vector3d& joint_angles) const;
 };
 
 #endif  // QUADRUPEDKINEMATICS_HH

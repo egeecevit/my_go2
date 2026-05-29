@@ -17,6 +17,8 @@
 #include "rtclient/LogWriter.hh"
 
 class MdlDrawSquare;
+class MdlStand;
+class MdlSit;
 
 /** \brief Top-level supervisor module for quadruped control
 
@@ -51,10 +53,13 @@ public:
   void threadExit();
 
 private:
-  typedef enum { S_IDLE, S_STAND, S_SIT, S_EXIT } _state_t;
+  typedef enum { S_IDLE, S_STAND, S_DRAW, S_DRAW_STOPPING, S_SIT, S_EXIT } _state_t;
   int _state = S_IDLE;
 
   MdlDrawSquare *_wm = nullptr;
+  MdlStand *_stand = nullptr;
+  MdlSit *_sit = nullptr;
+  bool _standSettled = false;
   double _standHeight = 0.08;
   double _sitHeight = -0.05;
   double _mark = 0;

@@ -54,12 +54,21 @@ public:
   void deactivate();
   void update();
 
+  // Ask the module to stop drawing and bring the feet back to the nominal
+  // centered stand footprint with zero velocity. Safe to call from any state.
+  void stopDrawing();
+
+  // True once centering is complete and motion has come to rest. Supervisor
+  // uses this to know when it is safe to hand off to the next module.
+  bool isStopped() const { return _state == _state_t::DONE; }
+
 private:
 
   enum class _state_t {
     WAIT,
     PREPLEGS,
     DRAWSQUARE,
+    CENTERING,
     DONE
   };
   _state_t _state = _state_t::WAIT;
@@ -67,6 +76,7 @@ private:
   // Event methods
   bool _wait_done( double t);
   bool _preplegs_done( double t);
+  bool _centering_done( double t);
 
   // State methods
   void _wait_entry();
@@ -81,8 +91,19 @@ private:
   void _drawsquare_during();
   void _drawsquare_exit();
 
+  void _centering_entry();
+  void _centering_during();
+  void _centering_exit();
+
   Eigen::Vector3d _footpos[4];
   Eigen::Vector3d _footvel[4];
+
+  // Used to blend smoothly from the pose we activated in into the starting
+  // point of the square. PREPLEGS does the interpolation.
+  Eigen::Vector3d _footpos_start[4];
+  Eigen::Vector3d _footpos_end[4];
+
+  Eigen::Vector3d _originFoot(int leg) const;
   void _resetTarget();
   void _computeProfile();
   void _sendTarget();
@@ -91,11 +112,22 @@ private:
   QuadrupedKinematics *_kinematics = nullptr;
   rtcore::Profiler *_profiler[3] = {nullptr, nullptr, nullptr};
   double _mark = 0.0;
-  
+
   double _origin[3] = {-0.05, 0.12, -0.26};
   double _sq_period = 10;
   double _sq_xedge = 0.1;
   double _sq_yedge = 0.1;
+
+  // State durations, all tunable in drawsquare.toml
+  double _wait_duration = 0.5;
+  double _preplegs_duration = 2.0;
+  double _centering_duration = 1.5;
+
+  // Snapshot at stop time. Holding the current velocity too lets CENTERING
+  // decelerate smoothly via cubic Hermite instead of snapping to zero.
+  Eigen::Vector3d _footpos_start_c[4];
+  Eigen::Vector3d _footvel_start_c[4];
+  Eigen::Vector3d _footpos_end_c[4];
 
   std::vector<Eigen::Vector3d> _fpos;
 };

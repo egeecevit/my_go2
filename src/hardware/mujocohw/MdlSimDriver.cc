@@ -578,11 +578,11 @@ void MdlSimDriver::_readJointStates() {
     // In MuJoCo, actuators are the controllable elements that apply forces/torques
 
     for (int i = 0; i < _model->nu; i++) {
-      _state[i].t = _now;  // Set timestamp
-
-      _state[i].pos = _data->actuator_length[i];
-      _state[i].vel = _data->actuator_velocity[i];
-      _state[i].tau = _data->actuator_force[i];
+      _state[i].t = _now;
+      // Polarity mirrors the command path — keeps the stack's sign convention consistent
+      _state[i].pos = _polarity[i] * _data->actuator_length[i];
+      _state[i].vel = _polarity[i] * _data->actuator_velocity[i];
+      _state[i].tau = _polarity[i] * _data->actuator_force[i];
     }
   }
 }
