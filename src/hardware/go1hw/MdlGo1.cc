@@ -1,4 +1,5 @@
 #include "MdlGo1.hh"
+#include "hardware/AxisCalibration.hh"
 #include "rtcore/ModuleManager.hh"
 #include <boost/bind.hpp>
 
@@ -168,13 +169,12 @@ void MdlGo1::update() {
     int id = _m[i].id;
     _m[i].status = MotorHW::STATUS_READY;
     _m[i].state.t = _mgr->readTime();
-    _m[i].state.pos =
-        _m[i].polarity * double(_state.motorState[IdxToJoint[id]].q) +
-        _m[i].offset;
-    _m[i].state.vel =
-        _m[i].polarity * double(_state.motorState[IdxToJoint[id]].dq);
-    _m[i].state.tau =
-        _m[i].polarity * double(_state.motorState[IdxToJoint[id]].tauEst);
+    _m[i].state.pos = AxisCalibration::toController(
+        double(_state.motorState[IdxToJoint[id]].q), _m[i].polarity, _m[i].offset);
+    _m[i].state.vel = AxisCalibration::toController(
+        double(_state.motorState[IdxToJoint[id]].dq), _m[i].polarity, 0.0);
+    _m[i].state.tau = AxisCalibration::toController(
+        double(_state.motorState[IdxToJoint[id]].tauEst), _m[i].polarity, 0.0);
     _m[i].state.temp =
         double(_state.motorState[IdxToJoint[id]].temperature);
   }
@@ -200,9 +200,11 @@ void MdlGo1::update() {
     if (_m[i].enable) {
       _cmd.motorCmd[IdxToJoint[id]].mode = 0x0A;
       _cmd.motorCmd[IdxToJoint[id]].q =
-          (_m[i].cmd.pos * _m[i].polarity) - _m[i].offset;
-      _cmd.motorCmd[IdxToJoint[id]].dq = _m[i].cmd.vel * _m[i].polarity;
-      _cmd.motorCmd[IdxToJoint[id]].tau = _m[i].cmd.tau * _m[i].polarity;
+          AxisCalibration::toHardware(_m[i].cmd.pos, _m[i].polarity, _m[i].offset);
+      _cmd.motorCmd[IdxToJoint[id]].dq =
+          AxisCalibration::toHardware(_m[i].cmd.vel, _m[i].polarity, 0.0);
+      _cmd.motorCmd[IdxToJoint[id]].tau =
+          AxisCalibration::toHardware(_m[i].cmd.tau, _m[i].polarity, 0.0);
       _cmd.motorCmd[IdxToJoint[id]].Kp = _m[i].cmd.kp;
       _cmd.motorCmd[IdxToJoint[id]].Kd = _m[i].cmd.kd;
     } else {
