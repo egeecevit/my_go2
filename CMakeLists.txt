@@ -1,9 +1,14 @@
 cmake_minimum_required(VERSION 3.5)
-project(quadcontrol)
+project(go1control)
 
 option(DEBUG_ASAN "Enable ASAN debug option" OFF)
-option(COMPILE_ROBOT "Enable compilation of robot code" ON)
-option(COMPILE_SIMULATION "Enable compilation of simulation code" ON)
+set(HARDWARE_TARGET "" CACHE STRING "Hardware target to build: simulation, go1, robot")
+set_property(CACHE HARDWARE_TARGET PROPERTY STRINGS simulation go1 robot)
+
+if(NOT HARDWARE_TARGET MATCHES "^(simulation|go1|robot)$")
+  message(FATAL_ERROR "HARDWARE_TARGET must be one of: simulation, go1, robot (got '${HARDWARE_TARGET}')")
+endif()
+message(STATUS "Hardware target: ${HARDWARE_TARGET}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,16 +55,19 @@ include_directories(${EIGEN3_INCLUDE_DIRS})
 
 include_directories(${${CMAKE_PROJECT_NAME}_SOURCE_DIR}/include)
 
-if (${COMPILE_ROBOT})
+if(HARDWARE_TARGET STREQUAL "robot")
   add_subdirectory(src/hardware/robothw)
 endif()
 
-if (${COMPILE_SIMULATION})
+if(HARDWARE_TARGET STREQUAL "simulation")
   add_subdirectory(src/hardware/mujocohw)
+endif()
+
+if(HARDWARE_TARGET STREQUAL "go1")
+  add_subdirectory(src/hardware/go1hw)
 endif()
 
 add_subdirectory(src/quadruped)
 
 add_subdirectory(src/supervisor)
-
 

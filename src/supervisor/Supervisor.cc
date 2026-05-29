@@ -7,6 +7,8 @@
 */
 
 #include <stdio.h>
+#include <unistd.h>
+#include <termios.h>
 #include "rtcore/ModuleManager.hh"
 #include "rtcore/LogServer.hh"
 
@@ -33,7 +35,7 @@ Supervisor::Supervisor( ) : Module("supervisor", 0, SINGLE_USER) {
 Supervisor::~Supervisor() {
   DBGPRINT("Supervisor::~Supervisor\n");
 
-  terminate(); 
+  terminate();
 
   if (_logclient) {
     delete _logclient;
@@ -149,9 +151,32 @@ void Supervisor::threadExit() {
     _logclient = nullptr;
   }
 }
+// Defined in MdlSimDriver.cc (sim target only)
+extern int simPollKey() __attribute__((weak));
+
+int Supervisor::_readKey() {
+  // Try GLFW key buffer first (sim target)
+  if (simPollKey) {
+    int k = simPollKey();
+    if (k >= 0) return k;
+  }
+  // Fall back to stdin (non-sim targets or no GLFW key pending)
+  struct termios orig, raw;
+  tcgetattr(0, &orig);
+  raw = orig;
+  raw.c_lflag &= ~(ICANON | ECHO);
+  raw.c_cc[VMIN] = 0;
+  raw.c_cc[VTIME] = 0;
+  tcsetattr(0, TCSANOW, &raw);
+  char ch;
+  int nread = read(0, &ch, 1);
+  tcsetattr(0, TCSANOW, &orig);
+  return (nread == 1) ? ch : -1;
+}
+
 void Supervisor::init() {
   DBGPRINT("Supervisor::init\n");
-  
+
   // LogClient does not do its own enet initialization, so we must do it here
   rtclient::enet_initialize();
 
@@ -163,6 +188,8 @@ void Supervisor::init() {
 
   if (hasConfig) {
     _exitTime = config.getDouble("exit_time", 0.0);
+    _standHeight = config.getDouble("stand_height", 0.08);
+    _sitHeight = config.getDouble("sit_height", -0.05);
 
     // Process logging configuration
     ConfigTable logconfig;
@@ -220,60 +247,64 @@ void Supervisor::uninit() {
 }
 
 void Supervisor::activate() {
-  DBGPRINT("Supervisor::activate\n");
+  _state = S_IDLE;
+  printf("\n  [S]tand  [D]own(sit)  [Q]uit\n\n");
 }
 
 void Supervisor::deactivate() {
-  DBGPRINT("Supervisor::deactivate\n");
-  
-  // Must cleanly release modules that might be in use here.
-  switch(_state) {
-  case S_INIT:
-    break;
-  case S_WALK:
-    _mgr->releaseModule( _wm, this );
-    break;
-  case S_EXIT:
-    break;
-  } 
+  // TODO(MdlStand/MdlSit): release grabbed posture module on shutdown
 }
 
 void Supervisor::update() {
   double t = _mgr->readTime();
 
-  // Print current time every second
-  if (t - _last_print >= 1.0) {
-    //printf("\rSupervisor: t=%.3f s", t);
-    //fflush(stdout);
-    _last_print += 1.0;
-  }
-
-  if (_exitTime > 0 && t >= _exitTime ) {
-    _mgr->message("\nSupervisor: Exiting main loop at t=%.3f s", t);
+  if (_exitTime > 0 && t >= _exitTime) {
+    _mgr->message("\nSupervisor: Exiting at t=%.3f s", t);
     _mgr->exitMainLoop();
     return;
   }
+
   if (_logenable && !_logstarted && t >= _logstart) sendSync();
+
+  int key = _readKey();
+
+  // Quit from any state
+  if (key == 'q' || key == 'Q') {
+    _mgr->message("Supervisor: quit");
+    // TODO(MdlStand/MdlSit): release any grabbed posture module
+    _state = S_EXIT;
+    _mark = t;
+  }
+
   switch (_state) {
-  case S_INIT:
-    if (t > 0.1) {
-      _state = S_WALK;
-      // Time to start walking!
-      _mgr->grabModule( _wm, this );
-      _mark = t;
+  case S_IDLE:
+    if (key == 's' || key == 'S') {
+      _mgr->message("Supervisor: -> S_STAND");
+      // TODO(MdlStand): grabModule(_stand, this); _stand->activate() at _standHeight
+      _state = S_STAND;
     }
     break;
-  case S_WALK:
-    if (t - _mark > 20) { // Walk for 5 seconds, then exit
-      //_mgr->releaseModule( _wm, this );
-      //_state = S_EXIT;
-      _mark = t;
+
+  case S_STAND:
+    // TODO(MdlStand): check _stand->getStatus() for ERROR -> release and S_IDLE,
+    // SETTLED -> stay in S_STAND (hold pose, wait for 'd' or 'q')
+    if (key == 'd' || key == 'D') {
+      _mgr->message("Supervisor: -> S_SIT");
+      // TODO(MdlSit): releaseModule(_stand, this); grabModule(_sit, this);
+      //               _sit->activate() at _sitHeight
+      _state = S_SIT;
     }
     break;
+
+  case S_SIT:
+    // TODO(MdlSit): check _sit->getStatus() for ERROR/SETTLED
+    _mgr->message("Supervisor: sit placeholder, -> S_IDLE");
+    _state = S_IDLE;
+    break;
+
   case S_EXIT:
-    if (t - _mark > 1) { // Walk for 1 more second before exiting
+    if (t - _mark > 0.5)
       _mgr->exitMainLoop();
-    }
     break;
-  } 
+  }
 }

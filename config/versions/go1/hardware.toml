@@ -1,0 +1,3 @@
+
+[hardware]
+library = "go1hw"  # Required hardware library to be linked against

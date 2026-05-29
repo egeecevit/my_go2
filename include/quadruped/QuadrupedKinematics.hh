@@ -106,6 +106,11 @@ class QuadrupedKinematics {
   bool forwardKinematics(int leg_idx, const Eigen::Vector3d& angles,
                          Eigen::Vector3d& footpos) const;
 
+  /** @brief Unchecked FK — computes foot position without joint limit validation.
+   *  Use for state estimation where actual angles may be outside configured limits. */
+  bool forwardKinematicsUnchecked(int leg_idx, const Eigen::Vector3d& angles,
+                                  Eigen::Vector3d& footpos) const;
+
   /** @brief Computes inverse kinematics for a single leg. Returns true if solution found
    * within joint limits, false otherwise
    * @param leg_idx Leg index (0-3)
@@ -139,6 +144,10 @@ class QuadrupedKinematics {
 
  private:
   params_t params_;
+
+  // Core FK geometry — no validation
+  void computeFK(int leg_idx, const Eigen::Vector3d& angles,
+                 Eigen::Vector3d& footpos) const;
 };
 
 #endif  // QUADRUPEDKINEMATICS_HH

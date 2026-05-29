@@ -1,0 +1,8 @@
+
+[threads]
+
+# Module manager thread priority
+mm_priority  = 99
+
+# Module manager loop period in Microseconds
+mm_period = 10000
