@@ -36,7 +36,9 @@ public:
   void calibrate( unsigned int ind, double absAngle ) {};
   bool isCalibrated( unsigned int ind ) { return true; };
 
-  status_t getStatus( unsigned int ind ) { return STATUS_READY; };
+  status_t getStatus( unsigned int ind ) {
+    return ind >= max_index() ? STATUS_ERROR : STATUS_READY;
+  };
 
   //Maximum of one user for each motor
   unsigned int max_users( unsigned int ind ) { return 1; }
