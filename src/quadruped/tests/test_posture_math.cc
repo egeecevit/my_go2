@@ -1,42 +1,72 @@
 #include <Eigen/Dense>
-#include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 
+#include "quadruped/QuadrupedConfigs.hh"
 #include "quadruped/QuadrupedKinematics.hh"
 
 const double TOL = 1e-4;
 
-static QuadrupedKinematics::params_t makeGo1Params() {
-  QuadrupedKinematics::params_t p;
-  p.robot_name = "Go1-test";
-  p.hip_positions << 0.1881, 0.04675, 0.0,
-      0.1881, -0.04675, 0.0,
-      -0.1881, 0.04675, 0.0,
-      -0.1881, -0.04675, 0.0;
-  p.link_lengths << 0.213, 0.213, 0.213, 0.213, 0.213, 0.213, 0.213, 0.213;
-  p.hip_flexion_offset << 0.08, -0.08, 0.08, -0.08;
-  p.hip_abduction_limits << -1.047, 1.047, -1.047, 1.047, -1.047, 1.047, -1.047, 1.047;
-  p.hip_flexion_limits << -0.663, 2.966, -0.663, 2.966, -0.663, 2.966, -0.663, 2.966;
-  p.knee_limits << -2.721, -0.837, -2.721, -0.837, -2.721, -0.837, -2.721, -0.837;
-  p.joint_directions << 1, 1, 1, -1, 1, 1, 1, 1, 1, -1, 1, 1;
-  return p;
-}
+// NDEBUG-proof check: the main build is Release, where assert() vanishes.
+#define T_CHECK(cond)                                                     \
+  do {                                                                    \
+    if (!(cond)) {                                                        \
+      std::cerr << "FAIL " << __FILE__ << ":" << __LINE__ << ": " #cond   \
+                << std::endl;                                             \
+      std::exit(1);                                                       \
+    }                                                                     \
+  } while (0)
 
 void test_fk_ik_roundtrip() {
   std::cout << "test_fk_ik_roundtrip..." << std::endl;
-  QuadrupedKinematics kin(makeGo1Params());
+  QuadrupedKinematics kin(createGo1Config());
   Eigen::Vector3d angles(0.0, 0.8, -1.6);
   for (int leg = 0; leg < 4; leg++) {
     Eigen::Vector3d footpos, angles_out;
-    assert(kin.forwardKinematics(leg, angles, footpos));
-    assert(kin.inverseKinematics(leg, footpos, angles_out));
+    T_CHECK(kin.forwardKinematics(leg, angles, footpos));
+    T_CHECK(kin.inverseKinematics(leg, footpos, angles_out));
     for (int j = 0; j < 3; j++) {
       double err = std::abs(angles[j] - angles_out[j]);
       if (err > TOL) {
         std::cerr << "  FAIL leg " << leg << " joint " << j
                   << ": expected " << angles[j] << " got " << angles_out[j] << std::endl;
-        assert(false);
+        std::exit(1);
+      }
+    }
+  }
+  std::cout << "  PASS" << std::endl;
+}
+
+void test_jacobian_analytical_vs_numerical() {
+  std::cout << "test_jacobian_analytical_vs_numerical..." << std::endl;
+  QuadrupedKinematics kin(createGo1Config());
+  const double eps = 1e-7;
+  const Eigen::Vector3d poses[] = {
+      {0.0, 0.8, -1.6}, {0.1, -0.3, -1.2}, {-0.2, 1.2, -2.0}};
+
+  for (int leg = 0; leg < 4; leg++) {
+    for (const auto &angles : poses) {
+      Eigen::Matrix3d J;
+      T_CHECK(kin.jacobian(leg, angles, J));
+
+      Eigen::Vector3d base;
+      T_CHECK(kin.forwardKinematicsUnchecked(leg, angles, base));
+
+      Eigen::Matrix3d Jnum;
+      for (int i = 0; i < 3; i++) {
+        Eigen::Vector3d perturbed = angles;
+        perturbed(i) += eps;
+        Eigen::Vector3d pp;
+        T_CHECK(kin.forwardKinematicsUnchecked(leg, perturbed, pp));
+        Jnum.col(i) = (pp - base) / eps;
+      }
+
+      double rel = (J - Jnum).norm() / (Jnum.norm() + 1e-12);
+      if (rel >= TOL) {
+        std::cerr << "  FAIL leg " << leg << ": jacobian relative error "
+                  << rel << std::endl;
+        std::exit(1);
       }
     }
   }
@@ -45,10 +75,10 @@ void test_fk_ik_roundtrip() {
 
 void test_damped_pseudoinverse_near_singular() {
   std::cout << "test_damped_pseudoinverse_near_singular..." << std::endl;
-  QuadrupedKinematics kin(makeGo1Params());
+  QuadrupedKinematics kin(createGo1Config());
   Eigen::Vector3d angles(0.0, 0.1, -0.85);
   Eigen::Matrix3d J;
-  assert(kin.jacobian(0, angles, J));
+  T_CHECK(kin.jacobian(0, angles, J));
 
   double lambda = 0.01;
   double lam2 = lambda * lambda;
@@ -57,18 +87,18 @@ void test_damped_pseudoinverse_near_singular() {
   Eigen::Vector3d adot = J.transpose() * JJT.inverse() * Eigen::Vector3d(0.01, 0.0, -0.05);
 
   for (int i = 0; i < 3; i++) {
-    assert(std::isfinite(adot[i]));
-    assert(std::abs(adot[i]) < 100.0);
+    T_CHECK(std::isfinite(adot[i]));
+    T_CHECK(std::abs(adot[i]) < 100.0);
   }
   std::cout << "  PASS" << std::endl;
 }
 
 void test_damped_matches_raw() {
   std::cout << "test_damped_matches_raw..." << std::endl;
-  QuadrupedKinematics kin(makeGo1Params());
+  QuadrupedKinematics kin(createGo1Config());
   Eigen::Vector3d angles(0.0, 0.8, -1.6);
   Eigen::Matrix3d J;
-  assert(kin.jacobian(0, angles, J));
+  T_CHECK(kin.jacobian(0, angles, J));
 
   Eigen::Vector3d pdot(0.01, 0.02, -0.03);
   Eigen::Vector3d adot_raw = J.inverse() * pdot;
@@ -83,7 +113,7 @@ void test_damped_matches_raw() {
     if (err > 0.01) {
       std::cerr << "  FAIL joint " << i << ": raw=" << adot_raw[i]
                 << " damped=" << adot_damp[i] << std::endl;
-      assert(false);
+      std::exit(1);
     }
   }
   std::cout << "  PASS" << std::endl;
@@ -98,7 +128,7 @@ void test_inverse_pose_transform() {
     Eigen::Vector3d t(0.0, 0.0, 0.05);
     Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
     Eigen::Vector3d p_body = R.transpose() * (p_contact - t);
-    assert(std::abs(p_body[2] - (p_contact[2] - 0.05)) < 1e-10);
+    T_CHECK(std::abs(p_body[2] - (p_contact[2] - 0.05)) < 1e-10);
   }
 
   // Lower body by 0.03m — feet go less negative in z
@@ -106,18 +136,19 @@ void test_inverse_pose_transform() {
     Eigen::Vector3d t(0.0, 0.0, -0.03);
     Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
     Eigen::Vector3d p_body = R.transpose() * (p_contact - t);
-    assert(std::abs(p_body[2] - (p_contact[2] + 0.03)) < 1e-10);
+    T_CHECK(std::abs(p_body[2] - (p_contact[2] + 0.03)) < 1e-10);
   }
 
-  // Pitch forward 0.1 rad
+  // Pitch forward 0.1 rad: p_body = Ry^T * p_contact, so body-frame z
+  // picks up the +sp*x term from the frame rotation
   {
     double pitch = 0.1;
     double cp = std::cos(pitch), sp = std::sin(pitch);
     Eigen::Matrix3d Ry;
     Ry << cp, 0, sp, 0, 1, 0, -sp, 0, cp;
     Eigen::Vector3d p_body = Ry.transpose() * p_contact;
-    double expected_z = p_contact[2] - sp * p_contact[0];
-    assert(std::abs(p_body[2] - expected_z) < 0.01);
+    double expected_z = sp * p_contact[0] + cp * p_contact[2];
+    T_CHECK(std::abs(p_body[2] - expected_z) < 1e-10);
   }
 
   std::cout << "  PASS" << std::endl;
@@ -125,16 +156,16 @@ void test_inverse_pose_transform() {
 
 void test_joint_limit_check() {
   std::cout << "test_joint_limit_check..." << std::endl;
-  QuadrupedKinematics kin(makeGo1Params());
-  assert(kin.checkJointLimits(0, Eigen::Vector3d(0.0, 0.8, -1.6)));
-  assert(!kin.checkJointLimits(0, Eigen::Vector3d(2.0, 0.8, -1.6)));
-  assert(!kin.checkJointLimits(0, Eigen::Vector3d(0.0, 0.8, 0.0)));
+  QuadrupedKinematics kin(createGo1Config());
+  T_CHECK(kin.checkJointLimits(0, Eigen::Vector3d(0.0, 0.8, -1.6)));
+  T_CHECK(!kin.checkJointLimits(0, Eigen::Vector3d(2.0, 0.8, -1.6)));
+  T_CHECK(!kin.checkJointLimits(0, Eigen::Vector3d(0.0, 0.8, 0.0)));
   std::cout << "  PASS" << std::endl;
 }
 
 void test_ik_rejects_limit_violation() {
   std::cout << "test_ik_rejects_limit_violation..." << std::endl;
-  QuadrupedKinematics kin(makeGo1Params());
+  QuadrupedKinematics kin(createGo1Config());
 
   // Start from a valid pose, then push foot into the clamp window.
   // Empirically validated on current code (2026-04-13):
@@ -144,26 +175,17 @@ void test_ik_rejects_limit_violation() {
   // So dz=0.11 is in the clamp window and will NOT hit the NaN path.
   Eigen::Vector3d angles_in(0.0, 0.8, -1.6);
   Eigen::Vector3d footpos;
-  if (!kin.forwardKinematics(0, angles_in, footpos)) {
-    std::cerr << "  FAIL: baseline FK failed" << std::endl;
-    std::exit(1);
-  }
+  T_CHECK(kin.forwardKinematics(0, angles_in, footpos));
 
   Eigen::Vector3d target = footpos;
   target(2) -= 0.11;
 
-  // Current code: returns true (clamped). After fix: must return false.
+  // If IK claims success, the FK roundtrip must be exact.
   Eigen::Vector3d angles_out;
   bool result = kin.inverseKinematics(0, target, angles_out);
-
-  // If IK claims success, the FK roundtrip must be exact.
-  // Current code fails this: FK of clamped angles != target.
   if (result) {
     Eigen::Vector3d verify;
-    if (!kin.forwardKinematicsUnchecked(0, angles_out, verify)) {
-      std::cerr << "  FAIL: FK of IK result failed" << std::endl;
-      std::exit(1);
-    }
+    T_CHECK(kin.forwardKinematicsUnchecked(0, angles_out, verify));
     double err = (verify - target).norm();
     if (err >= 1e-4) {
       std::cerr << "  FAIL: IK returned true but FK(IK(target)) != target"
@@ -177,30 +199,24 @@ void test_ik_rejects_limit_violation() {
 
 void test_ik_rejects_unreachable() {
   std::cout << "test_ik_rejects_unreachable..." << std::endl;
-  QuadrupedKinematics kin(makeGo1Params());
+  QuadrupedKinematics kin(createGo1Config());
 
   // Target 1m below the hip — well beyond max reach (l1+l2 = 0.426m)
   Eigen::Vector3d too_far(0.1881, 0.04675 + 0.08, -1.0);
   Eigen::Vector3d angles;
-  if (kin.inverseKinematics(0, too_far, angles)) {
-    std::cerr << "  FAIL: IK should reject geometrically unreachable target" << std::endl;
-    std::exit(1);
-  }
+  T_CHECK(!kin.inverseKinematics(0, too_far, angles));
 
   std::cout << "  PASS" << std::endl;
 }
 
 void test_activation_frame_height_trajectory() {
   std::cout << "test_activation_frame_height_trajectory..." << std::endl;
-  QuadrupedKinematics kin(makeGo1Params());
+  QuadrupedKinematics kin(createGo1Config());
 
   // Capture foot position at a known pose (simulates activation)
   Eigen::Vector3d angles0(0.0, 0.8, -1.6);
   Eigen::Vector3d footB0;
-  if (!kin.forwardKinematics(0, angles0, footB0)) {
-    std::cerr << "  FAIL: baseline FK failed" << std::endl;
-    std::exit(1);
-  }
+  T_CHECK(kin.forwardKinematics(0, angles0, footB0));
 
   // Body moves up 0.03m -> feet go down in body frame
   double delta_h = 0.03;
@@ -208,16 +224,10 @@ void test_activation_frame_height_trajectory() {
 
   // IK should succeed and FK roundtrip should match
   Eigen::Vector3d angles_new;
-  if (!kin.inverseKinematics(0, target, angles_new)) {
-    std::cerr << "  FAIL: IK failed for height-shifted target" << std::endl;
-    std::exit(1);
-  }
+  T_CHECK(kin.inverseKinematics(0, target, angles_new));
 
   Eigen::Vector3d verify;
-  if (!kin.forwardKinematics(0, angles_new, verify)) {
-    std::cerr << "  FAIL: FK of IK result failed" << std::endl;
-    std::exit(1);
-  }
+  T_CHECK(kin.forwardKinematics(0, angles_new, verify));
   for (int i = 0; i < 3; i++) {
     if (std::abs(verify[i] - target[i]) >= 1e-4) {
       std::cerr << "  FAIL: FK roundtrip mismatch at index " << i
@@ -232,6 +242,7 @@ void test_activation_frame_height_trajectory() {
 int main() {
   std::cout << "=== Posture Math Tests ===" << std::endl;
   test_fk_ik_roundtrip();
+  test_jacobian_analytical_vs_numerical();
   test_damped_pseudoinverse_near_singular();
   test_damped_matches_raw();
   test_inverse_pose_transform();
