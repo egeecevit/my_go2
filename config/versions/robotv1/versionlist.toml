@@ -3,6 +3,8 @@
 # Version-specific configuration values and includes
 
 [versionconfig]
-file_rev = 2              # versionlist.toml file revision
+file_rev = 3              # versionlist.toml file revision
 version_name = "robotv1"  # Name of the version to be checked against robotlist.toml
+
+%include threads.toml     # Real-time thread priorities and cpusets
 
