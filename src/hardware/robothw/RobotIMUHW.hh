@@ -1,13 +1,12 @@
-#ifndef _SIMIMUHW_HH
-#define _SIMIMUHW_HH
+#ifndef _ROBOTIMUHW_HH
+#define _ROBOTIMUHW_HH
 
 #include "hardware/IMUHW.hh"
 
 class VN100Driver;
 
 /** This class, derived from IMUHW, implements the functionality
-    required by IMUHW through a low level interface to the
-    Simulation. */
+    required by IMUHW through the VN100 serial IMU driver. */
 class RobotIMUHW : public IMUHW {
 
 public:
@@ -22,8 +21,7 @@ public:
 
 private:
 
-  // SimDriver module is needed to retrieve state and relay torque
-  // commands to the joints. 
+  // VN100 driver supplying the IMU readings.
   VN100Driver *_imudriver = nullptr;
   
   // Blank IMU reading for invalid indices

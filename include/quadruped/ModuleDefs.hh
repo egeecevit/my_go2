@@ -9,7 +9,7 @@
 #ifndef MODULEDEFS_HH
 #define MODULEDEFS_HH
 
-#include "ModuleConfig.hh"
+#include "quadruped/ModuleConfig.hh"
 
 #define CREATE_MODULE(MGR, CLASS, VAR)                                \
   {                                                                   \
