@@ -74,5 +74,6 @@ void cleanupHardware() {
 
   delete _imuhw; _imuhw = nullptr;
   delete _motorhw; _motorhw = nullptr;
+  delete _clockhw; _clockhw = nullptr;
 }
 
