@@ -18,7 +18,7 @@ The software has three layers:
 ┌─────────────────────────────────────────────────┐
 │  Behavioral Controllers                         │
 │  (Supervisor, MdlLegControl, MdlDrawSquare,     │
-│   MdlSineTest, MdlHWTest)                       │
+│   MdlStand, MdlSit, MdlHWTest)                  │
 ├─────────────────────────────────────────────────┤
 │  Quadruped Library                              │
 │  (QuadrupedKinematics, CoreModules)             │
@@ -41,7 +41,8 @@ The software has three layers:
 | QuadrupedKinematics | Forward/inverse kinematics and Jacobian for configurable quadruped geometries |
 | MdlLegControl | Joint-level or task-level control of individual legs |
 | MdlDrawSquare | Example behavioral controller that coordinates all four legs |
-| MdlSineTest | Sinusoidal joint motion for testing |
+| MdlStand | Stand-up motion relative to the pose at activation |
+| MdlSit | Sit-down motion to an absolute pose from config |
 | MdlHWTest | Interactive hardware test with incremental motor validation |
 | Supervisor | Runtime module manager that switches between behavioral controllers |
 
@@ -172,7 +173,6 @@ All executables accept the following flags:
 
 ```
 -c, --config STRING     Append a TOML configuration string
--n, --nosafety          Disable keyboard safety exit
 -h, --help              Show help
 ```
 
