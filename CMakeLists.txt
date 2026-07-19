@@ -34,11 +34,11 @@ endif()
 message(STATUS "Using RTROBOT_DIR=${RTROBOT_DIR}")
 
 # Configure compilation flags 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${AUXFLAGS} -g -Wall -D_LINUX_ -std=c++14")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${AUXFLAGS} -g -Wall -D_LINUX_")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${AUXFLAGS}")
 
 include(CTest)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -I${RTROBOT_DIR}/include -L${RTROBOT_DIR}/lib")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${RTROBOT_DIR}/include -L${RTROBOT_DIR}/lib")
 
 if(${DEBUG_ASAN})
   message("Forcing DEBUG compilation for ASAN")
