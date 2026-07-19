@@ -1,0 +1,3 @@
+add_executable(test_canmotorhw_bounds test_canmotorhw_bounds.cc)
+target_link_libraries(test_canmotorhw_bounds robothw rtcore rtclient)
+add_test(NAME test_canmotorhw_bounds COMMAND test_canmotorhw_bounds)

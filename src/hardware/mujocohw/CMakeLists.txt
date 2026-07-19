@@ -20,7 +20,9 @@ include(SampleDependencies)
 set(MUJOCO_SAMPLE_COMPILE_OPTIONS "${AVX_COMPILE_OPTIONS}" "${EXTRA_COMPILE_OPTIONS}" -Wno-unused)
 set(MUJOCO_SAMPLE_LINK_OPTIONS "${EXTRA_LINK_OPTIONS}")
 
-target_compile_options(mujocohw PUBLIC ${MUJOCO_SAMPLE_COMPILE_OPTIONS}) 
+target_compile_options(mujocohw PUBLIC ${MUJOCO_SAMPLE_COMPILE_OPTIONS})
 target_link_libraries(mujocohw mujoco::mujoco glfw Threads::Threads )
 target_link_options(mujocohw PRIVATE ${MUJOCO_SAMPLE_LINK_OPTIONS})
+
+add_subdirectory(tests)
 
