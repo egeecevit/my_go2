@@ -14,7 +14,7 @@
 #include "rtcore/ThreadUtil.hh"
 
 // Comment in/out beyond printf to enable/disable debug messages
-#define DBGPRINT(...) printf(__VA_ARGS__);
+#define DBGPRINT(...) //printf(__VA_ARGS__);
 
 using namespace rtcore;
 
@@ -32,7 +32,6 @@ VN100Driver::~VN100Driver() {
 void VN100Driver::threadEnter() { DBGPRINT("VN100Driver: Thread started.\n"); }
 
 void VN100Driver::threadLoop() {
-  DBGPRINT("VN100Driver: LOOP [%lf].\n", _mgr->readTime());
   waitSync();
   usleep(100000);
 }

@@ -12,7 +12,7 @@
 #include "CubeMARSCAN.hh"
 
 // Comment in/out beyond printf to enable/disable debug messages
-#define DBGPRINT(...) printf(__VA_ARGS__);
+#define DBGPRINT(...) //printf(__VA_ARGS__);
 
 using namespace rtcore;
 
@@ -51,9 +51,6 @@ void CubeMARSCAN::threadEnter( void ) {
 
 void CubeMARSCAN::threadLoop( void ) {
   waitSync();
-
-  DBGPRINT("CubeMARSCAN[%s]: LOOP [t:%lf].\n",
-           _config.intf.c_str(), _mgr->readTime());
 
   // TODO: Write commands to CAN devices on the bus from _cmd[]. Make
   // sure to use _data_lock when retrieving data.
