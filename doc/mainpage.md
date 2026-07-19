@@ -117,10 +117,12 @@ Each launch script sets three environment variables that point to the
 appropriate directories:
 
 - **CONFIG_DIR** — Always `config/default/`. Contains settings shared
-  by all targets (thread priorities, timing, etc.).
+  by all targets. Nothing here may share a filename with version or
+  robot files — the config search checks this directory first.
 - **VERSION_DIR** — Points to a subdirectory of `config/versions/`
   (e.g. `go1`, `sim`). Contains settings tied to a robot type:
-  hardware parameters, gains, kinematic model.
+  hardware parameters, gains, kinematic model, and thread priorities
+  (`threads.toml`, included from `versionlist.toml`).
 - **ROBOT_DIR** — Points to a subdirectory of `config/robots/`
   (e.g. `go1r1`, `sim`). Contains instance-specific data like
   calibration offsets and motor mappings.
