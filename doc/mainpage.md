@@ -62,7 +62,7 @@ Only one hardware target can be built at a time: `simulation`, `go1` or `robot`.
 ### Using build.sh (recommended)
 
 ```
-./build.sh go1          # Build Go1 hardware test binary (go1test)
+./build.sh go1          # Build Go1 binaries (go1, go1test)
 ./build.sh simulation   # Build MuJoCo simulation binary
 ./build.sh robot        # Build CAN robot binary
 ./build.sh clean        # Remove the build directory
@@ -93,7 +93,7 @@ cmake .. -DHARDWARE_TARGET=go1 -DRTROBOT_DIR=/path/to/rtrobot
 | Target | Binaries | Launch scripts |
 |--------|----------|----------------|
 | `simulation` | `simulation` | `sim.sh` |
-| `go1` | `go1test` | `go1test.sh` |
+| `go1` | `go1`, `go1test` | `go1.sh`, `go1test.sh` |
 | `robot` | `robot` | `robot.sh` |
 
 ## 5. Configuration
@@ -163,6 +163,7 @@ From the install directory:
 ```
 cd ~/quadcontrol/bin
 ./sim.sh                # MuJoCo simulation
+./go1.sh                # Go1 robot (Supervisor)
 ./go1test.sh            # Go1 hardware test
 ./robot.sh              # CAN robot
 ```
@@ -196,17 +197,19 @@ editing files. Examples:
 ### Go1 hardware test (go1test)
 
 `go1test` is an interactive tool for validating Go1 hardware. It walks
-through four states, each adding more motor activity:
+through five states, each adding more motor activity:
 
 | State | What it does |
 |-------|-------------|
 | **READBACK** | Read-only. Displays motor positions, velocities, torques, temperatures and IMU data. |
-| **SINGLE_JOINT** | Runs a sine wave on one motor. All others remain idle. |
-| **SINGLE_LEG** | Activates one leg. Sine on the thigh joint, hip and calf hold position. |
-| **ALL_LEGS** | Activates all 12 motors. All four thighs follow a sine wave. |
+| **HOLD** | Activates all 12 motors, captures current positions and holds them. Ramps to `home_position` if one is configured. |
+| **SINGLE_JOINT** | Sine wave on one motor; all other motors keep holding. |
+| **SINGLE_LEG** | Sine on one leg's thigh joint; everything else keeps holding. |
+| **ALL_LEGS** | All four thighs follow a sine wave; hips and calves keep holding. |
 
 **Controls:** Press **N** to advance to the next state, **B** to go back
-to READBACK, **Q** to quit.
+to READBACK, **S** to snapshot the current pose as `home_position` into
+the version's `gains.toml`, **Q** to quit.
 
 A tracking error check runs continuously during motor states. If any
 motor deviates from its command by more than `tracking_error_limit`,
