@@ -4,10 +4,9 @@
 #include "rtcore/ModuleManager.hh"
 #include <string>
 
-// Parse standard CLI args: -c config_string, -n nosafety, -h help.
+// Parse standard CLI args: -c config_string, -h help.
 // Returns false if program should exit (e.g. --help).
-// config_string and safety are populated by reference.
-bool parseArgs(int argc, char **argv, std::string &config_string, bool &safety);
+bool parseArgs(int argc, char **argv, std::string &config_string);
 
 // Load the standard config file chain (list.toml, versionlist.toml, etc.)
 // and append any extra config string. Calls fatalError on failure.

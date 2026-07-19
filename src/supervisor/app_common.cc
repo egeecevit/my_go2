@@ -21,12 +21,10 @@ static void print_usage(const char *program_name) {
   printf("Usage: %s [OPTIONS]\n", program_name);
   printf("Options:\n");
   printf("  -c, --config CONFIG_STRING  Specify configuration string\n");
-  printf("  -n, --nosafety              Disable safety exit with the keyboard\n");
   printf("  -h, --help                  Show this help message and exit\n");
 }
 
-bool parseArgs(int argc, char **argv, std::string &config_string, bool &safety) {
-  safety = true;
+bool parseArgs(int argc, char **argv, std::string &config_string) {
   config_string.clear();
 
   int option;
@@ -38,14 +36,11 @@ bool parseArgs(int argc, char **argv, std::string &config_string, bool &safety) 
   // Reset getopt for potential re-use
   optind = 1;
 
-  while ((option = getopt_long(argc, argv, "nc:h", long_options, nullptr)) != -1) {
+  while ((option = getopt_long(argc, argv, "c:h", long_options, nullptr)) != -1) {
     switch (option) {
     case 'c':
       config_string += optarg;
       config_string += "\n";
-      break;
-    case 'n':
-      safety = false;
       break;
     case 'h':
       print_usage(argv[0]);
