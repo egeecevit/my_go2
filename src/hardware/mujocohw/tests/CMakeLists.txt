@@ -1,0 +1,3 @@
+add_executable(test_simmotorhw_bounds test_simmotorhw_bounds.cc)
+target_link_libraries(test_simmotorhw_bounds mujocohw rtcore rtclient)
+add_test(NAME test_simmotorhw_bounds COMMAND test_simmotorhw_bounds)

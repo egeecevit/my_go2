@@ -41,6 +41,10 @@ void RobotClockHW::waitPeriod() {
 void RobotClockHW::setPeriod(CLOCK period) {
   ClockHW::setPeriod(period);
 
-  // Adjust the timer with the new period (in nanoseconds)
-  if (_timer) _timer->start(1000 * _period);
+  // Adjust the timer with the new period (in nanoseconds).
+  // start() allocates its timespecs, so stop first to avoid leaking them.
+  if (_timer) {
+    _timer->stop();
+    _timer->start(1000 * _period);
+  }
 }

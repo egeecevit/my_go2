@@ -35,7 +35,9 @@ public:
   void calibrate( unsigned int ind, double absAngle ) {};
   bool isCalibrated( unsigned int ind ) { return true; };
 
-  status_t getStatus( unsigned int ind ) { return STATUS_READY; };
+  status_t getStatus( unsigned int ind ) {
+    return ind >= max_index() ? STATUS_ERROR : STATUS_READY;
+  };
 
   //Maximum of one user for each motor
   unsigned int max_users( unsigned int index =0) { (void)index; return 1; }
@@ -46,7 +48,7 @@ public:
 private:
   MdlMotorMaster *_master = nullptr;
   
-  bool  _enabled[NUM_MOTORS_CAN];
+  bool  _enabled[NUM_MOTORS_CAN] = {};
 
   cmd_t _cmd_zero;
   state_t _state_zero;
