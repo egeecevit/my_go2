@@ -193,7 +193,6 @@ void Supervisor::init() {
   if (hasConfig) {
     _exitTime = config.getDouble("exit_time", 0.0);
     _standHeight = config.getDouble("stand_height", 0.08);
-    _sitHeight = config.getDouble("sit_height", -0.05);
 
     // Process logging configuration
     ConfigTable logconfig;

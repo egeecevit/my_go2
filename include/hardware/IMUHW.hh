@@ -20,10 +20,9 @@ class IMUHW : public rtcore::Hardware<IMUHW> {
   typedef struct  { double v[3]; } vec3_t;
   typedef struct  { double v[4]; } vec4_t;
   
-  /** Tyoe definition that encapsulates the current motor state. This
-      state structure assumes that the pos variable is in consistent
-      absolute angle coordinates. calibrate() must have been
-      called. */
+  /** Type definition that encapsulates a single IMU reading: raw
+      accelerometer, gyro and magnetometer values together with the
+      orientation estimate in quaternion and RPY form. */
   typedef struct {
     double t = -1; // t < 0 means invalid reading
     vec3_t acc;    // Raw accelerometer readings

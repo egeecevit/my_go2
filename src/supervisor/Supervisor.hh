@@ -61,7 +61,6 @@ private:
   MdlSit *_sit = nullptr;
   bool _standSettled = false;
   double _standHeight = 0.08;
-  double _sitHeight = -0.05;
   double _mark = 0;
   double _last_print = 0;
   double _exitTime = 0;

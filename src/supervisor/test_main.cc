@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 #include "rtcore/Module.hh"
 #include "rtcore/ThreadUtil.hh"
 #include "rtcore/ModuleManager.hh"
@@ -15,8 +13,7 @@ using namespace rtcore;
 int main(int argc, char **argv) {
 
   std::string config_string;
-  bool safety; // unused in test binary, but parseArgs expects it
-  if (!parseArgs(argc, argv, config_string, safety))
+  if (!parseArgs(argc, argv, config_string))
     return 0;
 
   ModuleManager mm;
@@ -28,7 +25,7 @@ int main(int argc, char **argv) {
   AddCoreModules(&mm);
   ActivateCoreModules(&mm);
 
-  // No SafetyModule — MdlHWTest handles keyboard directly
+  // MdlHWTest handles keyboard directly
   MdlHWTest *hwtest = new MdlHWTest;
   mm.addModule(hwtest, 1, 0, USER_CONTROLLERS);
   mm.activateModule(hwtest);

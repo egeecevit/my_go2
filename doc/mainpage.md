@@ -18,7 +18,7 @@ The software has three layers:
 ┌─────────────────────────────────────────────────┐
 │  Behavioral Controllers                         │
 │  (Supervisor, MdlLegControl, MdlDrawSquare,     │
-│   MdlSineTest, MdlHWTest)                       │
+│   MdlStand, MdlSit, MdlHWTest)                  │
 ├─────────────────────────────────────────────────┤
 │  Quadruped Library                              │
 │  (QuadrupedKinematics, CoreModules)             │
@@ -41,7 +41,8 @@ The software has three layers:
 | QuadrupedKinematics | Forward/inverse kinematics and Jacobian for configurable quadruped geometries |
 | MdlLegControl | Joint-level or task-level control of individual legs |
 | MdlDrawSquare | Example behavioral controller that coordinates all four legs |
-| MdlSineTest | Sinusoidal joint motion for testing |
+| MdlStand | Stand-up motion relative to the pose at activation |
+| MdlSit | Sit-down motion to an absolute pose from config |
 | MdlHWTest | Interactive hardware test with incremental motor validation |
 | Supervisor | Runtime module manager that switches between behavioral controllers |
 
@@ -61,7 +62,7 @@ Only one hardware target can be built at a time: `simulation`, `go1` or `robot`.
 ### Using build.sh (recommended)
 
 ```
-./build.sh go1          # Build Go1 hardware test binary (go1test)
+./build.sh go1          # Build Go1 binaries (go1, go1test)
 ./build.sh simulation   # Build MuJoCo simulation binary
 ./build.sh robot        # Build CAN robot binary
 ./build.sh clean        # Remove the build directory
@@ -92,7 +93,7 @@ cmake .. -DHARDWARE_TARGET=go1 -DRTROBOT_DIR=/path/to/rtrobot
 | Target | Binaries | Launch scripts |
 |--------|----------|----------------|
 | `simulation` | `simulation` | `sim.sh` |
-| `go1` | `go1test` | `go1test.sh` |
+| `go1` | `go1`, `go1test` | `go1.sh`, `go1test.sh` |
 | `robot` | `robot` | `robot.sh` |
 
 ## 5. Configuration
@@ -117,10 +118,12 @@ Each launch script sets three environment variables that point to the
 appropriate directories:
 
 - **CONFIG_DIR** — Always `config/default/`. Contains settings shared
-  by all targets (thread priorities, timing, etc.).
+  by all targets. Nothing here may share a filename with version or
+  robot files — the config search checks this directory first.
 - **VERSION_DIR** — Points to a subdirectory of `config/versions/`
   (e.g. `go1`, `sim`). Contains settings tied to a robot type:
-  hardware parameters, gains, kinematic model.
+  hardware parameters, gains, kinematic model, and thread priorities
+  (`threads.toml`, included from `versionlist.toml`).
 - **ROBOT_DIR** — Points to a subdirectory of `config/robots/`
   (e.g. `go1r1`, `sim`). Contains instance-specific data like
   calibration offsets and motor mappings.
@@ -162,6 +165,7 @@ From the install directory:
 ```
 cd ~/quadcontrol/bin
 ./sim.sh                # MuJoCo simulation
+./go1.sh                # Go1 robot (Supervisor)
 ./go1test.sh            # Go1 hardware test
 ./robot.sh              # CAN robot
 ```
@@ -172,7 +176,6 @@ All executables accept the following flags:
 
 ```
 -c, --config STRING     Append a TOML configuration string
--n, --nosafety          Disable keyboard safety exit
 -h, --help              Show help
 ```
 
@@ -196,17 +199,19 @@ editing files. Examples:
 ### Go1 hardware test (go1test)
 
 `go1test` is an interactive tool for validating Go1 hardware. It walks
-through four states, each adding more motor activity:
+through five states, each adding more motor activity:
 
 | State | What it does |
 |-------|-------------|
 | **READBACK** | Read-only. Displays motor positions, velocities, torques, temperatures and IMU data. |
-| **SINGLE_JOINT** | Runs a sine wave on one motor. All others remain idle. |
-| **SINGLE_LEG** | Activates one leg. Sine on the thigh joint, hip and calf hold position. |
-| **ALL_LEGS** | Activates all 12 motors. All four thighs follow a sine wave. |
+| **HOLD** | Activates all 12 motors, captures current positions and holds them. Ramps to `home_position` if one is configured. |
+| **SINGLE_JOINT** | Sine wave on one motor; all other motors keep holding. |
+| **SINGLE_LEG** | Sine on one leg's thigh joint; everything else keeps holding. |
+| **ALL_LEGS** | All four thighs follow a sine wave; hips and calves keep holding. |
 
 **Controls:** Press **N** to advance to the next state, **B** to go back
-to READBACK, **Q** to quit.
+to READBACK, **S** to snapshot the current pose as `home_position` into
+the version's `gains.toml`, **Q** to quit.
 
 A tracking error check runs continuously during motor states. If any
 motor deviates from its command by more than `tracking_error_limit`,

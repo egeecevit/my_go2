@@ -13,7 +13,7 @@
 using namespace rtcore;
 
 // Comment in/out beyond printf to enable/disable debug messages
-#define DBGPRINT(...) printf(__VA_ARGS__);
+#define DBGPRINT(...) //printf(__VA_ARGS__);
 
 MdlMotorMaster::MdlMotorMaster() : Module(MOTORMASTER_NAME, 0, SINGLE_USER ) {
   for (int i = 0; i < MOTORMASTER_CANCNT; i++) _can[i] = nullptr;
@@ -74,8 +74,6 @@ void MdlMotorMaster::deactivate() {
 
 void MdlMotorMaster::update() {
 
-  DBGPRINT("MdlMotorMaster: Sensing sync to all buses [t:%lf]\n", _mgr->readTime());
-  
   for (int i = 0; i < MOTORMASTER_CANCNT; i++) {
     if (_can[i]) _can[i]->sendSync( );
   }
