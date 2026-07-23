@@ -5,8 +5,6 @@
 #include "hardware/MotorHW.hh"
 #include "hardware/IMUHW.hh"
 
-#define DBGPRINT(...) //printf(__VA_ARGS__)
-
 MdlStand::MdlStand() : Module(STANDMODULE_NAME, 0, SINGLE_USER) {}
 MdlStand::~MdlStand() {}
 

@@ -16,7 +16,7 @@
 class MdlGo1;
 
 /** This class, derived from MotorHW, implements the functionality
-    required by MotorHW through the Dynamixel SDK. */
+    required by MotorHW through the Unitree Legged SDK. */
 class Go1MotorHW : public MotorHW {
 
 public:
