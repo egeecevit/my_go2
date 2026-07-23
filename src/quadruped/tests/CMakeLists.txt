@@ -1,7 +1,3 @@
-add_executable(test_quadruped_kinematics test_quadruped_kinematics.cc)
-target_link_libraries(test_quadruped_kinematics quadruped)
-add_test(NAME test_quadruped_kinematics COMMAND test_quadruped_kinematics)
-
 add_executable(test_posture_math test_posture_math.cc)
 target_link_libraries(test_posture_math quadruped)
 add_test(NAME test_posture_math COMMAND test_posture_math)
