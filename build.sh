@@ -20,27 +20,27 @@ if [ $# -eq 0 ]; then
 fi
 
 case "$1" in
-  clean)
-    echo "Cleaning build directory..."
-    rm -rf "$BUILD_DIR"
-    echo "Done."
-    ;;
-  simulation|go1|robot)
-    mkdir -p "$BUILD_DIR"
-    cd "$BUILD_DIR"
-    echo "Configuring for target: $1"
-    cmake .. -DHARDWARE_TARGET="$1" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-    ln -sf build/compile_commands.json "$SCRIPT_DIR/compile_commands.json"
-    echo "Building..."
-    cmake --build .
-    echo "Installing..."
-    rm -rf "$SCRIPT_DIR/bin" "$SCRIPT_DIR/lib"
-    cmake --install .
-    echo ""
-    echo "Done. Binaries installed to $SCRIPT_DIR/bin/"
-    ;;
-  *)
-    echo "Unknown command: $1"
-    usage
-    ;;
+clean)
+  echo "Cleaning build directory..."
+  rm -rf "$BUILD_DIR"
+  echo "Done."
+  ;;
+simulation | go1 | robot)
+  mkdir -p "$BUILD_DIR"
+  cd "$BUILD_DIR"
+  echo "Configuring for target: $1"
+  cmake .. -DHARDWARE_TARGET="$1" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_FLAGS="-Wno-error=non-c-typedef-for-linkage"
+  ln -sf build/compile_commands.json "$SCRIPT_DIR/compile_commands.json"
+  echo "Building..."
+  cmake --build .
+  echo "Installing..."
+  rm -rf "$SCRIPT_DIR/bin" "$SCRIPT_DIR/lib"
+  cmake --install .
+  echo ""
+  echo "Done. Binaries installed to $SCRIPT_DIR/bin/"
+  ;;
+*)
+  echo "Unknown command: $1"
+  usage
+  ;;
 esac
