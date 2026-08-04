@@ -13,8 +13,18 @@ log = {
   # Log every nth module manager cycle (default: 1)
   period = 1
 
-  # List of variables to log
-  vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_qacc", "MdlSimDriver_ctrl"], 
+  # List of variables to log. The estimator entries pair the two stages'
+  # output with MdlSimDriver_qpos/qvel ground truth in one time-aligned file,
+  # which is what makes the estimate plottable offline.
+  #
+  # Every name here must resolve, or the logging thread gives up after three
+  # attempts and silently records nothing at all. Renaming a log variable in a
+  # module means editing this list in the same change.
+  vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_qacc", "MdlSimDriver_ctrl",
+        "MdlOrientationEstimator_state",
+        "MdlPosVelEstimator_state", "MdlPosVelEstimator_footholds",
+        "MdlPosVelEstimator_error", "MdlPosVelEstimator_cov",
+        "MdlPosVelEstimator_contacts", "MdlPosVelEstimator_slip"],
 
   # "ascii", "raw" or "matlab"
   file_format = "matlab",

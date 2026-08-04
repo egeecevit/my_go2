@@ -1,0 +1,134 @@
+# --- trot.toml ---
+#
+# Configuration for MdlTrot, an open loop diagonal trot.
+#
+# The module reads no state estimate and closes no loop around the body pose.
+# It exists to give MdlStateEstimator motion to track, and feeding the estimate
+# back into the gait would make the two impossible to judge separately.
+
+[trot]
+
+# ---- COMMANDED BODY TWIST
+#
+# What the robot is asked to do. Open loop, so this is a feedforward intent
+# rather than a tracked setpoint, but it is also the figure to hold the
+# estimator's velocity output up against: the two should agree to within the
+# gait's own tracking error.
+#
+# 0.15 m/s with the gait below works out to a 3.75 cm stride, which is short
+# enough that the swing foot never leaves the leg's comfortable workspace.
+# Raise it and raise period or duty along with it.
+
+forward_velocity = 0.15   # v_x [m/s], positive is forward
+lateral_velocity = 0.0    # v_y [m/s], positive is left
+yaw_rate         = 0.0    # [rad/s], positive turns left
+
+# ---- GAIT
+
+# Duration of one full cycle. Each leg spends duty of it planted.
+period = 0.5              # [s]
+
+# Stance fraction. 0.5 is a pure trot, with one diagonal pair landing exactly
+# as the other lifts. Above 0.5 the pairs overlap, so there are brief intervals
+# with all four feet down: slower, but much easier to keep upright, and it
+# gives the estimator's contact detector cleaner transitions to find. Try 0.6
+# first if the robot is unsteady.
+duty = 0.5
+
+# Peak foot clearance at mid swing. Enough to clear the ground without the
+# swing leg approaching full extension.
+swing_height = 0.05       # [m]
+
+# Phase offset per leg in cycles, ordered FL, FR, RL, RR to match
+# QuadrupedKinematics::LegIndex. Diagonals in step with each other is a trot.
+# Change these four numbers alone for other gaits:
+#   trot   [0.0, 0.5, 0.5, 0.0]   diagonal pairs
+#   pace   [0.0, 0.5, 0.0, 0.5]   lateral pairs
+#   bound  [0.0, 0.0, 0.5, 0.5]   front pair, then rear pair
+#   walk   [0.0, 0.5, 0.75, 0.25] one foot at a time, needs duty >= 0.75
+phase_offset = [0.0, 0.5, 0.5, 0.0]
+
+# ---- NOMINAL FOOTPRINT
+#
+# Resting foot position relative to each hip, as [x, y, z]. The y component is
+# mirrored for the right hand legs. Same convention as drawsquare.toml.
+#
+# y = 0.10 sits close to the Go2's 0.0955 m hip flexion offset, which keeps the
+# abduction joint near zero and the leg plane vertical, where the leg Jacobian
+# is best conditioned. z sets the standing height; -0.28 leaves the knee well
+# bent, so the leg has travel in both directions and never nears full extension
+# where the Jacobian degenerates.
+origin = [0.0, 0.10, -0.28]
+
+# ---- BLEND DURATIONS
+#
+# WAIT holds the pose the module was activated in, PREP blends from there to
+# the nominal footprint, then TROT runs. CENTERING decelerates back to the
+# footprint with zero velocity when the behavior is asked to stop.
+
+wait_duration      = 0.3   # [s]
+prep_duration      = 1.5   # [s]
+centering_duration = 1.5   # [s]
+
+# Stride grows from zero to full over this long once TROT starts, so the robot
+# steps in place before it accelerates. This is what removes the velocity step
+# at the PREP handoff, and it keeps the first strides gentle.
+rampup_duration    = 2.0   # [s]
+
+# ---- JOINT GAINS
+#
+# Split by gait phase. Stiff while a leg supports the body, soft while it
+# swings, so a foot that catches on something yields instead of fighting.
+#
+# The swing gains matter far more than they look, because MdlStateEstimator
+# infers ground reaction force from joint torque through the leg Jacobian and
+# has no way to tell a contact force from the torque a stiff swing leg spends
+# on its own trajectory. Too stiff and it never releases the foot, so the
+# filter keeps fusing an airborne leg as a fixed point in the world.
+#
+# This gain is the dominant term in the estimator's position drift, by a wide
+# margin, and it acts entirely through how far a planted foot slides. Measured
+# over 30 s of trotting on the Go2, everything else held fixed:
+#
+#   swing_kp        40      25      15       8       4
+#   slip/stance   27mm    16mm   4.1mm   4.3mm   8.7mm
+#   drift          108%     99%     29%     50%     67%
+#
+# Drift tracks slip almost linearly, which is the whole story: the filter's
+# measurement model asserts a foot in contact is a fixed point in the world, and
+# every millimetre it actually travels is model error that is invisible to the
+# filter and not zero mean, so it biases velocity and integrates into position.
+# For contrast, MdlDrawSquare keeps all four feet planted and the same filter
+# drifts 1.3%.
+#
+# 15 is the minimum of that curve. Softer is not better: below it the leg stops
+# tracking its swing trajectory, lands badly and slides more.
+#
+# An earlier revision of this table quoted 4.0% at 15 and 1.5% at 8. Those came
+# from a distance metric that summed the body's raw 3D motion every millisecond
+# and so counted the gait's own bounce and sway as distance travelled, inflating
+# the denominator about fourfold. The ordering was right, the numbers were not.
+#
+# Judge any change here by the drift figure, not by the contacts= field in the
+# estimator's report. That report fires every groundtruth.report_period, which
+# at the default 2.0 s is an exact multiple of the 0.5 s gait period, so it
+# samples the same phase of the stride every time and prints a constant value
+# whether or not the feet are actually alternating. Change report_period to
+# something incommensurate, 0.7 say, before reading anything into it.
+
+stance_kp = 150.0   # Nm/rad
+stance_kd = 4.0     # Nm/(rad/s)
+swing_kp  = 15.0
+swing_kd  = 0.6
+
+# ---- SAFETY
+
+# Maximum joint tracking error before the behavior aborts. Larger than the
+# stand limit, since a trot legitimately runs further behind its command.
+tracking_error_limit = 0.5   # [rad]
+
+# A foot target outside the workspace is rejected by the leg's IK, which leaves
+# the previous command latched. One miss is survivable; this many in a row
+# means the trajectory has left the workspace and the gait is not being
+# executed at all, so the behavior aborts.
+ik_failure_limit = 3

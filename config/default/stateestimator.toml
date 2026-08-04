@@ -1,0 +1,284 @@
+# --- stateestimator.toml ---
+#
+# Configuration for the two-stage state estimator ported from MIT
+# Cheetah-Software:
+#
+#   MdlOrientationEstimator  takes the IMU's own attitude quaternion and derives
+#                            the rotation matrix, roll/pitch/yaw, and the
+#                            angular rate and specific force in both frames.
+#   MdlPosVelEstimator       an eighteen state linear Kalman filter over body
+#                            position, body velocity and the four foot
+#                            positions, driven by the accelerometer and
+#                            corrected by leg kinematics.
+#
+# The split is what makes the second stage linear: with the rotation known, the
+# relationship between body position, foot positions and their velocities has no
+# nonlinearity left in it.
+#
+# The Kalman filter's six noise entries are dimensionless multipliers on fixed
+# covariance shapes, not physical densities, which is why they all sit within an
+# order of magnitude of each other. The defaults are the values from
+# Cheetah-Software's config/mini-cheetah-defaults.yaml.
+
+# ===========================================================================
+[orientationestimator]
+# ===========================================================================
+
+enable = true
+
+# Rotate the estimate so that the initial yaw reads zero.
+#
+# MIT does this unconditionally, and on real hardware it is right: the IMU's yaw
+# origin is whatever it happened to be at power-on and means nothing. It is off
+# here because in simulation it would put the estimator's world frame at an
+# angle to the simulator's, and the ground truth comparison in the filter below
+# would then report a large error for an estimate that is tracking perfectly.
+# Turn it on for hardware, where there is no ground truth to disagree with.
+zero_initial_yaw = false
+
+# Take attitude from the simulator rather than the IMU. Simulation only; this is
+# the "cheater" estimator of the MIT sources. With a perfect attitude, whatever
+# error remains belongs to the position and velocity filter, which is the first
+# thing worth establishing when the estimate looks wrong.
+use_ground_truth = false
+
+# ---- SYNTHETIC SENSOR CORRUPTION
+#
+# The simulated IMU has no noise and no bias. An estimator fed that data
+# demonstrates nothing, so this injects a plausible IMU instead. Leave disabled
+# on real hardware, which supplies its own imperfections.
+#
+# Note that only the rates and forces are corrupted, not the quaternion. This
+# design takes the IMU's attitude output as given, so a poor IMU has to reach
+# the filter through the accelerometer driving the prediction and through the
+# gyroscope entering the foot velocity transport term. That is where it hurts.
+#
+# The bias figures are deliberately smaller than they were under the filter this
+# replaces. That one carried accelerometer and gyroscope bias states and needed
+# a bias worth finding; this one has none, so an injected bias is not a
+# challenge to be met but simply an error that survives.
+simnoise = {
+  enable = false
+
+  acc_noise_std     = 0.05     # [m/s^2]
+  gyro_noise_std    = 0.005    # [rad/s]
+
+  acc_bias_walk     = 0.001    # bias random walk [m/s^2 / sqrt(s)]
+  gyro_bias_walk    = 0.0001   # [rad/s / sqrt(s)]
+
+  acc_bias_init     = 0.02     # constant initial bias on every axis [m/s^2]
+  gyro_bias_init    = 0.002    # [rad/s]
+
+  seed = 12345                 # fixed seed keeps runs reproducible
+}
+
+# ===========================================================================
+[posvelestimator]
+# ===========================================================================
+
+enable = true
+
+# Take position and velocity from the simulator rather than filtering.
+# Simulation only. Pair with orientationestimator.use_ground_truth to bisect a
+# problem: perfect attitude with the real filter tests the filter, and the
+# reverse tests everything downstream of it.
+use_ground_truth = false
+
+# ---- KALMAN FILTER NOISE
+
+imu_process_noise_position  = 0.02   # body position states
+imu_process_noise_velocity  = 0.02   # body velocity states
+foot_process_noise_position = 0.002  # the four foot position states
+
+foot_sensor_noise_position  = 0.001  # body-to-foot vector, from leg kinematics
+foot_sensor_noise_velocity  = 0.1    # body velocity, from negated foot velocity
+foot_height_sensor_noise    = 0.001  # foot height above flat ground
+
+# On foot_process_noise_position specifically. The estimator measures the real
+# stance slip and prints it as "implied foot_process_noise_position" on its
+# report line; on a Go2 trot it comes out near [2e-5, 4e-6, 1e-6] in body xyz,
+# a stance foot travelling about 3 mm, nearly all of it fore and aft. That
+# measurement carries over unchanged from the filter this replaces, because the
+# foot block of the process noise shape is dt times the identity in both.
+#
+# The default above is some hundred times looser than the measurement, and that
+# is deliberate. The measurement is the variance of a white process; the actual
+# slip is nothing of the kind. It is a steady rearward scrub, correlated across
+# the whole stance, and a white noise model needs headroom to cover it.
+#
+# Do not expect much from tuning this. A systematic scrub is a bias, and no
+# process noise setting removes a bias; what this parameter buys is an honest
+# covariance, not a better estimate. The lever that moves drift is the gait,
+# through how far the feet actually slide.
+
+# ---- CONTACT TRUST
+#
+# Each leg carries a contact phase in [0, 1]. Trust rises over the first
+# trust_window of stance and falls over the last, and a foot with low trust has
+# its process noise and its velocity and height measurement noise multiplied by
+# (1 + (1 - trust) * high_suspect_number). A foot that has just landed is still
+# arriving and one about to lift is already breaking traction, so neither is the
+# fixed point the measurement model claims; this weights each foot by how
+# stationary it plausibly is instead of including or excluding it outright.
+#
+# NOTE that a phase of exactly 1.0 gives trust ZERO, not one: it is the instant
+# of liftoff. This is why a latched boolean contact maps to 0.5, the centre of
+# the plateau, and never to 1.0. Mapping it to 1.0 would tell the filter to
+# ignore precisely the feet the detector is most confident about.
+#
+# Both are hardcoded in the MIT sources and exposed here because they are real
+# tuning knobs whose effect is visible on the report line.
+trust_window        = 0.2
+high_suspect_number = 100.0
+
+# Height at which a foot in contact sits, in metres. Leg kinematics report the
+# centre of the foot sphere, which rests one radius above flat ground; 0.022
+# matches the foot geom in models/unitree_go2/go2.xml.
+#
+# This was called foot_radius under the previous filter and its role has
+# changed. There, absolute height was unobservable and this merely chose a datum
+# the filter never revisited, so a wrong value was carried harmlessly as a fixed
+# offset. The height measurement rows here are active, with a noise of
+# foot_height_sensor_noise above, so height is now observable and a wrong value
+# is a permanent, continuously maintained bias in reported body height.
+#
+# Those rows also assert that the ground is flat and level at this height. On a
+# slope or a step they fight reality; raising foot_height_sensor_noise de-weights
+# the assumption globally, and a marginally contacting foot is already
+# de-weighted by up to high_suspect_number through the trust ramp.
+#
+# Set to 0.0 to recover the point-foot form of the MIT sources exactly.
+foot_ground_height = 0.022
+
+# Gravity in the world frame. Should match the simulation setting.
+gravity = [0.0, 0.0, -9.81]
+
+# Seed the state mean from leg kinematics on the first cycle a foot is trusted,
+# rather than starting at the origin as the MIT sources do.
+#
+# Only the mean is seeded; the covariance is left large, so a wrong seed is
+# discarded within a few cycles instead of being locked in. This buys no steady
+# state accuracy, because the height measurement pulls the estimate into place
+# within about ten milliseconds either way. What it buys is that the resulting
+# quarter metre lurch does not land in the error statistics that the ground
+# truth comparison below exists to report.
+warm_start = true
+
+# ---- CONTACT PHASE
+#
+# Where the filter's per-leg contact phase comes from.
+#
+# "gait"  MdlTrot's schedule. Exact while it applies: the gait is open loop, so
+#         the schedule is not an estimate of where a foot is in stance, it is
+#         the definition. Falls back to all four planted in every MdlTrot state
+#         but TROT, and under every other behavior.
+# "force" derived from the boolean force detector below, mapped to 0.5 while
+#         latched and 0.0 otherwise. Carries no progress information, so the
+#         trust ramps never engage.
+# "auto"  the gait schedule while MdlTrot is running it, the force detector
+#         otherwise. This is the default.
+contact_phase_source = "auto"
+
+# ---- CONTACT DETECTION
+#
+# Still runs whatever contact_phase_source is set to, because the boolean and
+# the force behind it drive the slip statistics, the viewer overlay and the
+# agreement figure on the report line.
+#
+# "torque"   estimate the ground reaction force from joint torques through the
+#            leg Jacobian. Works on every target.
+# "simtruth" read the solver's own contact force out of MuJoCo. Simulation only,
+#            and useful for separating filter error from contact-detection error
+#            when tuning.
+#
+# Both sources produce a normal force in newtons and both latch through the
+# thresholds below, so switching between them changes only where the number came
+# from. Note that "simtruth" is not the same as MuJoCo's contact list: go2.xml
+# gives every geom a 1mm collision margin, so a contact record appears while a
+# foot is still clear of the ground and carrying nothing. The force is what
+# makes the source trustworthy.
+contact_source = "torque"
+
+# A standing Go2 carries roughly 37 N per foot (about 15 kg all told).
+#
+# The instinct is to set these low so no real contact is missed, and that is
+# wrong. What the estimator needs is not every foot that touches the ground but
+# every foot that is genuinely stationary, and a lightly loaded foot is usually
+# neither. Measured over a 30 s trot against the previous filter, position drift
+# against the thresholds, with agreement against MuJoCo's own contact state
+# alongside:
+#
+#   on / off      20/8    30/15   40/25   50/35
+#   drift         28.9%   17.7%   18.4%   15.4%
+#   agreement     93.4%   90.7%   87.8%   81.3%
+#
+# Agreement falls as drift improves, which is the point: the detector is
+# deliberately rejecting contacts the simulator does see, and those were the ones
+# doing the damage. Judge these by drift, never by agreement.
+#
+# That sweep was run against a filter which anchored a foot the moment it latched
+# and paid dearly for a false positive. This one already de-weights a marginal
+# foot through the trust ramp, so its sensitivity is different and these want
+# re-sweeping. During a trot under contact_phase_source = "auto" they no longer
+# feed the filter at all, only the diagnostics.
+contact_on_threshold  = 30.0  # normal force to declare contact       [N]
+contact_off_threshold = 15.0  # normal force to release it            [N]
+contact_debounce      = 3     # consecutive cycles before a transition
+
+# Damping for the ill-conditioned leg Jacobian near full extension.
+jacobian_damping = 0.01
+
+# Sign relating measured joint torque to ground reaction force: tau = -s J^T f.
+# Depends on the actuator sign convention of the target. A robot standing on
+# level ground must yield a positive normal force; if contacts never latch,
+# invert this.
+contact_force_sign = 1.0
+
+# ---- VISUALIZATION
+#
+# Three dimensional overlay drawn in the MuJoCo viewer. Simulation only; on
+# other targets these keys are ignored. Foot markers are sized and faded by
+# contact trust, so the ramp is visible as each foot swells through early stance
+# and fades through late stance.
+viz = {
+  enable = true
+
+  # Trails of the estimated and true body paths, so drift accumulates visibly.
+  show_trail       = true
+  trail_length     = 200
+  trail_decimation = 20    # sample the trail every nth cycle
+
+  marker_size = 0.03       # [m]
+}
+
+# ---- GROUND TRUTH COMPARISON
+#
+# Contrasts the estimate against the simulator's exact state. Simulation only.
+groundtruth = {
+  enable = true
+  report_period = 2.0   # seconds between printed summaries, 0 to silence
+
+  # Distance travelled, the denominator of the drift percentage, is the length of
+  # the true body's horizontal path after low pass filtering.
+  #
+  # All three qualifiers earn their place. A gait moves the trunk in a small
+  # circle as well as forwards: it bounces vertically at the gait frequency and
+  # swings from side to side at the same rate, and every contact impact rings on
+  # top. Summing raw 3D displacement each millisecond counts all of that as
+  # distance. Measured here over a 30 s trot it read 1.94 m for a robot that
+  # covered 0.45 m. Since this number only ever divides the error, inflating it
+  # makes the estimate look four times better than it is.
+  #
+  # Projecting to x-y removes the bounce but not the sway, and decimating does not
+  # remove the sway either, it aliases it: sampling every 0.25 s still gave 1.58 m.
+  # Sampling at exactly 0.5 s gave the right answer, but only because that happened
+  # to equal the gait period and cancel the sway by phase. Filtering is what
+  # actually works, and it does not need to know the gait period.
+  #
+  # tau should be at least one gait cycle; two poles then put the oscillation more
+  # than an order of magnitude down. Raise it for slower gaits. Genuine turns are
+  # rounded off slightly, which is what net displacement on the same report line
+  # is there to cross-check.
+  path_filter_tau    = 0.5    # [s], about one gait cycle
+  path_sample_period = 0.05   # [s], sampling of the filtered signal
+}

@@ -18,6 +18,7 @@
 #include "rtclient/WriteML.hh"
 
 #include "quadruped/MdlDrawSquare.hh"
+#include "quadruped/MdlTrot.hh"
 #include "quadruped/MdlStand.hh"
 #include "quadruped/MdlSit.hh"
 
@@ -184,6 +185,7 @@ void Supervisor::init() {
 
   _logserver = (LogServer*) _mgr->findModule(LOGSERVER_NAME, 0);
   _wm = (MdlDrawSquare*) _mgr->findModule(WALKMODULE_NAME, 0);
+  _trot = (MdlTrot *)_mgr->findModule(TROTMODULE_NAME, 0);
   _stand = (MdlStand *)_mgr->findModule(STANDMODULE_NAME, 0);
   _sit = (MdlSit *)_mgr->findModule(SITMODULE_NAME, 0);
 
@@ -251,7 +253,7 @@ void Supervisor::uninit() {
 
 void Supervisor::activate() {
   _state = S_IDLE;
-  printf("\n  [S]tand  [W]alk(draw)  [D]own(sit)  [Q]uit\n\n");
+  printf("\n  [S]tand  [W]alk(draw)  [T]rot  [D]own(sit)  [Q]uit\n\n");
 }
 
 void Supervisor::deactivate() {
@@ -261,6 +263,8 @@ void Supervisor::deactivate() {
     _mgr->releaseModule(_sit, this);
   if (_state == S_DRAW || _state == S_DRAW_STOPPING)
     _mgr->releaseModule(_wm, this);
+  if (_state == S_TROT || _state == S_TROT_STOPPING)
+    _mgr->releaseModule(_trot, this);
 }
 
 void Supervisor::update() {
@@ -285,6 +289,8 @@ void Supervisor::update() {
       _mgr->releaseModule(_sit, this);
     if (_state == S_DRAW || _state == S_DRAW_STOPPING)
       _mgr->releaseModule(_wm, this);
+    if (_state == S_TROT || _state == S_TROT_STOPPING)
+      _mgr->releaseModule(_trot, this);
     _state = S_EXIT;
     _mark = t;
   }
@@ -317,6 +323,11 @@ void Supervisor::update() {
           _mgr->releaseModule(_stand, this);
           _mgr->grabModule(_wm, this);
           _state = S_DRAW;
+        } else if (key == 't' || key == 'T') {
+          _mgr->message("Supervisor: -> S_TROT");
+          _mgr->releaseModule(_stand, this);
+          _mgr->grabModule(_trot, this);
+          _state = S_TROT;
         } else if (key == 'd' || key == 'D') {
           _mgr->message("Supervisor: -> S_SIT");
           _mgr->releaseModule(_stand, this);
@@ -340,6 +351,29 @@ void Supervisor::update() {
     if (_wm->isStopped()) {
       _mgr->message("Supervisor: -> S_SIT (from draw)");
       _mgr->releaseModule(_wm, this);
+      _mgr->grabModule(_sit, this);
+      _state = S_SIT;
+    }
+    break;
+
+  case S_TROT:
+    // MdlTrot runs indefinitely; press D to ask it to stop and recenter.
+    if (_trot->getStatus() == MdlTrot::ERROR) {
+      _mgr->message("Supervisor: ERROR during trot, sitting down");
+      _mgr->releaseModule(_trot, this);
+      _mgr->grabModule(_sit, this);
+      _state = S_SIT;
+    } else if (key == 'd' || key == 'D') {
+      _mgr->message("Supervisor: -> S_TROT_STOPPING");
+      _trot->stopTrotting();
+      _state = S_TROT_STOPPING;
+    }
+    break;
+
+  case S_TROT_STOPPING:
+    if (_trot->isStopped() || _trot->getStatus() == MdlTrot::ERROR) {
+      _mgr->message("Supervisor: -> S_SIT (from trot)");
+      _mgr->releaseModule(_trot, this);
       _mgr->grabModule(_sit, this);
       _state = S_SIT;
     }

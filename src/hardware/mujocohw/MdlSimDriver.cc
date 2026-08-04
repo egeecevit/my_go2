@@ -101,6 +101,198 @@ static void _scrollCallback(GLFWwindow* window, double xoffset, double yoffset) 
 static int g_lastKey = -1;
 int simPollKey() { int k = g_lastKey; g_lastKey = -1; return k; }
 
+// ---------------------------------------------------------------------------
+// Cross-module simulation introspection and debug drawing.
+//
+// These free functions exist so that target-agnostic modules living in
+// libquadruped (which must also build for the go1 and robot targets, where
+// MuJoCo is absent) can reach the simulation without linking against it. They
+// follow the same weak-symbol convention already used for simPollKey(): callers
+// declare them with __attribute__((weak)) and test the pointer before calling,
+// so on non-sim targets the symbols resolve to null and the feature disappears.
+//
+// No locking is needed: MdlSimDriver::update(), the estimator and the behaviors
+// all run sequentially inside the single ModuleManager main loop.
+// ---------------------------------------------------------------------------
+
+// The live driver, for the introspection helpers below. Set in _createSimulation().
+static MdlSimDriver* g_simdriver = nullptr;
+
+bool simGetGroundTruth(double pos[3], double quat[4], double linvel[3],
+                       double angvel[3]) {
+  if (!g_simdriver) return false;
+  return g_simdriver->getGroundTruth(pos, quat, linvel, angvel);
+}
+
+bool simGetFootContacts(bool contacts[4], double forces[4]) {
+  if (!g_simdriver) return false;
+  return g_simdriver->getFootContacts(contacts, forces);
+}
+
+bool simGetFootPositions(double pos[4][3]) {
+  if (!g_simdriver) return false;
+  return g_simdriver->getFootPositions(pos);
+}
+
+// Debug geom queue. Fixed capacity, no allocation on the control path. Producers
+// overwrite the queue every cycle (typically at 1kHz); the renderer drains
+// whatever is present when it happens to run (typically at 30Hz).
+#define MAX_DEBUG_GEOMS 512
+
+typedef struct {
+  int type;         // mjGEOM_SPHERE / mjGEOM_CAPSULE
+  double size[3];
+  double pos[3];
+  double mat[9];
+  float rgba[4];
+} debug_geom_t;
+
+static debug_geom_t g_debugGeoms[MAX_DEBUG_GEOMS];
+static int g_numDebugGeoms = 0;
+
+static void _pushDebugGeom(int type, const double size[3], const double pos[3],
+                           const double mat[9], const double rgba[4]) {
+  if (g_numDebugGeoms >= MAX_DEBUG_GEOMS) return;
+  debug_geom_t& g = g_debugGeoms[g_numDebugGeoms++];
+  g.type = type;
+  for (int i = 0; i < 3; i++) {
+    g.size[i] = size[i];
+    g.pos[i] = pos[i];
+  }
+  for (int i = 0; i < 9; i++) g.mat[i] = mat[i];
+  for (int i = 0; i < 4; i++) g.rgba[i] = (float)rgba[i];
+}
+
+static const double _identityMat[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+void simDebugClear() { g_numDebugGeoms = 0; }
+
+void simDebugSphere(const double pos[3], double radius, const double rgba[4]) {
+  const double size[3] = {radius, radius, radius};
+  _pushDebugGeom(mjGEOM_SPHERE, size, pos, _identityMat, rgba);
+}
+
+void simDebugLine(const double from[3], const double to[3], double width,
+                  const double rgba[4]) {
+  // Drawn as a capsule spanning the two endpoints rather than through
+  // mjv_connector()/mjv_makeConnector(), whose name and signature have changed
+  // across MuJoCo releases (this project tracks the mujoco main branch).
+  double d[3] = {to[0] - from[0], to[1] - from[1], to[2] - from[2]};
+  double len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+  if (len < 1e-9) return;
+
+  for (int i = 0; i < 3; i++) d[i] /= len;
+
+  // Orthonormal basis with the capsule's local z axis along d.
+  double up[3] = {0, 0, 1};
+  if (std::fabs(d[2]) > 0.9) {
+    up[0] = 1;
+    up[2] = 0;
+  }
+  double x[3] = {up[1] * d[2] - up[2] * d[1], up[2] * d[0] - up[0] * d[2],
+                 up[0] * d[1] - up[1] * d[0]};
+  double xn = std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+  for (int i = 0; i < 3; i++) x[i] /= xn;
+  double y[3] = {d[1] * x[2] - d[2] * x[1], d[2] * x[0] - d[0] * x[2],
+                 d[0] * x[1] - d[1] * x[0]};
+
+  // Column major in the MuJoCo sense: mat[3*row + col], columns are x, y, d.
+  const double mat[9] = {x[0], y[0], d[0], x[1], y[1], d[1], x[2], y[2], d[2]};
+  const double size[3] = {width, width, 0.5 * len};
+  const double pos[3] = {0.5 * (from[0] + to[0]), 0.5 * (from[1] + to[1]),
+                         0.5 * (from[2] + to[2])};
+  _pushDebugGeom(mjGEOM_CAPSULE, size, pos, mat, rgba);
+}
+
+void MdlSimDriver::_renderDebugGeoms() {
+  for (int i = 0; i < g_numDebugGeoms && _scn.ngeom < _scn.maxgeom; i++) {
+    const debug_geom_t& g = g_debugGeoms[i];
+    mjvGeom* target = &_scn.geoms[_scn.ngeom++];
+    mjv_initGeom(target, g.type, g.size, g.pos, g.mat, g.rgba);
+    // Debug markers are annotations, not part of the model: exclude them from
+    // MuJoCo's own category filtering so they are always drawn.
+    target->category = mjCAT_DECOR;
+    target->objtype = mjOBJ_UNKNOWN;
+    target->objid = -1;
+    target->segid = -1;
+  }
+}
+
+bool MdlSimDriver::getGroundTruth(double pos[3], double quat[4], double linvel[3],
+                                  double angvel[3]) {
+  // Requires a free joint at the root: qpos[0:3] position, qpos[3:7] orientation
+  // (w,x,y,z), qvel[0:3] world-frame linear velocity, qvel[3:6] body-frame
+  // angular velocity.
+  if (!_model || !_data || _model->nq < 7 || _model->nv < 6) return false;
+
+  if (pos)
+    for (int i = 0; i < 3; i++) pos[i] = _data->qpos[i];
+  if (quat)
+    for (int i = 0; i < 4; i++) quat[i] = _data->qpos[3 + i];
+  if (linvel)
+    for (int i = 0; i < 3; i++) linvel[i] = _data->qvel[i];
+  if (angvel)
+    for (int i = 0; i < 3; i++) angvel[i] = _data->qvel[3 + i];
+
+  return true;
+}
+
+bool MdlSimDriver::getFootContacts(bool contacts[4], double forces[4]) {
+  if (!_model || !_data) return false;
+
+  double normal[4] = {0.0, 0.0, 0.0, 0.0};
+
+  bool resolved = false;
+  for (int i = 0; i < 4; i++)
+    if (_footGeomId[i] >= 0) resolved = true;
+  if (!resolved) return false;
+
+  for (int c = 0; c < _data->ncon; c++) {
+    const mjContact& con = _data->contact[c];
+
+    // The geom class in go2.xml carries margin="0.001", so MuJoCo lists a
+    // contact as soon as the gap closes to a millimetre. Those records are real
+    // but carry no load, and a foot skimming through that shell on its way
+    // through swing would otherwise be reported as planted. Positive dist means
+    // still separated; a nonzero exclude means the record is not in the
+    // constraint set at all.
+    if (con.dist > 0.0 || con.exclude != 0) continue;
+
+    mjtNum wrench[6];
+    mj_contactForce(_model, _data, c, wrench);
+    // Contact frame, normal first, and always non-negative by construction.
+    const double f = wrench[0];
+    if (f <= 0.0) continue;
+
+    for (int i = 0; i < 4; i++) {
+      if (_footGeomId[i] >= 0 &&
+          (con.geom1 == _footGeomId[i] || con.geom2 == _footGeomId[i]))
+        normal[i] += f;
+    }
+  }
+
+  for (int i = 0; i < 4; i++) {
+    if (contacts) contacts[i] = normal[i] > 0.0;
+    if (forces) forces[i] = normal[i];
+  }
+  return true;
+}
+
+bool MdlSimDriver::getFootPositions(double pos[4][3]) {
+  if (!_model || !_data || !pos) return false;
+
+  bool resolved = false;
+  for (int i = 0; i < 4; i++) {
+    if (_footGeomId[i] < 0) {
+      pos[i][0] = pos[i][1] = pos[i][2] = 0.0;
+      continue;
+    }
+    resolved = true;
+    for (int j = 0; j < 3; j++) pos[i][j] = _data->geom_xpos[3 * _footGeomId[i] + j];
+  }
+  return resolved;
+}
+
 // Static callback function for GLFW keyboard interaction
 static void _keyCallback(GLFWwindow* window, int key, int scancode, int action,
                          int mods) {
@@ -237,8 +429,10 @@ void MdlSimDriver::update() {
     mjrRect viewport = {0, 0, 0, 0};
     glfwGetFramebufferSize(_window, &viewport.width, &viewport.height);
 
-    // Update scene and render
+    // Update scene and render. Debug geoms are appended after mjv_updateScene(),
+    // which resets scn.ngeom, and before mjr_render().
     mjv_updateScene(_model, _data, &_opt, NULL, &_cam, mjCAT_ALL, &_scn);
+    _renderDebugGeoms();
     mjr_render(viewport, &_scn, &_con);
 
     SimClockHW* clockhw = (SimClockHW*)ClockHW::instance();
@@ -465,12 +659,28 @@ void MdlSimDriver::_createSimulation() {
   }
 
   _instance = this;  // Set static instance pointer for controller callback
+  g_simdriver = this;  // Set file-static pointer for the simGet*() helpers
+
+  // Resolve foot geom ids once, in QuadrupedKinematics::LegIndex order
+  // (FL, FR, RL, RR). Looked up by name so the mapping is independent of the
+  // order in which bodies happen to be declared in the model.
+  static const char* footGeomNames[4] = {"FL", "FR", "RL", "RR"};
+  for (int i = 0; _model && i < 4; i++) {
+    _footGeomId[i] = mj_name2id(_model, mjOBJ_GEOM, footGeomNames[i]);
+    if (_footGeomId[i] < 0)
+      _mgr->warning("MdlSimDriver", "No geom named '%s'; contact truth unavailable",
+                    footGeomNames[i]);
+  }
+
   // Register MuJoCo controller callback
   mjcb_control = _controllerCallback_static;
 }
 
 void MdlSimDriver::_destroySimulation() {
   DBGPRINT("MdlSimDriver::_destroySimulation\n");
+
+  g_simdriver = nullptr;
+  g_numDebugGeoms = 0;
 
   // Clean up MuJoCo data and model objects
   if (_data) {

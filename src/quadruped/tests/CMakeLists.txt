@@ -5,6 +5,18 @@ add_test(NAME test_posture_math COMMAND test_posture_math)
 add_executable(test_axis_calibration test_axis_calibration.cc)
 add_test(NAME test_axis_calibration COMMAND test_axis_calibration)
 
+# Links rtcore/rtclient because it pulls in MdlStateEstimator.o, which carries
+# the rtcore Module base class alongside the filter math being tested.
+add_executable(test_state_estimator test_state_estimator.cc)
+target_link_libraries(test_state_estimator quadruped rtcore rtclient)
+add_test(NAME test_state_estimator COMMAND test_state_estimator)
+
+# Same reason as test_state_estimator: pulls in MdlTrot.o, which carries the
+# rtcore Module base class alongside the gait schedule being tested.
+add_executable(test_trot_gait test_trot_gait.cc)
+target_link_libraries(test_trot_gait quadruped rtcore rtclient)
+add_test(NAME test_trot_gait COMMAND test_trot_gait)
+
 add_executable(test_config_layering test_config_layering.cc)
 target_link_libraries(test_config_layering rtcore rtclient)
 foreach(chain robotv1 sim go1)

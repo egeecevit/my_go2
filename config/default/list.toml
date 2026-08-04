@@ -14,6 +14,7 @@ file_rev = 1   # list.toml file revision
 
 %include logserver.toml       # LogServer configuration
 %include supervisor.toml      # Top-level supervisor module
+%include stateestimator.toml  # Leg kinematics + IMU EKF
 %include stand.toml
 
 # ---- VERSION-SPECIFIC INCLUDES
@@ -27,6 +28,7 @@ file_rev = 1   # list.toml file revision
 
 # -- These are for fine-tuning of behavior based on robot structure
 %include drawsquare.toml
+%include trot.toml
 %include legcontrol.toml
 %include sit.toml
 

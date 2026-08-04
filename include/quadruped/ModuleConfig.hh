@@ -47,7 +47,13 @@ const std::map<ModuleId_t, ModuleConfig_t, ModuleCompare_t> moduleConfig = {
 
   // Core modules
   { {"LogServer", -1},    { 1, 0, LOGGING_MODULES   } },
+  // Both run at SENSING_MODULES so the estimate is fresh for the controllers
+  // below. Position/velocity is one order later because it consumes the
+  // attitude produced by the orientation stage in the same cycle.
+  { {"MdlOrientationEstimator", -1}, { 1, 0, SENSING_MODULES } },
+  { {"MdlPosVelEstimator", -1},      { 1, 0, SENSING_MODULES + 1 } },
   { {"MdlDrawSquare", -1},   { 1, 0, BEHAVIORAL_CONTROLLERS   } },
+  { {"MdlTrot", -1},          { 1, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlStand", -1},         { 1, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlSit", -1},           { 1, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlLegControl", 0},     { 1, 0, BEHAVIORAL_CONTROLLERS+1 } },

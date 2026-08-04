@@ -62,6 +62,37 @@ public:
   /** \brief Retrieves the current IMU reading from the simulation */
   bool getIMUData( IMUHW::imudata_t &imu );
 
+  /** \brief Retrieves noise-free ground truth for the main body from the free joint.
+
+    Intended for validating estimators against the simulation. pos and linvel are
+    expressed in the world frame, quat is the world-from-body rotation in (w,x,y,z)
+    order, and angvel is expressed in the body frame (MuJoCo free joint convention,
+    the same source used by _readIMUData()). Returns false if the simulation is not
+    running or the model has no free joint. Any output pointer may be null. */
+  bool getGroundTruth( double pos[3], double quat[4], double linvel[3],
+                       double angvel[3] );
+
+  /** \brief Retrieves noise-free foot contact state, indexed by
+      QuadrupedKinematics::LegIndex (FL, FR, RL, RR).
+
+    forces receives the normal ground reaction force on each foot in newtons and
+    may be null; contacts is simply forces > 0. The force is what makes this
+    usable: the model gives every geom a 1mm collision margin, so MuJoCo emits a
+    contact record for a foot that is still a millimetre clear of the ground and
+    carrying nothing. Reading the record alone would call a foot planted while it
+    is still travelling at swing speed. Returns false if the foot geoms could not
+    be resolved in the loaded model. */
+  bool getFootContacts( bool contacts[4], double forces[4] );
+
+  /** \brief Retrieves the true world position of each foot geom's centre,
+      indexed by QuadrupedKinematics::LegIndex.
+
+    This is the centre of the foot sphere, which is exactly the point leg forward
+    kinematics returns and therefore exactly what an estimator's foothold state
+    represents, so the two are directly comparable with no offset. Returns false
+    if the foot geoms could not be resolved. */
+  bool getFootPositions( double pos[4][3] );
+
   // Returns current simulation time in microseconds
   rtcore::CLOCK readClock() { return _now; };
 
@@ -129,6 +160,13 @@ private:
   
   void _readJointStates();
   void _readIMUData();
+
+  // Appends geoms queued through the simDebug*() interface to the scene. Must be
+  // called after mjv_updateScene() (which resets scn.ngeom) and before mjr_render().
+  void _renderDebugGeoms();
+
+  // Geom ids of the four feet, resolved once from the model by name. -1 when absent.
+  int _footGeomId[4] = {-1, -1, -1, -1};
 
   mjModel   * _model = nullptr;
   mjData    * _data = nullptr;

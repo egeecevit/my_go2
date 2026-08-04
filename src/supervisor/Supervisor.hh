@@ -17,6 +17,7 @@
 #include "rtclient/LogWriter.hh"
 
 class MdlDrawSquare;
+class MdlTrot;
 class MdlStand;
 class MdlSit;
 
@@ -53,10 +54,12 @@ public:
   void threadExit();
 
 private:
-  typedef enum { S_IDLE, S_STAND, S_DRAW, S_DRAW_STOPPING, S_SIT, S_EXIT } _state_t;
+  typedef enum { S_IDLE, S_STAND, S_DRAW, S_DRAW_STOPPING, S_TROT, S_TROT_STOPPING,
+                 S_SIT, S_EXIT } _state_t;
   int _state = S_IDLE;
 
   MdlDrawSquare *_wm = nullptr;
+  MdlTrot *_trot = nullptr;
   MdlStand *_stand = nullptr;
   MdlSit *_sit = nullptr;
   bool _standSettled = false;
