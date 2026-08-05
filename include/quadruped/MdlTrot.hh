@@ -16,6 +16,7 @@
 #define TROTMODULE_NAME "MdlTrot"
 
 class MdlLegControl;
+class MdlPosVelEstimator;
 class QuadrupedKinematics;
 
 /** \brief Foot trajectory scheduler for a periodic diagonal gait.
@@ -167,6 +168,7 @@ class MdlTrot : public rtcore::Module {
 
   MdlLegControl* _legs[NUM_LEGS] = {};
   QuadrupedKinematics* _kinematics = nullptr;
+  MdlPosVelEstimator* _posvel = nullptr;
   TrotGait _gait;
 
   _state_t _state = _state_t::WAIT;
@@ -197,6 +199,24 @@ class MdlTrot : public rtcore::Module {
   Eigen::Vector3d _vcmd = Eigen::Vector3d(0.15, 0.0, 0.0);
   double _yawRate = 0.0;
 
+  // Stance sweep velocity feedback. Off by default, which keeps the module
+  // open loop and so keeps the estimator's drift figure a measurement of the
+  // estimator rather than of the two together.
+  //
+  // A planted foot only avoids scrubbing if it is swept at the negated *actual*
+  // body velocity. Open loop the gait uses the commanded one, and the
+  // difference drags the foot for the whole stance. Enabling this replaces the
+  // command with the estimate, blended by gain so that 0 is fully open loop
+  // and 1 fully closed, and clamped so a bad estimate cannot run away with the
+  // stride.
+  bool _vfbEnable = false;
+  double _vfbGain = 1.0;
+  double _vfbTau = 0.1;    // [s] low pass on the estimate
+  double _vfbLimit = 0.1;  // [m/s] cap on the correction, per axis
+  // Filtered body-frame velocity estimate, updated once per cycle in TROT.
+  Eigen::Vector3d _vfilt = Eigen::Vector3d::Zero();
+  bool _vfbActive = false;  // estimate was usable on the last cycle
+
   double _origin[3] = {0.0, 0.10, -0.28};
 
   double _wait_duration = 0.3;
@@ -219,6 +239,14 @@ class MdlTrot : public rtcore::Module {
 
   /** \brief Foot velocity in the body frame while this leg is planted. */
   Eigen::Vector3d _stanceVelocity(int leg) const;
+
+  /** \brief Refreshes _vfilt from the estimator. Once per cycle, not once per
+      leg, so all four feet are swept against the same velocity. */
+  void _updateVelocityFeedback();
+
+  /** \brief Body velocity the stance sweep is built on: the command, or the
+      estimate when velocity feedback is enabled and available. */
+  Eigen::Vector3d _sweepVelocity() const;
 
   void _sendTarget();
   bool _checkTrackingError() const;

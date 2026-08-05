@@ -15,6 +15,10 @@
 # relationship between body position, foot positions and their velocities has no
 # nonlinearity left in it.
 #
+# There is no contact estimator, as there is none in the MIT sources. Each leg's
+# contact phase comes from the gait schedule, and the filter weights that leg's
+# measurements by a trust ramp built from it. See the CONTACT PHASE note below.
+#
 # The Kalman filter's six noise entries are dimensionless multipliers on fixed
 # covariance shapes, not physical densities, which is why they all sit within an
 # order of magnitude of each other. The defaults are the values from
@@ -42,6 +46,181 @@ zero_initial_yaw = false
 # thing worth establishing when the estimate looks wrong.
 use_ground_truth = false
 
+# ---- ATTITUDE SOURCE
+#
+# "imu"     take the quaternion the IMU reports and derive everything from it.
+#           This is what Cheetah-Software does: its VectorNavOrientationEstimator
+#           copies the quaternion straight out of the sensor, and its header says
+#           plainly that "the VectorNav provides an orientation already". The
+#           reasoning is sound on that hardware -- the VN-100 runs its own EKF
+#           with far better knowledge of its noise than anything here could
+#           reconstruct.
+#
+# "filter"  estimate it here instead, with the filter of equation (19) of the
+#           Cheetah 3 paper. That is a Mahony nonlinear complementary filter on
+#           SO(3): integrate the gyroscope for the fast dynamics, and de-drift
+#           roll and pitch against gravity at a rate set by mahony_kp. It is the
+#           same algorithm the VN-100 runs internally, which is why the paper
+#           describes it and the open source code does not contain it.
+#
+# Wanted whenever the IMU reports rates but no attitude, or an attitude not worth
+# trusting. Wanted in simulation for a different reason: there the quaternion is
+# the simulator's own qpos[3:7], so passing it through means the attitude is
+# exact by construction and nothing about it is ever tested. No amount of
+# simnoise changes that, because simnoise deliberately corrupts only the rates
+# and forces. Switch to "filter" and the corruption finally has somewhere to act.
+attitude_source = "filter"
+
+# Proportional gain, kappa in equation (19) [1/s]. The de-drifting time constant
+# is roughly its reciprocal. Larger tracks gravity harder and lets more of the
+# gait's own acceleration into the attitude; smaller drifts further between
+# corrections.
+#
+# Choose the pair by damping and speed rather than individually. Linearised, the
+# attitude error and the bias estimate form a second order system with
+#
+#     wn = sqrt(mahony_ki)        zeta = mahony_kp / (2 * sqrt(mahony_ki))
+#
+# At 0.6/0.09 below, zeta = 1.0 and wn = 0.3 rad/s, so the bias estimate settles
+# in about eleven seconds. Both ends of that are bounded, and by different
+# things, which is what the sweep table further down is for.
+#
+# SLOWER is bounded by the transient. Everything before the bias settles is one,
+# and the position filter integrates transients into permanent offsets, through
+# two channels:
+#
+#   - the residual bias b_true - b_est drives the foot velocity transport term,
+#     omega x p_rel, giving a lateral velocity error of about 0.27 * residual
+#   - the standing tilt a proportional loop leaves, roughly residual/mahony_kp,
+#     rotates gravity into the horizontal plane of the prediction: 5 mrad of roll
+#     is 0.05 m/s^2 of lateral acceleration that was never there
+#
+# FASTER is bounded by the gait. The trunk really does roll about 30 mrad and
+# pitch through every stride, at 2 and 4 Hz. Gravity averaged over a cycle does
+# not know that, so a fast loop spends its authority arguing with a real motion
+# and leaves an attitude error locked to the gait, of order
+#
+#     mahony_kp * roll_amplitude / gait_frequency
+#
+# which predicts 0.5 mrad at kp = 0.2 and 5 mrad at kp = 2.0 against 0.27 and
+# 3.80 measured. That error is not white: it is phase locked to the foot
+# kinematics it multiplies, so it rectifies into a velocity bias rather than
+# averaging out. Keep mahony_kp at least an order of magnitude below the gait
+# frequency in rad/s (12.6 for a 2 Hz stride); 0.6 leaves a factor of twenty.
+mahony_kp = 0.6
+
+# Integral gain [1/s^2]. Set to zero to reproduce equation (19) exactly.
+#
+# Equation (19) is proportional only, and against a constant gyroscope bias a
+# proportional loop leaves a standing error: the attitude settles wherever
+# kappa * w_corr happens to cancel the bias, and the bias is never identified.
+# This is the second state of Mahony's explicit complementary filter,
+#
+#     bdot = -k_I * w_corr
+#
+# the same integral term a PI controller uses to absorb a constant disturbance.
+# It buys a truer attitude, and it buys something the attitude alone does not: an
+# estimate of the gyroscope bias, which is subtracted before the rate is passed
+# on. That rate drives the position filter's foot velocity transport term,
+# omega x p_rel, where an uncorrected bias becomes a body velocity error of
+# roughly bias times leg length and integrates straight into position. Measured
+# on this robot with a 0.002 rad/s bias on every axis, the roll rate component
+# alone contributed 0.53 mm/s of lateral velocity error, common mode across all
+# four legs because they all hang the same distance below the body.
+#
+# Only roll and pitch converge. w_corr is a cross product with the vertical, so
+# it never has a component along it and the yaw bias gets no excitation at all.
+# That is the same reason heading drifts and is not a defect: gravity is the only
+# reference here, and gravity says nothing about heading. The heading error is
+# accepted -- see the note below on what it does to the position estimate, which
+# is the one place it does not look like an attitude problem.
+#
+# Raising this converges the bias faster and rings if mahony_kp does not follow.
+# It is the gain that actually matters for the position estimate: the sweep below
+# is monotone in it and nearly flat in mahony_kp over the usable range.
+mahony_ki = 0.09
+
+# Time constant for low passing the specific force before it is used as a gravity
+# reference [s]. Should span at least one gait period; the default is exactly the
+# trot period.
+#
+# This, and not the gate below, is what makes an accelerometer usable as a
+# gravity reference on a legged robot. There is no instant at which it reads
+# gravity alone: the trunk surges fore and aft at twice the gait frequency, some
+# 0.2 g on this robot, and every footfall rings on top. Over a whole cycle that
+# averages to nearly nothing, because steady locomotion has no mean acceleration,
+# and what remains is gravity.
+#
+# Gating on magnitude cannot do this job, which is worth understanding before
+# reaching for the knob below. A specific force tilted by 0.2 g has almost
+# exactly the magnitude of one that is not, so the test does not even see the
+# disturbance; and because the gate opens and closes at fixed points in the
+# stride, it samples an oscillating tilt error phase selectively and rectifies it
+# into a constant one. Measured on a 30 s trot, gating alone cost 68 mrad of
+# pitch error and drove the bias estimate to twice its true value. Filtering
+# first brought the same run to 1.2 mrad.
+accel_filter_tau = 0.5
+
+# Magnitude of gravity [m/s^2]. Also the width of the band around g over which
+# the gravity correction is believed: the weight falls linearly to zero as the
+# filtered specific force magnitude departs from g by this much. A backstop
+# rather than the main defence, now that the reference is low passed -- it
+# catches a sustained acceleration that averaging will not remove, a fall or a
+# shove, because those do not average to zero. In steady locomotion it is open
+# nearly all the time. This is the paper's remark that kappa is "heuristically
+# decreased during highly-dynamic portions of the gait where |a_b| >> g".
+gravity_magnitude = 9.81
+
+# Measured over eight 55 s Go2 trots on one identical 0.64 m path, simnoise on
+# (2 mrad/s gyro bias and 0.02 m/s^2 accelerometer bias on every axis), all at
+# t = 50 s. ey_free is the y error with the heading contribution removed; see
+# below for why the raw ey column must not be read instead.
+#
+#   kp     ki    zeta  settle  rollosc |  ex     ey  | ey_free  vel rms x,y
+#   0.10  0.0025  1.0   49 s     0.33  | +15   -31   |  -70     13.3  16.7
+#   0.20  0.0025  2.0   >55 s    0.37  |  -2   -14   |  -53      9.3  11.1
+#   0.20  0.0100  1.0   28 s     0.27  | -24    +9   |  -31      7.1   7.2
+#   0.20  0.0400  0.5   10 s     0.27  | -42   +32   |  -10      8.9   5.5
+#   0.40  0.0400  1.0   16 s     0.62  | -38   +29   |  -12      7.3   5.5
+#   0.60  0.0900  1.0   11 s     1.02  | -42   +32   |   -9      7.3   5.5  <--
+#   1.00  0.2500  1.0    8 s     1.82  | -43   +35   |   -7      7.1   5.8
+#   2.00  1.0000  1.0    8 s     3.80  | -43   +37   |   -7      7.1   6.8
+#
+# mm, mm/s, mrad. settle is when the roll bias estimate first comes within 0.2
+# mrad/s of its true 2.00; rollosc is the gait band roll error, DC removed.
+#
+# THE RAW ex AND ey COLUMNS INVERT THE RANKING, and reading them is how the wrong
+# gains get chosen. Both improve monotonically as the loop is slowed, and the top
+# row looks twice as accurate as the bottom. It is not. Two cancellations:
+#
+#   - ey: the residual gyro bias drives y negative while the drifting heading
+#     drives it positive, and somewhere near ki = 0.0035 they annihilate
+#   - ex: the gait's rearward foot scrub is a real -40 mm on this path, and a
+#     slow loop's tilt error pushes x positive by about as much
+#
+# Correct for the heading and the y column becomes monotone in ki, from -70 mm to
+# -7 mm, and x settles on the -40 mm the gait actually costs. Velocity rms says
+# the same thing without any correction at all, which is why it is the metric to
+# trust here: the y component falls 16.7 -> 5.5 mm/s and then stops improving.
+#
+# Everything worth having is bought by ki = 0.04 and above. Past that the bias
+# is already settled and only rollosc keeps growing, so the choice among the last
+# three rows is about attitude quality on hardware rather than about position.
+# 0.60/0.09 takes the fastest settle whose attitude error is still near a
+# milliradian.
+#
+# One row that is not in the table: mahony_ki = 0, equation (19) as printed. It
+# leaves a standing 5 mrad roll tilt that happens to oppose the gyro bias in the
+# position filter and so looks competitive; zero gyro_bias_init and its drift
+# gets ten times worse, -0.06 to -0.61 mm/s. One error hiding another again.
+#
+# Two things no tuning here can reach. The passthrough (attitude_source = "imu")
+# still wins on position in simulation and always must, because the IMU
+# quaternion is the simulator's own state and is exact; that says nothing about
+# hardware, where this filter is the whole point. And yaw drifts 0.002 rad/s
+# times the run length in every row, about 110 mrad here, because gravity says
+# nothing about heading. That is arithmetic, not tuning, and it is accepted.
+
 # ---- SYNTHETIC SENSOR CORRUPTION
 #
 # The simulated IMU has no noise and no bias. An estimator fed that data
@@ -53,12 +232,38 @@ use_ground_truth = false
 # the filter through the accelerometer driving the prediction and through the
 # gyroscope entering the foot velocity transport term. That is where it hurts.
 #
-# The bias figures are deliberately smaller than they were under the filter this
-# replaces. That one carried accelerometer and gyroscope bias states and needed
-# a bias worth finding; this one has none, so an injected bias is not a
-# challenge to be met but simply an error that survives.
+# DISABLED BY DEFAULT, which is also what the MIT sources assume. Turning it on
+# makes the reported position error *smaller*, and that is exactly why it is off:
+# the improvement is not the filter doing better. Measured over a 60 s trot on an
+# identical 0.90 m path:
+#
+#   bias / white noise      |pos err|   vel rms x,y
+#   0      off (baseline)    0.044 m    0.0085 0.0039
+#   +0.02  off               0.021 m    0.0138 0.0078
+#   +0.02  on                0.030 m    0.0138 0.0076
+#   0      on                0.044 m    0.0087 0.0039
+#   -0.02  off               0.044 m    0.0054 0.0081
+#
+# The white noise changes nothing, which is expected: a linear filter's gain
+# comes from A, C, Q and R alone, so the data cannot move it, and a zero mean
+# input averages out. The whole effect is the constant bias, and it is sign
+# dependent -- a positive bias cancels part of the rearward position offset the
+# gait's foot scrub already causes, a negative one does not. One error hiding
+# another, tuned to this speed and heading, and worthless on a real IMU whose
+# bias is unknown and drifts. Velocity rms is the honest metric and the bias
+# makes it worse, which is the tell.
+#
+# So the baseline is measured with this off. Enable it only to ask how much a
+# given IMU quality costs, and read velocity rms rather than position error when
+# you do.
+#
+# Note that the quaternion is never corrupted, only the rates and forces. In
+# simulation that quaternion is the simulator's own qpos[3:7] and the orientation
+# stage passes it straight through, so attitude here is exact by construction --
+# which is why the report line carries no attitude error figure. There is no
+# number to print that could be anything but zero.
 simnoise = {
-  enable = false
+  enable = true
 
   acc_noise_std     = 0.05     # [m/s^2]
   gyro_noise_std    = 0.005    # [rad/s]
@@ -162,77 +367,42 @@ gravity = [0.0, 0.0, -9.81]
 # within about ten milliseconds either way. What it buys is that the resulting
 # quarter metre lurch does not land in the error statistics that the ground
 # truth comparison below exists to report.
+#
+# It fires once per activation, which is what makes a contact outage survivable.
+# With no foot trusted the velocity and height measurements both fade to the
+# current estimate and contribute nothing, so the filter is left dead reckoning
+# on the accelerometer alone: measured across a 15 s sit, position ran away to
+# 2.5 m, growing quadratically as the bias integrates twice. Standing up
+# recovers only what is observable -- height and velocity snap back within a
+# cycle, while the horizontal offset is permanent, because nothing here measures
+# absolute x and y.
+#
+# That is why this module is no longer activated for the life of the process.
+# Supervisor::_setEstimation() switches it on when the robot stands and off when
+# it sits, so the outage is never entered and the seed lands on a fresh
+# activation with the feet already loaded. The horizontal datum is carried across
+# the outage, since nothing in this filter observes absolute x and y.
 warm_start = true
 
 # ---- CONTACT PHASE
 #
-# Where the filter's per-leg contact phase comes from.
+# There is nothing to configure. Contact phase comes from MdlTrot's gait
+# schedule while it is trotting, and is 0.5 -- solidly planted -- under every
+# other behavior. That is what the MIT sources do: the controller hands the
+# estimator a contact phase and there is no contact estimator anywhere in the
+# system.
 #
-# "gait"  MdlTrot's schedule. Exact while it applies: the gait is open loop, so
-#         the schedule is not an estimate of where a foot is in stance, it is
-#         the definition. Falls back to all four planted in every MdlTrot state
-#         but TROT, and under every other behavior.
-# "force" derived from the boolean force detector below, mapped to 0.5 while
-#         latched and 0.0 otherwise. Carries no progress information, so the
-#         trust ramps never engage.
-# "auto"  the gait schedule while MdlTrot is running it, the force detector
-#         otherwise. This is the default.
-contact_phase_source = "auto"
-
-# ---- CONTACT DETECTION
+# An open loop gait's schedule is not an estimate of where a foot is in stance,
+# it is the definition, so a force detector cannot improve on it. This file used
+# to carry one, along with contact_source, on/off thresholds, a debounce, a
+# Jacobian damping term and a force sign, inherited from the Bloesch filter that
+# preceded this one. That filter needed a boolean to decide whether to anchor a
+# foothold at all; a graded phase makes the whole apparatus redundant. Those keys
+# are gone, and setting one now produces a warning rather than being ignored.
 #
-# Still runs whatever contact_phase_source is set to, because the boolean and
-# the force behind it drive the slip statistics, the viewer overlay and the
-# agreement figure on the report line.
-#
-# "torque"   estimate the ground reaction force from joint torques through the
-#            leg Jacobian. Works on every target.
-# "simtruth" read the solver's own contact force out of MuJoCo. Simulation only,
-#            and useful for separating filter error from contact-detection error
-#            when tuning.
-#
-# Both sources produce a normal force in newtons and both latch through the
-# thresholds below, so switching between them changes only where the number came
-# from. Note that "simtruth" is not the same as MuJoCo's contact list: go2.xml
-# gives every geom a 1mm collision margin, so a contact record appears while a
-# foot is still clear of the ground and carrying nothing. The force is what
-# makes the source trustworthy.
-contact_source = "torque"
-
-# A standing Go2 carries roughly 37 N per foot (about 15 kg all told).
-#
-# The instinct is to set these low so no real contact is missed, and that is
-# wrong. What the estimator needs is not every foot that touches the ground but
-# every foot that is genuinely stationary, and a lightly loaded foot is usually
-# neither. Measured over a 30 s trot against the previous filter, position drift
-# against the thresholds, with agreement against MuJoCo's own contact state
-# alongside:
-#
-#   on / off      20/8    30/15   40/25   50/35
-#   drift         28.9%   17.7%   18.4%   15.4%
-#   agreement     93.4%   90.7%   87.8%   81.3%
-#
-# Agreement falls as drift improves, which is the point: the detector is
-# deliberately rejecting contacts the simulator does see, and those were the ones
-# doing the damage. Judge these by drift, never by agreement.
-#
-# That sweep was run against a filter which anchored a foot the moment it latched
-# and paid dearly for a false positive. This one already de-weights a marginal
-# foot through the trust ramp, so its sensitivity is different and these want
-# re-sweeping. During a trot under contact_phase_source = "auto" they no longer
-# feed the filter at all, only the diagnostics.
-contact_on_threshold  = 30.0  # normal force to declare contact       [N]
-contact_off_threshold = 15.0  # normal force to release it            [N]
-contact_debounce      = 3     # consecutive cycles before a transition
-
-# Damping for the ill-conditioned leg Jacobian near full extension.
-jacobian_damping = 0.01
-
-# Sign relating measured joint torque to ground reaction force: tau = -s J^T f.
-# Depends on the actuator sign convention of the target. A robot standing on
-# level ground must yield a positive normal force; if contacts never latch,
-# invert this.
-contact_force_sign = 1.0
+# The one behavior this costs something is MdlDrawSquare, which swings a leg with
+# no schedule to read, so its swinging foot is fused as planted. If that ever
+# matters the fix is to give it the same accessor MdlTrot has.
 
 # ---- VISUALIZATION
 #
@@ -256,7 +426,17 @@ viz = {
 # Contrasts the estimate against the simulator's exact state. Simulation only.
 groundtruth = {
   enable = true
-  report_period = 2.0   # seconds between printed summaries, 0 to silence
+
+  # Seconds between printed summaries, 0 to silence.
+  #
+  # Deliberately NOT a whole number of gait cycles. At 2.0 s against the default
+  # 0.5 s trot period every report sampled the identical point in the stride, so
+  # the same diagonal pair was mid swing on every line and any per-leg figure was
+  # frozen. The per-leg numbers on the report are averaged over the interval now,
+  # which fixes it properly, but keeping the period incommensurate costs nothing
+  # and protects anything read instantaneously. Change the gait period and this
+  # wants a glance.
+  report_period = 0.7
 
   # Distance travelled, the denominator of the drift percentage, is the length of
   # the true body's horizontal path after low pass filtering.

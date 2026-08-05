@@ -60,6 +60,15 @@ class LogServer;
   is what the gait schedule is for: an open loop trot knows exactly where in
   stance each foot is.
 
+  That phase comes from the gait and from nowhere else, exactly as in the MIT
+  sources, where the controller hands the estimator a contact phase and there is
+  no contact estimator anywhere in the system. This module carried a force based
+  detector for a while, inherited from the Bloesch filter it replaces, which
+  needed a boolean to decide whether to anchor a foothold at all. A graded phase
+  makes that machinery redundant: when MdlTrot is trotting its schedule is not an
+  estimate of where a foot is in stance, it is the definition, and under every
+  other behavior on this platform all four feet are planted.
+
   One asymmetry in that scheme is worth knowing about. The velocity and height
   rows of an untrusted foot fade all the way to the current estimate, so their
   residuals go to zero and such a foot cannot influence velocity or height at
@@ -73,11 +82,16 @@ class LogServer;
   Rotation convention: MIT's rBody is world to body, ours is body to world. See
   the note in MdlOrientationEstimator.hh. Anywhere MIT writes Rbod we write _Rbw.
 
-  Beyond the filter this module carries the assessment machinery inherited from
-  the estimator it replaces: a MuJoCo overlay, a running comparison against
-  simulator ground truth, and per-stance foot slip statistics. All of it reaches
-  the simulator through weak symbols and is silently inert on the go1 and robot
-  targets.
+  Beyond the filter this module carries a MuJoCo overlay and a running comparison
+  against simulator ground truth. Both reach the simulator through weak symbols
+  and are silently inert on the go1 and robot targets.
+
+  Note that the comparison scores position and velocity only. Attitude is not
+  scored, and cannot be: the simulated IMU's quaternion is qpos[3:7], the very
+  array the ground truth is read from, and MdlOrientationEstimator passes it
+  through untouched. An attitude error computed here would be q^-1 q, identically
+  zero however the filter behaves. On hardware there is no ground truth to
+  compare against at all.
 
   Scheduling note: registered one order past MdlOrientationEstimator so it reads
   a fresh attitude from the same cycle, and both run ahead of the behavioral
@@ -179,13 +193,10 @@ class MdlPosVelEstimator : public rtcore::Module {
     // Instantaneous errors, estimate minus truth
     Eigen::Vector3d position_error = Eigen::Vector3d::Zero();
     Eigen::Vector3d velocity_error = Eigen::Vector3d::Zero();
-    /** \brief Attitude error as a rotation vector, in roll/pitch/yaw order. */
-    Eigen::Vector3d attitude_error = Eigen::Vector3d::Zero();
 
     // Running RMS since activation, per axis
     Eigen::Vector3d position_rms = Eigen::Vector3d::Zero();
     Eigen::Vector3d velocity_rms = Eigen::Vector3d::Zero();
-    Eigen::Vector3d attitude_rms = Eigen::Vector3d::Zero();
 
     /** \brief Norm of the current position error, in metres. */
     double position_error_norm = 0.0;
@@ -209,8 +220,14 @@ class MdlPosVelEstimator : public rtcore::Module {
     double elapsed = 0.0;
 
     /** \brief Distance from each foot position estimate to the true one, in
-        metres. Simulation only, and zero for legs not in contact. */
-    double foothold_error[NUM_LEGS] = {0, 0, 0, 0};
+        metres. Simulation only.
+
+      Instantaneous, and meaningful only for a leg the filter is currently
+      trusting: an airborne foothold is not being tracked, it is deliberately
+      being let go. Negative for a leg with no trust, so that "not measured" is
+      distinguishable from "measured as zero". The report line averages this over
+      trusted samples rather than printing it directly. */
+    double foothold_error[NUM_LEGS] = {-1.0, -1.0, -1.0, -1.0};
 
     // Ground truth, for callers that want it directly
     Eigen::Vector3d true_position = Eigen::Vector3d::Zero();
@@ -265,10 +282,8 @@ class MdlPosVelEstimator : public rtcore::Module {
   /** \brief Compares the current estimate against simulation ground truth.
 
     Returns false, leaving result.valid false, when no ground truth is
-    available. Roll and pitch errors are reported alongside, but separately
-    from, the yaw error: yaw has no absolute reference here, so folding it into
-    a single attitude figure would make a correctly behaving estimate look
-    broken. */
+    available. Position and velocity only; see the note on attitude in the class
+    comment above. */
   bool compareWithGroundTruth(comparison_t& result) const;
 
   // Estimate accessors for other modules.
@@ -277,21 +292,8 @@ class MdlPosVelEstimator : public rtcore::Module {
   bool getBodyVelocityInBody(Eigen::Vector3d& vel) const;
   bool getFootPosition(int leg, Eigen::Vector3d& pos) const;
 
-  /** \brief True when leg is currently believed to be on the ground. This is
-      the boolean force detector's opinion, which drives the diagnostics; the
-      filter itself uses the graded contact phase. */
-  bool getContactState(int leg) const;
-
   /** \brief Trust the filter actually applied to a leg on the last cycle. */
   double getContactTrust(int leg) const;
-
-  /** \brief Normal ground reaction force estimated for a leg, in newtons.
-
-    This is the quantity the contact thresholds are compared against, so it is
-    what to look at when tuning them. Both contact sources report a real force:
-    "torque" infers it through the leg Jacobian, "simtruth" reads the solver's
-    own contact force. */
-  double getFootForce(int leg) const;
 
   /** \brief True once the filter holds a usable estimate. */
   bool isReady() const { return _ready; }
@@ -330,6 +332,11 @@ class MdlPosVelEstimator : public rtcore::Module {
   bool _needSeed = true;
   bool _ready = false;
 
+  // Horizontal position handed from one activation to the next, so the world
+  // frame survives the module being switched off while the robot sits. Zero on
+  // the first activation. See reset() and deactivate().
+  Eigen::Vector2d _originCarry = Eigen::Vector2d::Zero();
+
   MdlOrientationEstimator* _orientation = nullptr;
   MdlTrot* _trot = nullptr;
   bool _trotSearched = false;
@@ -338,44 +345,16 @@ class MdlPosVelEstimator : public rtcore::Module {
   // Per-cycle sensor snapshot
   Eigen::Vector3d _jointAngles[NUM_LEGS];
   Eigen::Vector3d _jointVel[NUM_LEGS];
-  Eigen::Vector3d _jointTorques[NUM_LEGS];
   Eigen::Vector3d _footPosBody[NUM_LEGS];
   Eigen::Vector3d _footVelBody[NUM_LEGS];
   Eigen::Matrix3d _footJacobian[NUM_LEGS];
   double _contactPhase[NUM_LEGS] = {0, 0, 0, 0};
-
-  bool _contacts[NUM_LEGS] = {false, false, false, false};
-  int _contactCount[NUM_LEGS] = {0, 0, 0, 0};
-  double _footForce[NUM_LEGS] = {0, 0, 0, 0};
 
   double _dt = 0.001;
   double _startTime = 0.0;
 
   // -- Configuration --------------------------------------------------------
   bool _enable = true;
-
-  // Where the filter's contact phase comes from. "gait" reads MdlTrot's
-  // schedule, which is exact while it applies because the gait is open loop.
-  // "force" derives it from the boolean detector below. "auto" prefers the gait
-  // and falls back to the detector.
-  std::string _phaseSource = "auto";
-
-  // Contact detection. "torque" estimates ground reaction force from joint
-  // torques and works on any target; "simtruth" reads the solver's own contact
-  // force out of MuJoCo, which is useful for separating filter error from
-  // detector error. Both produce a normal force in newtons and both then latch
-  // through the same thresholds.
-  std::string _contactSource = "torque";
-  double _contactOnThreshold = 30.0;
-  double _contactOffThreshold = 15.0;
-  int _contactDebounce = 3;
-  double _jacobianDamping = 0.01;
-  /** \brief Sign relating joint torque to ground reaction force, tau = -s J^T f.
-    Whether the measured torque opposes or follows the contact force depends on
-    the actuator sign convention of the target, so it is left configurable
-    rather than hard coded. A standing robot must yield a positive normal force;
-    if contacts never latch, invert this. */
-  double _contactForceSign = 1.0;
 
   // Visualization
   bool _vizEnable = true;
@@ -398,7 +377,6 @@ class MdlPosVelEstimator : public rtcore::Module {
   // Running sums of squared error, for the RMS figures
   Eigen::Vector3d _sumSqPos = Eigen::Vector3d::Zero();
   Eigen::Vector3d _sumSqVel = Eigen::Vector3d::Zero();
-  Eigen::Vector3d _sumSqAtt = Eigen::Vector3d::Zero();
   long _errorSamples = 0;
 
   // Path length accumulator; see the note on comparison_t::distance_travelled.
@@ -420,44 +398,30 @@ class MdlPosVelEstimator : public rtcore::Module {
   double _lastPathTime = 0.0;
   bool _havePathSample = false;
 
-  // -- Error budget diagnostics (simulation only) ---------------------------
-  //
-  // The filter's measurement model asserts that a foot in contact is a fixed
-  // point in the world. Every millimetre a stance foot actually travels is
-  // model error the filter has no way to see, and it is not zero mean, so it
-  // biases velocity and integrates into position. Measuring it says how much of
-  // the residual error is the filter's and how much is the gait's.
+  // True foot positions from the simulator, refreshed each cycle. The filter
+  // never sees these; they exist so foothold_error can say how far each foot
+  // state has wandered from the foot it describes.
   bool _haveFootTruth = false;
   Eigen::Vector3d _footTruePos[NUM_LEGS];
-  Eigen::Vector3d _stanceStartPos[NUM_LEGS];
-  bool _slipTracking[NUM_LEGS] = {false, false, false, false};
-  double _slipSum[NUM_LEGS] = {0, 0, 0, 0};
-  double _slipMax[NUM_LEGS] = {0, 0, 0, 0};
-  long _stanceCount[NUM_LEGS] = {0, 0, 0, 0};
-  // Sum of squared slip per body axis, pooled over all legs, and the total
-  // stance time it accumulated over.
-  Eigen::Vector3d _slipSumSqAxis = Eigen::Vector3d::Zero();
-  double _stanceTimeTotal = 0.0;
-  double _stanceStartTime[NUM_LEGS] = {0, 0, 0, 0};
-  // How often the configured detector agrees with the simulator's own contact
-  // state. Low agreement makes every other number on the report suspect.
-  long _contactAgree = 0;
-  long _contactSamples = 0;
+  // Foothold error averaged over trusted samples since the last report. An
+  // instantaneous reading is useless here: any sensible report period is a whole
+  // number of gait cycles, so it lands at the same point in the stride every
+  // time and shows the same diagonal pair mid swing on every line.
+  double _footholdErrSum[NUM_LEGS] = {0, 0, 0, 0};
+  long _footholdErrCount[NUM_LEGS] = {0, 0, 0, 0};
 
   // Logging buffers, refreshed each cycle and registered with the LogServer.
   rtcore::LogServer* _logserver = nullptr;
   double _logState[9] = {0};       // position, vWorld, vBody
   double _logFootholds[12] = {0};  // foot positions, world frame
-  // pos, vel and attitude errors, then drift percent, path length and net
-  // displacement.
-  double _logError[12] = {0};
-  double _logCov[DIM] = {0};  // diagonal of P
-  // Four contact trusts followed by the four estimated normal forces, so a
-  // recorded run carries what is needed to re-tune the contact thresholds.
-  double _logContacts[8] = {0};
-  // Per-leg foot position error followed by per-leg mean slip per stance, the
-  // two halves of the error budget above.
-  double _logSlip[8] = {0};
+  // pos and vel error, then drift percent, path length and net displacement.
+  double _logError[9] = {0};
+  double _logCov[DIM] = {0};      // diagonal of P
+  double _logContacts[4] = {0};   // per-leg contact trust
+  double _logFootErr[4] = {0};    // per-leg foothold error, negative if untrusted
+  // True foot positions, world frame, so an offline plot can lay the foothold
+  // states over the feet they describe. Simulation only; holds zero elsewhere.
+  double _logFootTruth[12] = {0};
 
   // Comparison against ground truth, recomputed once per cycle and reused by
   // the statistics, the log buffers and the visualization.
@@ -466,14 +430,10 @@ class MdlPosVelEstimator : public rtcore::Module {
   void _readConfig();
   void _readSensors();
   void _readContactPhase();
-  void _detectContacts();
-  /** \brief Applies the Schmitt trigger and debounce to one leg's normal force.
-      Both contact sources feed through here, so they latch alike. */
-  void _latchContact(int leg, double normalForce);
+  void _readFootTruth();
   void _seedFromKinematics(const Eigen::Matrix3d& Rbw,
                            const Eigen::Vector3d footPos[NUM_LEGS],
                            const double phase[NUM_LEGS]);
-  void _updateSlipStats();
   void _updateVisualization();
   void _updateGroundTruthStats();
   void _refreshLogBuffers();

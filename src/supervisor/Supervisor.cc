@@ -21,6 +21,7 @@
 #include "quadruped/MdlTrot.hh"
 #include "quadruped/MdlStand.hh"
 #include "quadruped/MdlSit.hh"
+#include "quadruped/MdlPosVelEstimator.hh"
 
 #include "Supervisor.hh"
 
@@ -188,6 +189,7 @@ void Supervisor::init() {
   _trot = (MdlTrot *)_mgr->findModule(TROTMODULE_NAME, 0);
   _stand = (MdlStand *)_mgr->findModule(STANDMODULE_NAME, 0);
   _sit = (MdlSit *)_mgr->findModule(SITMODULE_NAME, 0);
+  _posvel = (MdlPosVelEstimator *)_mgr->findModule(POSVELMODULE_NAME, 0);
 
   ConfigTable config;
   bool hasConfig = _mgr->getConfigTable("supervisor", config);
@@ -267,6 +269,29 @@ void Supervisor::deactivate() {
     _mgr->releaseModule(_trot, this);
 }
 
+// The position/velocity filter only has something to measure while the feet
+// carry load. Sitting and idling put the robot's weight on its hocks -- the
+// simulator's own contact forces read under 1 N there, so no detector tuning
+// brings the feet back -- and with nothing trusted the filter dead reckons on
+// the accelerometer alone, running away quadratically (2.5 m over a 15 s sit).
+//
+// So it is gated on the behavior rather than on a contact signal. Standing is
+// the mandatory gateway to every other state, which makes this the one edge
+// where the robot is provably up: activate() reseeds through reset(), and the
+// warm start waits for a loaded foot on its own. Orientation is a passthrough
+// with nothing to integrate, so it keeps running throughout.
+//
+// Horizontal position survives the outage: nothing in that filter observes
+// absolute x and y, so it carries the datum across rather than re-deriving it.
+// See MdlPosVelEstimator::_originCarry.
+void Supervisor::_setEstimation(bool on) {
+  if (!_posvel) return;
+  if (on)
+    _mgr->activateModule(_posvel);
+  else
+    _mgr->deactivateModule(_posvel);
+}
+
 void Supervisor::update() {
   double t = _mgr->readTime();
 
@@ -302,6 +327,7 @@ void Supervisor::update() {
       _mgr->grabModule(_stand, this);
       _stand->setTargetHeight(_standHeight);
       _standSettled = false;
+      _setEstimation(true);
       _state = S_STAND;
     }
     break;
@@ -310,6 +336,7 @@ void Supervisor::update() {
     if (_stand->getStatus() == MdlStand::ERROR) {
       _mgr->message("Supervisor: ERROR during stand");
       _mgr->releaseModule(_stand, this);
+      _setEstimation(false);
       _state = S_IDLE;
     } else {
       if (_stand->getStatus() == MdlStand::SETTLED && !_standSettled) {
@@ -383,10 +410,12 @@ void Supervisor::update() {
     if (_sit->getStatus() == MdlSit::ERROR) {
       _mgr->message("Supervisor: ERROR during sit");
       _mgr->releaseModule(_sit, this);
+      _setEstimation(false);
       _state = S_IDLE;
     } else if (_sit->getStatus() == MdlSit::SETTLED) {
       _mgr->message("Supervisor: sitting settled, releasing");
       _mgr->releaseModule(_sit, this);
+      _setEstimation(false);
       _state = S_IDLE;
     }
     break;

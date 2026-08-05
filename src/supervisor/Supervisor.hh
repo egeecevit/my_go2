@@ -20,6 +20,7 @@ class MdlDrawSquare;
 class MdlTrot;
 class MdlStand;
 class MdlSit;
+class MdlPosVelEstimator;
 
 /** \brief Top-level supervisor module for quadruped control
 
@@ -62,6 +63,10 @@ private:
   MdlTrot *_trot = nullptr;
   MdlStand *_stand = nullptr;
   MdlSit *_sit = nullptr;
+
+  // Runs only while the robot is up on its feet. See _setEstimation().
+  MdlPosVelEstimator *_posvel = nullptr;
+  void _setEstimation(bool on);
   bool _standSettled = false;
   double _standHeight = 0.08;
   double _mark = 0;

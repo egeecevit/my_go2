@@ -11,6 +11,7 @@
 
 #include "hardware/MotorHW.hh"
 #include "quadruped/MdlLegControl.hh"
+#include "quadruped/MdlPosVelEstimator.hh"
 #include "quadruped/MdlTrot.hh"
 #include "quadruped/QuadrupedConfigs.hh"
 #include "quadruped/QuadrupedKinematics.hh"
@@ -129,6 +130,12 @@ void MdlTrot::init() {
   for (int i = 0; i < NUM_LEGS; i++)
     _legs[i] = (MdlLegControl*)_mgr->findModule(LEGMODULE_NAME, i);
 
+  // Optional, and read only: the estimator is created before this module in
+  // AddCoreModules, runs at SENSING_MODULES so its answer is from this cycle,
+  // and is MULTI_USER, so there is nothing to grab and nobody to contend with.
+  // A null pointer simply leaves the gait open loop.
+  _posvel = (MdlPosVelEstimator*)_mgr->findModule(POSVELMODULE_NAME, 0);
+
   ConfigTable hwConfig;
   std::string hwlib;
   if (_mgr->getConfigTable("hardware", hwConfig))
@@ -154,6 +161,21 @@ void MdlTrot::_readConfig() {
   _vcmd.y() = config.getDouble("lateral_velocity", _vcmd.y());
   _vcmd.z() = 0.0;
   _yawRate = config.getDouble("yaw_rate", _yawRate);
+
+  ConfigTable vfb;
+  if (config.getTable("velocity_feedback", vfb)) {
+    _vfbEnable = vfb.getBool("enable", _vfbEnable);
+    _vfbGain = vfb.getDouble("gain", _vfbGain);
+    _vfbTau = vfb.getDouble("tau", _vfbTau);
+    _vfbLimit = vfb.getDouble("limit", _vfbLimit);
+
+    if (!(_vfbGain >= 0.0)) _vfbGain = 0.0;
+    if (_vfbGain > 1.0) _vfbGain = 1.0;
+    // A zero time constant would make the filter a passthrough of a 1 kHz
+    // signal, which is exactly what it is there to avoid.
+    if (!(_vfbTau > 0.0)) _vfbTau = 0.01;
+    if (!(_vfbLimit >= 0.0)) _vfbLimit = 0.0;
+  }
 
   TrotGait::params_t gp;
   gp.period = config.getDouble("period", gp.period);
@@ -260,12 +282,51 @@ Eigen::Vector3d MdlTrot::_originFoot(int leg) const {
   return p;
 }
 
+void MdlTrot::_updateVelocityFeedback() {
+  _vfbActive = false;
+  if (!_vfbEnable || !_posvel) return;
+
+  Eigen::Vector3d v;
+  if (!_posvel->getBodyVelocityInBody(v) || !v.allFinite()) return;
+
+  // Low pass before use. The estimate is refreshed every millisecond and
+  // carries the trunk's own bounce and sway at the gait frequency; feeding that
+  // straight into the sweep would modulate the stride within a single stance.
+  // A time constant well under the gait period tracks a genuine change in speed
+  // while leaving the per-stride oscillation behind.
+  const double dt = CLOCK_TO_SEC(_mgr->getStepPeriod());
+  const double a = dt / (_vfbTau + dt);
+  _vfilt += a * (v - _vfilt);
+  _vfbActive = true;
+}
+
+Eigen::Vector3d MdlTrot::_sweepVelocity() const {
+  if (!_vfbActive) return _vcmd;
+
+  // Blend from the command toward the estimate, then clamp. The clamp is the
+  // part that matters: this is a positive feedback path, since a velocity
+  // estimate that is too low shortens the stride, which slows the robot, which
+  // lowers the estimate again. Bounding the correction keeps a bad estimate
+  // from walking the stride away entirely.
+  Eigen::Vector3d correction = _vfbGain * (_vfilt - _vcmd);
+  for (int i = 0; i < 3; i++) {
+    if (correction[i] > _vfbLimit) correction[i] = _vfbLimit;
+    if (correction[i] < -_vfbLimit) correction[i] = -_vfbLimit;
+  }
+  // Horizontal only. The trunk really does rise and fall during a trot, but
+  // that is the gait working, not a tracking error, and sweeping the stance
+  // feet vertically to chase it would fight the stance height instead.
+  correction.z() = 0.0;
+
+  return _vcmd + correction;
+}
+
 Eigen::Vector3d MdlTrot::_stanceVelocity(int leg) const {
   // Velocity of a planted foot in the body frame is the negated body twist
   // evaluated at that foot. The cross product term is what swings the footprint
   // around for a turn; it vanishes when yaw_rate is zero.
   const Eigen::Vector3d omega(0.0, 0.0, _yawRate);
-  return -(_vcmd + omega.cross(_originFoot(leg)));
+  return -(_sweepVelocity() + omega.cross(_originFoot(leg)));
 }
 
 void MdlTrot::_sendTarget() {
@@ -351,10 +412,20 @@ void MdlTrot::_prepDuring() {
 void MdlTrot::_trotEntry() {
   _mark = _mgr->readTime();
   _trot_mark = _mark;
+
+  // Seed the filter at the command so the first strides start from the open
+  // loop behaviour and the feedback eases in, rather than the stride jumping
+  // on the first cycle from whatever the robot happened to be doing in PREP.
+  _vfilt = _vcmd;
+  _vfbActive = false;
 }
 
 void MdlTrot::_trotDuring() {
   const double elapsed = _mgr->readTime() - _trot_mark;
+
+  // Once per cycle, before any leg is sampled, so all four are swept against
+  // the same velocity.
+  _updateVelocityFeedback();
 
   // Stride grows from zero, so the robot steps in place before it accelerates.
   double ramp, ramp_dot;

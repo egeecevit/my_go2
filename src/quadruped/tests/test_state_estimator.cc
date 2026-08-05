@@ -747,6 +747,87 @@ static void test_swing_foot_trust_rejection() {
 }
 
 // ---------------------------------------------------------------------------
+// 10. The horizontal datum survives a deactivation
+// ---------------------------------------------------------------------------
+
+// This module is switched off whenever the robot is off its feet, so a
+// stand-trot-sit-stand-trot cycle runs reset() again with the robot no longer
+// at the origin. Height and velocity are observable and get re-derived from the
+// feet, but nothing here observes absolute x and y, so they have to be carried
+// across. Drop them and each cycle reports the previous trot's whole distance
+// as fresh position error.
+static void test_origin_carry_across_activation() {
+  const double dt = 0.002;
+  const double height = 0.30;
+  const int steps = 2000;
+  const Eigen::Vector3d v(0.25, -0.1, 0.0);
+
+  MdlPosVelEstimator est;
+  MdlPosVelEstimator::params_t p;
+  p.dt = dt;
+  p.foot_ground_height = 0.0;
+  est.setParams(p);
+  est.reset();
+
+  // Trot away from the origin.
+  runConstantVelocity(est, v, Eigen::Matrix3d::Identity(), height, dt, steps);
+
+  Eigen::Vector3d before;
+  T_CHECK(est.getBodyPosition(before));
+  // Far enough that carrying the datum and dropping it are unmistakably
+  // different outcomes, so this cannot pass by tolerance.
+  T_CHECK(before.head<2>().norm() > 0.1);
+
+  // Sit, then stand: the Supervisor deactivates the module and activates it
+  // again, and activate() resets. The accessors gate on readiness, so read the
+  // raw state here.
+  est.deactivate();
+  est.reset();
+  T_CHECK(!est.isReady());
+  T_NEAR(est.getState()(0), before.x(), 1e-12);
+  T_NEAR(est.getState()(1), before.y(), 1e-12);
+
+  // Height and velocity are deliberately not carried. They are measured, so
+  // assuming them would be guessing where the filter can simply look.
+  T_NEAR(est.getState()(2), 0.0, 1e-12);
+  T_NEAR(est.getState().segment<3>(3).norm(), 0.0, 1e-12);
+
+  // Standing up takes a while to load the feet, so the warm start does not fire
+  // on the first cycle. Reproduce that: no foot trusted, which leaves the
+  // footholds at zero while r holds the datum, so rows 0-11 are inconsistent
+  // and the filter drags r toward the footholds. This window is what makes the
+  // seed read _originCarry rather than the current estimate -- without those
+  // untrusted cycles the bug is invisible, because the seed fires before r has
+  // had a chance to move.
+  {
+    Eigen::Vector3d footPos[4], footVel[4];
+    nominalFootprint(height, footPos);
+    const double swing[4] = {0.0, 0.0, 0.0, 0.0};
+    for (int i = 0; i < 4; i++) footVel[i].setZero();
+    for (int k = 0; k < 200; k++)
+      est.step(Eigen::Matrix3d::Identity(), Eigen::Vector3d(0.0, 0.0, 9.81),
+               Eigen::Vector3d::Zero(), footPos, footVel, swing);
+
+    // The drag is real, so the assertions below are not trivially satisfied.
+    T_CHECK(std::fabs(est.getState()(0) - before.x()) > 1e-3);
+  }
+
+  // Now the feet load and the seed fires, which must restore the datum rather
+  // than preserve what the drag left behind.
+  runStatic(est, height, 500);
+
+  Eigen::Vector3d after, vw;
+  T_CHECK(est.getBodyPosition(after));
+  T_CHECK(est.getBodyVelocity(vw));
+  T_NEAR(after.x(), before.x(), 1e-3);
+  T_NEAR(after.y(), before.y(), 1e-3);
+  T_NEAR(after.z(), height, 5e-3);
+  T_NEAR(vw.norm(), 0.0, 5e-3);
+
+  std::cout << "  origin_carry_across_activation OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
 
 int main() {
   std::cout << "test_state_estimator" << std::endl;
@@ -760,6 +841,7 @@ int main() {
   test_trust_window_boundaries();
   test_covariance_health();
   test_swing_foot_trust_rejection();
+  test_origin_carry_across_activation();
 
   std::cout << "test_state_estimator PASSED" << std::endl;
   return 0;

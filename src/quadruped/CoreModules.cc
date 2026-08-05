@@ -49,11 +49,13 @@ void AddCoreModules( ModuleManager *mgr ) {
 
 void ActivateCoreModules(ModuleManager *mgr ) {
   ACTIVATE_MODULE(mgr, _logserver);
-  // Both estimator stages always run: they are sensors for everything else, so
-  // they are activated here rather than being grabbed by an individual
-  // behavior.
+  // Orientation is a passthrough with no integrator, so it costs nothing to
+  // leave running and attitude stays available in every state.
   ACTIVATE_MODULE(mgr, _ori);
-  ACTIVATE_MODULE(mgr, _pv);
+  // The position/velocity filter is deliberately NOT activated here. It only
+  // has something to measure while the feet carry load, so the Supervisor
+  // switches it on when the robot stands and off when it sits -- see
+  // Supervisor::_setEstimation(). It is still a shared sensor, never grabbed.
 }
 
 void DeactivateCoreModules(ModuleManager *mgr ) {

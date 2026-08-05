@@ -23,6 +23,50 @@ forward_velocity = 0.15   # v_x [m/s], positive is forward
 lateral_velocity = 0.0    # v_y [m/s], positive is left
 yaw_rate         = 0.0    # [rad/s], positive turns left
 
+# ---- STANCE VELOCITY FEEDBACK
+#
+# A planted foot only avoids scrubbing if it is swept backwards at exactly the
+# body's real speed. Open loop the gait uses the commanded speed, and any
+# difference drags the foot along the ground for the whole stance. Enabling this
+# sweeps against MdlPosVelEstimator's velocity instead.
+#
+# Off by default on purpose. It is the only feedback path in this module, and
+# with it off the estimator's reported drift measures the estimator alone rather
+# than the estimator and the gait together.
+#
+# gain blends command to estimate: 0 is open loop, 1 is fully closed.
+# tau low passes the estimate, well under the gait period so the trunk's own
+#     bounce does not modulate the stride within a single stance.
+# limit caps the correction per axis. This loop is positive feedback -- an
+#     estimate that reads low shortens the stride, which slows the robot, which
+#     reads lower still -- so the cap is what stops it running away.
+#
+# Measured over a 90 s trot, and the reason it stays off:
+#
+#   gain / source        distance   front slip   drift
+#   0    (open loop)      1.38 m      2.8 mm     4.7%
+#   1.0  estimate         0.71 m      3.8 mm     3.9%
+#   1.0  ground truth     0.70 m      3.8 mm      --
+#   0.3  estimate         1.19 m      2.5 mm    13.1%
+#
+# Full feedback halves the distance covered for no real drift gain, since the
+# error falls only as far as the path does. Partial feedback is worse still.
+# Note the ground truth row: a perfect velocity produces the same slowdown as
+# the estimate, so this is not an estimator problem.
+#
+# The cause is upstream of anything tunable here. Open loop the robot only makes
+# about a tenth of the commanded 0.15 m/s, because a position controlled stance
+# leg cannot sweep a planted foot at that rate -- the tracking error becomes leg
+# deflection instead of body motion. Feeding the resulting low velocity back
+# asks for an even smaller sweep, hence less propulsion. The fix is torque
+# controlled stance, not a gain in this table.
+velocity_feedback = {
+  enable = false
+  gain  = 1.0
+  tau   = 0.1    # [s]
+  limit = 0.1    # [m/s]
+}
+
 # ---- GAIT
 
 # Duration of one full cycle. Each leg spends duty of it planted.

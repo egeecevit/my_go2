@@ -8,7 +8,9 @@
 
 #include "quadruped/MdlOrientationEstimator.hh"
 
+#include <algorithm>
 #include <cmath>
+#include <string>
 
 #include "rtcore/ConfigTable.hh"
 #include "rtcore/LogServer.hh"
@@ -79,17 +81,105 @@ void MdlOrientationEstimator::reset() {
   _ready = false;
   _haveYawDatum = false;
   _qYawInv = Eigen::Quaterniond::Identity();
+  _gyroBias.setZero();
+  _accFilt.setZero();
+  _haveAttitude = false;
   _haveImu = false;
   _injectedAccBias = Eigen::Vector3d::Constant(_params.acc_bias_init);
   _injectedGyroBias = Eigen::Vector3d::Constant(_params.gyro_bias_init);
 }
 
+// One step of the attitude filter of equation (19) of the Cheetah 3 paper,
+// which is Mahony's nonlinear complementary filter on SO(3) with the bias
+// estimating second state added.
+//
+// The gyroscope carries the fast dynamics faithfully but integrates its own
+// error without bound; the accelerometer cannot follow the fast dynamics but
+// knows which way is down. Blending them at a crossover of roughly mahony_kp
+// takes the honest half of each.
+//
+// Our _q is body to world, as is the paper's R-hat, so the expressions carry
+// over without transposing anything -- unlike the position filter, which has to
+// flip every one of MIT's.
+void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
+                                              const Eigen::Vector3d& acc, double dt) {
+  // The rotation that would bring the measured specific force into line with
+  // where the estimate currently believes gravity to be. Zero when they already
+  // agree, and by construction perpendicular to the vertical, which is why this
+  // corrects roll and pitch but never yaw.
+  // Low pass the specific force over about a gait period before using it as a
+  // gravity reference. On a legged robot there is no instant at which the
+  // accelerometer reads gravity alone: the trunk surges fore and aft at twice
+  // the gait frequency, about 0.2 g on this robot, and every footfall rings on
+  // top. Averaged over a whole cycle that acceleration very nearly cancels,
+  // because steady locomotion has no mean acceleration, and what is left is
+  // gravity.
+  //
+  // Filtering rather than gating, and this is the part that is easy to get
+  // wrong. A gate on |a| alone does not even see the disturbance -- a specific
+  // force tilted by 0.2 g has almost exactly the magnitude of one that is not --
+  // and worse, it opens and closes at fixed points in the stride, so it samples
+  // an oscillating tilt error phase selectively and rectifies it into a constant
+  // one. Measured, that cost 68 mrad of pitch and drove the integrator to twice
+  // the true bias.
+  const double a = dt / (_params.accel_filter_tau + dt);
+  _accFilt += a * (acc - _accFilt);
+
+  Eigen::Vector3d wcorr = Eigen::Vector3d::Zero();
+  double gain = 0.0;
+
+  const double anorm = _accFilt.norm();
+  if (anorm > 1e-6) {
+    const Eigen::Vector3d upBody = _q.conjugate() * Eigen::Vector3d::UnitZ();
+    wcorr = (_accFilt / anorm).cross(upBody);
+
+    // The magnitude test still earns its place, but as a backstop rather than as
+    // the main defence: it catches a genuinely sustained acceleration, a fall or
+    // a shove, which no amount of averaging removes because it does not average
+    // to zero. The paper's note that kappa is decreased "during highly-dynamic
+    // portions of the gait". After filtering it is open nearly all the time.
+    gain = std::max(std::min(1.0, 1 - std::fabs(anorm - _params.gravity_magnitude) /
+                                      _params.gravity_magnitude),
+                    0.0);
+  }
+
+  // The integral path, absent from equation (19) as printed. Without it a
+  // constant gyro bias leaves a standing tilt error, because the estimate
+  // settles wherever kp*wcorr happens to cancel the bias and the bias itself is
+  // never named. Integrating the same error signal absorbs the constant, in the
+  // way the I term of a PI loop does, and leaves the integrator holding the
+  // quantity worth having.
+  _gyroBias -= _params.mahony_ki * gain * wcorr * dt;
+
+  const Eigen::Vector3d w = gyro - _gyroBias + _params.mahony_kp * gain * wcorr;
+
+  // qdot = 0.5 * q * (0, w) for a body-to-world Hamilton quaternion, with w in
+  // the body frame. Explicit Euler is ample at 1 kHz against a body turning at
+  // a few rad/s; the renormalization below absorbs what it loses.
+  const Eigen::Quaterniond qw(0.0, w.x(), w.y(), w.z());
+  const Eigen::Quaterniond qdot = _q * qw;
+  _q.coeffs() += 0.5 * dt * qdot.coeffs();
+  _q.normalize();
+}
+
 void MdlOrientationEstimator::step(const Eigen::Quaterniond& q,
                                    const Eigen::Vector3d& gyro,
                                    const Eigen::Vector3d& acc, double dt) {
-  (void)dt;
-
-  _q = q.normalized();
+  if (_params.filter_attitude) {
+    // Seeded from the sensor rather than started at identity, so the filter
+    // begins already level instead of spending its first seconds rotating there
+    // and dragging the position estimate along with it.
+    if (!_haveAttitude) {
+      _q = q.normalized();
+      // Seeded too, so the low pass starts from the current reading instead of
+      // sweeping up from zero and tilting the estimate over its first second.
+      _accFilt = acc;
+      _haveAttitude = true;
+    }
+    _filterAttitude(gyro, acc, dt);
+  } else {
+    _q = q.normalized();
+  }
 
   if (_params.zero_initial_yaw) {
     if (!_haveYawDatum) {
@@ -112,7 +202,12 @@ void MdlOrientationEstimator::step(const Eigen::Quaterniond& q,
   _rpy = rpyFromQuat(_q);
   _Rbw = _q.toRotationMatrix();
 
-  _omegaBody = gyro;
+  // Bias corrected, which matters downstream rather than here: this rate drives
+  // the position filter's foot velocity transport term, omega x p_rel, where an
+  // uncorrected bias becomes a body velocity error of about bias times leg
+  // length and integrates into position. _gyroBias is zero unless the attitude
+  // filter is running, so this is a no-op on the passthrough path.
+  _omegaBody = gyro - _gyroBias;
   _omegaWorld = _Rbw * _omegaBody;
 
   // Specific force, gravity included: at rest and level the accelerometer reads
@@ -136,7 +231,7 @@ void MdlOrientationEstimator::init() {
 
   _logserver = (LogServer*)_mgr->findModule(LOGSERVER_NAME, 0);
   if (_logserver)
-    _logserver->registerVar(LOG_DOUBLE, 13, ORIENTATIONMODULE_NAME, "state",
+    _logserver->registerVar(LOG_DOUBLE, 16, ORIENTATIONMODULE_NAME, "state",
                             (unsigned char*)_logState);
 }
 
@@ -162,6 +257,24 @@ void MdlOrientationEstimator::_readConfig() {
   params_t p;
   p.zero_initial_yaw = config.getBool("zero_initial_yaw", p.zero_initial_yaw);
   p.use_ground_truth = config.getBool("use_ground_truth", p.use_ground_truth);
+
+  const std::string src = config.getString("attitude_source", "imu");
+  if (src == "filter") {
+    p.filter_attitude = true;
+  } else if (src != "imu") {
+    _mgr->warning(ORIENTATIONMODULE_NAME,
+                  "Unknown attitude_source '%s'; using 'imu'", src.c_str());
+  }
+  p.mahony_kp = config.getDouble("mahony_kp", p.mahony_kp);
+  p.mahony_ki = config.getDouble("mahony_ki", p.mahony_ki);
+  p.accel_filter_tau = config.getDouble("accel_filter_tau", p.accel_filter_tau);
+  p.gravity_magnitude = config.getDouble("gravity_magnitude", p.gravity_magnitude);
+  // Silently ignoring a stale override left in a version or robot directory
+  // would mean running with settings nobody intended.
+  if (config.getDouble("accel_gate", -1.0) >= 0.0)
+    _mgr->warning(ORIENTATIONMODULE_NAME,
+                  "accel_gate is obsolete; the gravity correction weight is "
+                  "normalized by gravity_magnitude, which sets the band width");
 
   if (p.use_ground_truth && !simGetGroundTruth) {
     _mgr->warning(ORIENTATIONMODULE_NAME,
@@ -261,5 +374,8 @@ void MdlOrientationEstimator::_refreshLogBuffer() {
     _logState[4 + i] = _rpy[i];
     _logState[7 + i] = _omegaBody[i];
     _logState[10 + i] = _aWorld[i];
+    // Recorded because whether the attitude filter is working is exactly the
+    // question of whether this converges, and to what.
+    _logState[13 + i] = _gyroBias[i];
   }
 }

@@ -77,6 +77,74 @@ class MdlOrientationEstimator : public rtcore::Module {
       when the estimate looks wrong. */
     bool use_ground_truth = false;
 
+    /** \brief Estimate attitude here rather than taking the IMU's quaternion.
+
+      Off by default, which is what Cheetah-Software does: its
+      VectorNavOrientationEstimator copies the quaternion straight out of the
+      sensor, on the reasoning that the VN-100's own EKF has far better
+      knowledge of its noise than anything downstream could reconstruct.
+
+      Turned on, this runs the filter of equation (19) of the Cheetah 3 paper --
+      a Mahony nonlinear complementary filter on SO(3) -- which is what the
+      VN-100 is doing internally. Wanted when the IMU reports rates but no
+      attitude, when its attitude is not trusted, and in simulation, where the
+      quaternion is the simulator's own and passing it through means nothing is
+      ever tested. See _filterAttitude(). */
+    bool filter_attitude = false;
+
+    /** \brief Proportional gain of the attitude filter, kappa in eq (19) [1/s].
+        The de-drifting time constant is roughly its reciprocal. Larger pulls
+        roll and pitch back to gravity faster and lets more of the gait's own
+        acceleration into the estimate. Bounded above by the gait: the trunk
+        genuinely rolls and pitches through a stride, and a loop fast enough to
+        argue with that leaves a gait locked attitude error. Choose it against
+        mahony_ki by damping rather than alone; see there and the config. */
+    double mahony_kp = 0.6;
+
+    /** \brief Integral gain of the attitude filter [1/s^2], zero for eq (19)
+        exactly.
+
+      Equation (19) is proportional only, so a constant gyro bias leaves a
+      standing orientation error: the estimate settles wherever k_P * w_corr
+      happens to cancel the bias, and the bias is never identified. This is the
+      second state of Mahony's explicit complementary filter, bdot = -k_I w_corr,
+      which absorbs the constant exactly as the integral term of a PI loop does.
+      What it buys beyond a truer attitude is a gyro bias estimate to subtract
+      before the rate is handed on, and that rate drives the position filter's
+      foot velocity transport term, where an uncorrected bias becomes a lateral
+      velocity error of the order of bias times leg length.
+
+      Only roll and pitch converge. w_corr is a cross product with the vertical
+      so it never has a component along it, leaving the yaw bias unobservable --
+      the same reason heading drifts, and not a defect. The heading error that
+      follows is accepted here; nothing in this module tries to remove it.
+
+      Pick this against mahony_kp by the damping of the pair, zeta =
+      mahony_kp / (2 sqrt(mahony_ki)), rather than either alone: the settling
+      time of the bias estimate is what shows up downstream, because everything
+      before it settles is a transient the position filter integrates. */
+    double mahony_ki = 0.09;
+
+    /** \brief Time constant for low passing the specific force before it is
+        used as a gravity reference [s]. Should span at least one gait period.
+
+      This, not the gate, is what makes the accelerometer usable on a legged
+      robot. There is no instant at which it reads gravity alone, but over a
+      whole gait cycle the trunk's own acceleration averages to nearly nothing.
+      See _filterAttitude() for why gating cannot substitute. */
+    double accel_filter_tau = 0.5;
+
+    /** \brief Magnitude of gravity [m/s^2].
+
+      Doubles as the width of the band around g over which the gravity
+      correction is believed: both gains fade linearly to zero as the filtered
+      specific force magnitude departs from g by this much. A backstop against
+      a sustained acceleration that averaging will not remove, not the main
+      defence, which is accel_filter_tau. The paper's note that kappa is
+      "heuristically decreased during highly-dynamic portions of the gait where
+      |a_b| >> g". */
+    double gravity_magnitude = 9.81;
+
     // Synthetic IMU corruption. The simulated IMU has no noise and no bias and
     // its orientation comes straight from the simulator state, so an estimator
     // fed that data is never tested. These inject a plausible IMU instead.
@@ -87,6 +155,13 @@ class MdlOrientationEstimator : public rtcore::Module {
     double acc_bias_walk = 0.001;     // [m/s^2 / sqrt(s)]
     double gyro_bias_walk = 0.0001;   // [rad/s / sqrt(s)]
     double acc_bias_init = 0.02;      // constant initial bias, every axis
+    // Applied on all three axes, which is what a raw gyroscope looks like. Note
+    // that this is only realistic alongside filter_attitude: an IMU reporting a
+    // trustworthy quaternion has necessarily found its own roll and pitch bias,
+    // since that is how it holds attitude, and would report rates with that part
+    // already removed. Injecting it here while passing the quaternion through
+    // models a unit that knows its attitude perfectly and has made no attempt to
+    // correct its rates, which is not a device that exists.
     double gyro_bias_init = 0.002;
     unsigned int seed = 12345;
   };
@@ -135,6 +210,12 @@ class MdlOrientationEstimator : public rtcore::Module {
   /** \brief True once at least one IMU sample has been processed. */
   bool isReady() const { return _ready; }
 
+  /** \brief Gyroscope bias the attitude filter has found [rad/s].
+
+    Zero unless filter_attitude is set, and always zero on the yaw axis, which
+    gravity cannot observe. Already subtracted from getAngularVelocity(). */
+  const Eigen::Vector3d& getGyroBias() const { return _gyroBias; }
+
   /** \brief Roll, pitch and yaw of a quaternion, ZYX order.
 
     Static because MdlPosVelEstimator needs the same conversion for its ground
@@ -158,6 +239,13 @@ class MdlOrientationEstimator : public rtcore::Module {
   bool _haveYawDatum = false;
   Eigen::Quaterniond _qYawInv = Eigen::Quaterniond::Identity();
 
+  // Attitude filter state. _gyroBias is the integral term of the complementary
+  // filter and stays at zero unless filter_attitude is set, so the subtraction
+  // in step() is a no-op on the passthrough path and needs no branch.
+  Eigen::Vector3d _gyroBias = Eigen::Vector3d::Zero();
+  Eigen::Vector3d _accFilt = Eigen::Vector3d::Zero();
+  bool _haveAttitude = false;
+
   // Persistent, because IMUHW::getLastReading() is edge triggered: it reports
   // no new data when the timestamp it is handed matches the one it holds. A
   // stack local would be zeroed each cycle and would therefore always appear to
@@ -175,10 +263,13 @@ class MdlOrientationEstimator : public rtcore::Module {
   std::normal_distribution<double> _gauss{0.0, 1.0};
 
   rtcore::LogServer* _logserver = nullptr;
-  // quat(w,x,y,z), rpy, omegaBody, aWorld
-  double _logState[13] = {0};
+  // quat(w,x,y,z), rpy, omegaBody, aWorld, gyroBias
+  double _logState[16] = {0};
 
   void _readConfig();
+  /** \brief One step of the Mahony complementary filter; see params_t. */
+  void _filterAttitude(const Eigen::Vector3d& gyro, const Eigen::Vector3d& acc,
+                       double dt);
   void _applySensorNoise(Eigen::Vector3d& acc, Eigen::Vector3d& gyro);
   void _refreshLogBuffer();
   double _randn() { return _gauss(_rng); }

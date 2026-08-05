@@ -8,8 +8,8 @@
 
 #include "quadruped/MdlPosVelEstimator.hh"
 
-#include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 #include "hardware/MotorHW.hh"
 #include "quadruped/MdlOrientationEstimator.hh"
@@ -29,7 +29,6 @@ using namespace rtcore;
 // every use below is guarded. Same convention as simPollKey().
 extern bool simGetGroundTruth(double pos[3], double quat[4], double linvel[3],
                               double angvel[3]) __attribute__((weak));
-extern bool simGetFootContacts(bool contacts[4], double forces[4]) __attribute__((weak));
 extern bool simGetFootPositions(double pos[4][3]) __attribute__((weak));
 extern void simDebugClear() __attribute__((weak));
 extern void simDebugSphere(const double pos[3], double radius,
@@ -43,12 +42,10 @@ MdlPosVelEstimator::MdlPosVelEstimator()
   for (int i = 0; i < NUM_LEGS; i++) {
     _jointAngles[i].setZero();
     _jointVel[i].setZero();
-    _jointTorques[i].setZero();
     _footPosBody[i].setZero();
     _footVelBody[i].setZero();
     _footJacobian[i].setIdentity();
     _footTruePos[i].setZero();
-    _stanceStartPos[i].setZero();
   }
 }
 
@@ -84,6 +81,17 @@ void MdlPosVelEstimator::reset() {
   const double dt = _params.dt;
 
   _xhat.setZero();
+
+  // Everything else restarts, but the horizontal datum is carried across. This
+  // module is deactivated whenever the robot is off its feet, and it does not
+  // translate while sitting, so the x and y it held on the way down are still
+  // the right ones on the way back up. Zeroing them instead would restart the
+  // world frame at every stand, and a stand-trot-sit-stand-trot cycle would
+  // then report the whole of each trot's distance as fresh error. Carried
+  // rather than re-derived because nothing in this filter observes absolute
+  // x and y -- there is no measurement to recover them from. Zero on the first
+  // activation, which is the origin the ground truth comparison expects.
+  _xhat.head<2>() = _originCarry;
 
   // Double integrator on the body, and foot positions that are constant under
   // the prediction model: a foot on the ground does not move, and one in the
@@ -152,10 +160,19 @@ void MdlPosVelEstimator::_seedFromKinematics(const Eigen::Matrix3d& Rbw,
   }
   if (n == 0) return;
 
-  // Place the body so the contacting feet rest on the ground datum. Horizontal
-  // position has no reference at all in this filter, so it starts at zero, and
-  // every position error reported afterwards is relative to wherever that was.
+  // Place the body so the contacting feet rest on the ground datum, and restore
+  // the horizontal datum carried in from the last activation.
+  //
+  // Taken from _originCarry rather than from the current estimate, which has
+  // already moved by the time this runs. reset() puts the datum into r but has
+  // no kinematics yet, so it has to leave the footholds at zero; rows 0-11
+  // measure r - p_i, so those cycles present the filter with a large
+  // inconsistency and, under P = 100 I, it resolves it by dragging r back
+  // toward the footholds. Reading r here would preserve that corruption instead
+  // of the datum. This is the one place where r and the footholds are set
+  // together and therefore the only place they can be made consistent.
   _xhat.setZero();
+  _xhat.head<2>() = _originCarry;
   _xhat(2) = _params.foot_ground_height - sum / (double)n;
   for (int i = 0; i < NUM_LEGS; i++)
     _xhat.segment<3>(6 + 3 * i) = _xhat.head<3>() + Rbw * footPos[i];
@@ -322,14 +339,16 @@ void MdlPosVelEstimator::init() {
                             (unsigned char*)_logState);
     _logserver->registerVar(LOG_DOUBLE, 12, POSVELMODULE_NAME, "footholds",
                             (unsigned char*)_logFootholds);
-    _logserver->registerVar(LOG_DOUBLE, 12, POSVELMODULE_NAME, "error",
+    _logserver->registerVar(LOG_DOUBLE, 9, POSVELMODULE_NAME, "error",
                             (unsigned char*)_logError);
     _logserver->registerVar(LOG_DOUBLE, DIM, POSVELMODULE_NAME, "cov",
                             (unsigned char*)_logCov);
-    _logserver->registerVar(LOG_DOUBLE, 8, POSVELMODULE_NAME, "contacts",
+    _logserver->registerVar(LOG_DOUBLE, 4, POSVELMODULE_NAME, "contacts",
                             (unsigned char*)_logContacts);
-    _logserver->registerVar(LOG_DOUBLE, 8, POSVELMODULE_NAME, "slip",
-                            (unsigned char*)_logSlip);
+    _logserver->registerVar(LOG_DOUBLE, 4, POSVELMODULE_NAME, "footerr",
+                            (unsigned char*)_logFootErr);
+    _logserver->registerVar(LOG_DOUBLE, 12, POSVELMODULE_NAME, "foottruth",
+                            (unsigned char*)_logFootTruth);
   }
 }
 
@@ -342,7 +361,8 @@ void MdlPosVelEstimator::uninit() {
     _logserver->deleteVar(POSVELMODULE_NAME, "error");
     _logserver->deleteVar(POSVELMODULE_NAME, "cov");
     _logserver->deleteVar(POSVELMODULE_NAME, "contacts");
-    _logserver->deleteVar(POSVELMODULE_NAME, "slip");
+    _logserver->deleteVar(POSVELMODULE_NAME, "footerr");
+    _logserver->deleteVar(POSVELMODULE_NAME, "foottruth");
     _logserver = nullptr;
   }
 
@@ -404,31 +424,13 @@ void MdlPosVelEstimator::_readConfig() {
     _mgr->warning(POSVELMODULE_NAME,
                   "swing_foot_noise is obsolete; swing feet are now handled by the "
                   "contact trust ramp (trust_window, high_suspect_number)");
-
-  _phaseSource = config.getString("contact_phase_source", _phaseSource);
-  if (_phaseSource != "auto" && _phaseSource != "gait" && _phaseSource != "force") {
-    _mgr->warning(POSVELMODULE_NAME, "Unknown contact_phase_source '%s'; using 'auto'",
-                  _phaseSource.c_str());
-    _phaseSource = "auto";
-  }
-
-  _contactSource = config.getString("contact_source", _contactSource);
-  if (_contactSource != "torque" && _contactSource != "simtruth") {
-    _mgr->warning(POSVELMODULE_NAME, "Unknown contact_source '%s'; using 'torque'",
-                  _contactSource.c_str());
-    _contactSource = "torque";
-  }
-  if (_contactSource == "simtruth" && !simGetFootContacts) {
+  if (!config.getString("contact_source", "").empty() ||
+      !config.getString("contact_phase_source", "").empty())
     _mgr->warning(POSVELMODULE_NAME,
-                  "contact_source 'simtruth' needs the simulation target; "
-                  "falling back to 'torque'");
-    _contactSource = "torque";
-  }
-  _contactOnThreshold = config.getDouble("contact_on_threshold", _contactOnThreshold);
-  _contactOffThreshold = config.getDouble("contact_off_threshold", _contactOffThreshold);
-  _contactDebounce = (int)config.getInt("contact_debounce", _contactDebounce);
-  _jacobianDamping = config.getDouble("jacobian_damping", _jacobianDamping);
-  _contactForceSign = config.getDouble("contact_force_sign", _contactForceSign);
+                  "contact_source and contact_phase_source are obsolete, along with "
+                  "the contact_* thresholds, jacobian_damping and contact_force_sign. "
+                  "Contact phase now comes from the gait schedule alone, as in the MIT "
+                  "sources; there is no contact detector");
 
   ConfigTable viz;
   if (config.getTable("viz", viz)) {
@@ -472,27 +474,17 @@ void MdlPosVelEstimator::activate() {
   // Reset the error statistics so each activation is measured on its own.
   _sumSqPos.setZero();
   _sumSqVel.setZero();
-  _sumSqAtt.setZero();
   _errorSamples = 0;
   _distanceTravelled = 0.0;
   _havePathSample = false;
   _haveFootTruth = false;
-  _contactAgree = 0;
-  _contactSamples = 0;
   for (int i = 0; i < NUM_LEGS; i++) {
-    _slipSum[i] = 0.0;
-    _slipMax[i] = 0.0;
-    _stanceCount[i] = 0;
-    _slipTracking[i] = false;
-    _contacts[i] = false;
-    _contactCount[i] = 0;
     _contactPhase[i] = 0.0;
-    _footForce[i] = 0.0;
     _trustSum[i] = 0.0;
+    _footholdErrSum[i] = 0.0;
+    _footholdErrCount[i] = 0;
   }
   _trustSamples = 0;
-  _slipSumSqAxis.setZero();
-  _stanceTimeTotal = 0.0;
   _trailCount = 0;
   _trailHead = 0;
   _trailTick = 0;
@@ -501,6 +493,12 @@ void MdlPosVelEstimator::activate() {
 
 void MdlPosVelEstimator::deactivate() {
   DBGPRINT("MdlPosVelEstimator::deactivate\n");
+
+  // Hand the horizontal datum to the next activation. Taken here rather than
+  // read out of a stale _xhat later, so it is the last value produced while the
+  // feet were still trusted. See reset().
+  if (_ready) _originCarry = _xhat.head<2>();
+
   if (simDebugClear && _vizEnable) simDebugClear();
 }
 
@@ -509,8 +507,8 @@ void MdlPosVelEstimator::update() {
   if (!_orientation || !_orientation->isReady()) return;
 
   _readSensors();
-  _detectContacts();
   _readContactPhase();
+  _readFootTruth();
 
   const Eigen::Matrix3d& Rbw = _orientation->getRotation();
 
@@ -537,10 +535,6 @@ void MdlPosVelEstimator::update() {
   for (int i = 0; i < NUM_LEGS; i++) _trustSum[i] += _trust[i];
   _trustSamples++;
 
-  // Refreshes the foot truth cache that compareWithGroundTruth() reads, so it
-  // has to come first.
-  _updateSlipStats();
-
   // Evaluated once and shared by the statistics, the log buffers and the
   // overlay, all of which run every cycle.
   compareWithGroundTruth(_comparison);
@@ -566,7 +560,6 @@ void MdlPosVelEstimator::_readSensors() {
       motorhw->getState(idx, state);
       _jointAngles[leg][j] = state.pos;
       _jointVel[leg][j] = state.vel;
-      _jointTorques[leg][j] = state.tau;
     }
 
     // Unchecked FK: measured angles can legitimately sit slightly outside the
@@ -582,83 +575,40 @@ void MdlPosVelEstimator::_readSensors() {
 }
 
 void MdlPosVelEstimator::_readContactPhase() {
+  // The gait and nothing else, as in the MIT sources, where the controller hands
+  // the estimator a contact phase and no contact estimator exists anywhere in
+  // the system. An open loop trot's schedule is not an estimate of where a foot
+  // is in stance, it is the definition, so there is nothing a force detector
+  // could add to it.
   double gaitPhase[NUM_LEGS];
-
-  if (_phaseSource != "force" && _trot && _trot->getState() == Module::ACTIVE &&
-      _trot->getStancePhase(gaitPhase)) {
-    // The gait is open loop, so its schedule is not an estimate of where the
-    // feet are in stance, it is the definition.
+  if (_trot && _trot->getState() == Module::ACTIVE && _trot->getStancePhase(gaitPhase)) {
     for (int i = 0; i < NUM_LEGS; i++) _contactPhase[i] = gaitPhase[i];
     return;
   }
 
-  if (_phaseSource == "gait") {
-    // No schedule to read, but that does not mean the feet are off the ground.
-    // Standing, sitting and drawing all keep the robot planted.
-    for (int i = 0; i < NUM_LEGS; i++) _contactPhase[i] = PLANTED_PHASE;
-    return;
-  }
-
-  // A boolean carries no progress information, so it maps to the middle of
-  // stance, where trust is one. Mapping it to 1.0 instead would put every
-  // confidently detected foot at the far edge of the ramp, where trust is zero,
-  // and the filter would ignore exactly the feet it should be using.
-  for (int i = 0; i < NUM_LEGS; i++)
-    _contactPhase[i] = _contacts[i] ? PLANTED_PHASE : 0.0;
-}
-
-void MdlPosVelEstimator::_latchContact(int leg, double normalForce) {
-  _footForce[leg] = normalForce;
-
-  // Schmitt trigger plus a debounce counter. A single threshold chatters badly
-  // around touchdown and liftoff. Both contact sources come through here: the
-  // simulator's contact force is exact but it still rings as the foot settles,
-  // so it needs the same treatment the torque estimate does.
-  const double threshold = _contacts[leg] ? _contactOffThreshold : _contactOnThreshold;
-  const bool above = normalForce > threshold;
-
-  if (above != _contacts[leg]) {
-    if (++_contactCount[leg] >= _contactDebounce) {
-      _contacts[leg] = above;
-      _contactCount[leg] = 0;
-    }
-  } else {
-    _contactCount[leg] = 0;
-  }
-}
-
-void MdlPosVelEstimator::_detectContacts() {
-  if (_contactSource == "simtruth" && simGetFootContacts) {
-    double truthForce[NUM_LEGS];
-    if (simGetFootContacts(nullptr, truthForce)) {
-      for (int i = 0; i < NUM_LEGS; i++) _latchContact(i, truthForce[i]);
-      return;
-    }
-  }
-
-  // Torque based estimate. In static equilibrium the joint torques of one leg
-  // relate to the force the ground applies at the foot by tau = -s J^T f, so
-  // f = -s (J^T)^-1 tau, with the sign s absorbing the actuator convention of
-  // the target. A robot standing on level ground must produce an upward force;
-  // if contacts never latch, flip contact_force_sign.
+  // Every other behavior on this platform keeps all four feet down, so a
+  // schedule that has nothing to say means planted rather than airborne.
+  // PLANTED_PHASE is the centre of the trust plateau; 1.0 would be the instant
+  // of liftoff and would yield zero trust.
   //
-  // Project onto the true vertical using the estimated attitude, so the test
-  // stays meaningful when the body is pitched or rolled.
-  const Eigen::Vector3d up = _Rbw.transpose() * Eigen::Vector3d::UnitZ();
+  // The exception is MdlDrawSquare, which swings one leg with no schedule to
+  // read. Its swinging foot is fused as though planted. The damage is limited,
+  // since that leg's foot velocity is still measured correctly and only the
+  // body-to-foot rows fight, and if it ever matters the fix is to give
+  // MdlDrawSquare the same accessor MdlTrot has rather than to reintroduce a
+  // detector.
+  for (int i = 0; i < NUM_LEGS; i++) _contactPhase[i] = PLANTED_PHASE;
+}
 
-  for (int leg = 0; leg < NUM_LEGS; leg++) {
-    const Eigen::Matrix3d Jt = _footJacobian[leg].transpose();
+void MdlPosVelEstimator::_readFootTruth() {
+  _haveFootTruth = false;
+  if (!_truthEnable || !simGetFootPositions) return;
 
-    // Damped least squares: near full leg extension the Jacobian becomes
-    // ill-conditioned and a plain solve would produce enormous forces.
-    const double lam2 = _jacobianDamping * _jacobianDamping;
-    Eigen::Matrix3d JtJ = Jt.transpose() * Jt;
-    JtJ.diagonal().array() += lam2;
-    const Eigen::Vector3d force =
-        -_contactForceSign * JtJ.inverse() * Jt.transpose() * _jointTorques[leg];
-
-    _latchContact(leg, force.dot(up));
-  }
+  double truth[NUM_LEGS][3];
+  if (!simGetFootPositions(truth)) return;
+  for (int i = 0; i < NUM_LEGS; i++)
+    _footTruePos[i] = Eigen::Vector3d(truth[i][0], truth[i][1], truth[i][2]);
+  _haveFootTruth = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -685,15 +635,6 @@ bool MdlPosVelEstimator::compareWithGroundTruth(comparison_t& result) const {
   result.position_error = _xhat.head<3>() - result.true_position;
   result.velocity_error = _xhat.segment<3>(3) - result.true_velocity;
 
-  // Attitude error as a rotation vector: the rotation taking truth to estimate.
-  if (_orientation) {
-    const Eigen::Quaterniond qErr =
-        (result.true_orientation.conjugate() * _orientation->getOrientation())
-            .normalized();
-    const Eigen::AngleAxisd aa(qErr);
-    result.attitude_error = aa.axis() * aa.angle();
-  }
-
   result.position_error_norm = result.position_error.norm();
   result.distance_travelled = _distanceTravelled;
   // Filtered at both ends, so the gait's own sway does not shift the endpoint by
@@ -710,18 +651,20 @@ bool MdlPosVelEstimator::compareWithGroundTruth(comparison_t& result) const {
   result.elapsed = _mgr ? _mgr->readTime() - _startTime : 0.0;
 
   // How far each foot position estimate sits from the foot it is meant to
-  // describe. Reported only while the foot is down: off the ground the state is
-  // not tracking anything, it is deliberately being let go.
+  // describe. Only where the filter is actually trusting the foot: elsewhere the
+  // state is not tracking anything, it is deliberately being let go. Gated on
+  // the same trust the filter used, not on a separate opinion about contact, so
+  // the number describes what the filter did. Negative marks "not measured",
+  // which is what the zero here used to be mistaken for.
   if (_haveFootTruth)
     for (int i = 0; i < NUM_LEGS; i++)
       result.foothold_error[i] =
-          _contacts[i] ? (_xhat.segment<3>(6 + 3 * i) - _footTruePos[i]).norm() : 0.0;
+          _trust[i] > 0.5 ? (_xhat.segment<3>(6 + 3 * i) - _footTruePos[i]).norm() : -1.0;
 
   if (_errorSamples > 0) {
     const double n = (double)_errorSamples;
     result.position_rms = (_sumSqPos / n).cwiseSqrt();
     result.velocity_rms = (_sumSqVel / n).cwiseSqrt();
-    result.attitude_rms = (_sumSqAtt / n).cwiseSqrt();
   }
 
   result.valid = true;
@@ -735,8 +678,13 @@ void MdlPosVelEstimator::_updateGroundTruthStats() {
 
   _sumSqPos += s.position_error.cwiseProduct(s.position_error);
   _sumSqVel += s.velocity_error.cwiseProduct(s.velocity_error);
-  _sumSqAtt += s.attitude_error.cwiseProduct(s.attitude_error);
   _errorSamples++;
+
+  for (int i = 0; i < NUM_LEGS; i++)
+    if (s.foothold_error[i] >= 0.0) {
+      _footholdErrSum[i] += s.foothold_error[i];
+      _footholdErrCount[i]++;
+    }
 
   const double now = _mgr->readTime();
 
@@ -777,119 +725,61 @@ void MdlPosVelEstimator::_updateGroundTruthStats() {
     comparison_t c;
     compareWithGroundTruth(c);
 
-    // Yaw is reported apart from roll and pitch on purpose. Roll and pitch are
-    // held by gravity, but nothing here references absolute yaw, so it drifts
-    // by design; averaging them into a single attitude number would make a
-    // healthy estimate look broken.
+    // Everything on this line that varies over a stride is averaged across the
+    // interval rather than sampled at its end. Any sensible report period is a
+    // whole number of gait cycles, so an instantaneous reading lands at the same
+    // point in the stride every time: it would show the same diagonal pair mid
+    // swing on every line and never move.
     //
-    // Mean contact trust is printed alongside because it now governs how much
-    // each foot contributes, and it is the first thing needed to interpret
-    // everything else on this line. For a trot at the default settings it
-    // should sit near the duty factor times (1 - trust_window), around 0.4;
-    // well below that means feet are being doubted more than intended.
+    // Attitude is absent, and deliberately so. In simulation the IMU quaternion
+    // is the same qpos[3:7] the ground truth is read from and the orientation
+    // stage passes it through, so any attitude error computed here is
+    // identically zero whatever the filter does. On hardware there is no truth to
+    // compare against. A number that cannot be nonzero is worse than no number.
+    //
+    // Mean contact trust leads because it governs how much each foot
+    // contributes, and is the first thing needed to read the rest. For a trot at
+    // the default settings it should sit near the duty factor times
+    // (1 - trust_window), around 0.4; well below that means feet are being
+    // doubted more than intended.
     double meanTrust[NUM_LEGS] = {0, 0, 0, 0};
     if (_trustSamples > 0)
       for (int i = 0; i < NUM_LEGS; i++)
         meanTrust[i] = _trustSum[i] / (double)_trustSamples;
 
+    // Mean over the samples where the foot was trusted. A leg with no trusted
+    // sample in the whole interval has nothing to report and prints as such
+    // rather than as zero, which reads as a perfect estimate.
+    double footErr[NUM_LEGS];
+    for (int i = 0; i < NUM_LEGS; i++)
+      footErr[i] = _footholdErrCount[i] > 0
+                       ? _footholdErrSum[i] / (double)_footholdErrCount[i]
+                       : -1.0;
+
+    char footErrStr[128];
+    int n = snprintf(footErrStr, sizeof(footErrStr), "foot pos err=[");
+    for (int i = 0; i < NUM_LEGS; i++)
+      n += footErr[i] >= 0.0
+               ? snprintf(footErrStr + n, sizeof(footErrStr) - n, "%.4f%s", footErr[i],
+                          i < NUM_LEGS - 1 ? " " : "")
+               : snprintf(footErrStr + n, sizeof(footErrStr) - n, "  --  %s",
+                          i < NUM_LEGS - 1 ? " " : "");
+    snprintf(footErrStr + n, sizeof(footErrStr) - n, "]m");
+
     _mgr->message(
         "%s t=%.1fs trust=[%.2f %.2f %.2f %.2f] |pos err|=%.4fm (drift %.1f%% of "
-        "%.2fm path, net %.2fm) vel rms=[%.4f %.4f %.4f]m/s roll/pitch rms=[%.4f "
-        "%.4f]rad yaw err=%.4frad\n",
+        "%.2fm path, net %.2fm) vel rms=[%.4f %.4f %.4f]m/s %s\n",
         POSVELMODULE_NAME, c.elapsed, meanTrust[0], meanTrust[1], meanTrust[2],
         meanTrust[3], c.position_error_norm, c.drift_percent, c.distance_travelled,
         c.net_displacement, c.velocity_rms.x(), c.velocity_rms.y(), c.velocity_rms.z(),
-        c.attitude_rms.x(), c.attitude_rms.y(), c.attitude_error.z());
+        footErrStr);
 
-    for (int i = 0; i < NUM_LEGS; i++) _trustSum[i] = 0.0;
+    for (int i = 0; i < NUM_LEGS; i++) {
+      _trustSum[i] = 0.0;
+      _footholdErrSum[i] = 0.0;
+      _footholdErrCount[i] = 0;
+    }
     _trustSamples = 0;
-
-    // Error budget, simulation only. The line above says how wrong the estimate
-    // is; this one says how much of that the filter could ever have avoided.
-    // Every millimetre a planted foot travels is a violation of the measurement
-    // model itself, invisible to the filter and not zero mean, so it biases
-    // velocity and integrates into position no matter how clean the IMU is.
-    if (_haveFootTruth) {
-      double slip[NUM_LEGS];
-      for (int i = 0; i < NUM_LEGS; i++)
-        slip[i] = _stanceCount[i] > 0 ? _slipSum[i] / (double)_stanceCount[i] : 0.0;
-
-      const double agree =
-          _contactSamples > 0 ? 100.0 * (double)_contactAgree / (double)_contactSamples
-                              : 0.0;
-
-      // Slip variance per unit stance time carries over unchanged from the
-      // filter this replaced, because the foot block of Q0 is dt times the
-      // identity here too. So this remains directly comparable with
-      // foot_process_noise_position, and the gap between them is the headroom a
-      // white noise model needs to cover a systematic rearward scrub.
-      Eigen::Vector3d qp = Eigen::Vector3d::Zero();
-      if (_stanceTimeTotal > 0.0) qp = _slipSumSqAxis / _stanceTimeTotal;
-
-      _mgr->message(
-          "%s   slip/stance=[%.1f %.1f %.1f %.1f]mm (max %.1fmm) "
-          "foot pos err=[%.4f %.4f %.4f %.4f]m contacts agree %.1f%%\n"
-          "%s   implied foot_process_noise_position=[%.2e %.2e %.2e] (body xyz)\n",
-          POSVELMODULE_NAME, 1000.0 * slip[0], 1000.0 * slip[1], 1000.0 * slip[2],
-          1000.0 * slip[3],
-          1000.0 * std::max(std::max(_slipMax[0], _slipMax[1]),
-                            std::max(_slipMax[2], _slipMax[3])),
-          _comparison.foothold_error[0], _comparison.foothold_error[1],
-          _comparison.foothold_error[2], _comparison.foothold_error[3], agree,
-          POSVELMODULE_NAME, qp.x(), qp.y(), qp.z());
-    }
-  }
-}
-
-void MdlPosVelEstimator::_updateSlipStats() {
-  _haveFootTruth = false;
-  if (!_truthEnable || !simGetFootPositions) return;
-
-  double truth[NUM_LEGS][3];
-  if (!simGetFootPositions(truth)) return;
-  for (int i = 0; i < NUM_LEGS; i++)
-    _footTruePos[i] = Eigen::Vector3d(truth[i][0], truth[i][1], truth[i][2]);
-  _haveFootTruth = true;
-
-  // Slip is measured over a whole stance rather than per cycle, because that is
-  // the quantity the filter is exposed to: the foot state is corrected toward
-  // one place at touchdown and held there until liftoff, so what matters is how
-  // far the foot has wandered by the time it leaves.
-  const double now = _mgr->readTime();
-  for (int i = 0; i < NUM_LEGS; i++) {
-    if (_contacts[i] && !_slipTracking[i]) {
-      _stanceStartPos[i] = _footTruePos[i];
-      _stanceStartTime[i] = now;
-      _slipTracking[i] = true;
-    } else if (!_contacts[i] && _slipTracking[i]) {
-      const Eigen::Vector3d d = _footTruePos[i] - _stanceStartPos[i];
-      const double slip = d.norm();
-      _slipSum[i] += slip;
-      if (slip > _slipMax[i]) _slipMax[i] = slip;
-      _stanceCount[i]++;
-      _slipTracking[i] = false;
-
-      // Resolved in the body frame: a foot slides along the direction of travel
-      // far more readily than it sinks, and separating the axes is what makes
-      // the number interpretable.
-      const Eigen::Vector3d dBody = _Rbw.transpose() * d;
-      _slipSumSqAxis += dBody.cwiseProduct(dBody);
-      _stanceTimeTotal += now - _stanceStartTime[i];
-    }
-  }
-
-  // Agreement between whichever detector is configured and the simulator's own
-  // contact state. A detector that holds a swinging foot down makes the filter
-  // fuse a moving point as a fixed one, which no amount of tuning elsewhere
-  // repairs.
-  if (simGetFootContacts) {
-    bool truthContacts[NUM_LEGS];
-    if (simGetFootContacts(truthContacts, nullptr)) {
-      for (int i = 0; i < NUM_LEGS; i++) {
-        if (_contacts[i] == truthContacts[i]) _contactAgree++;
-        _contactSamples++;
-      }
-    }
   }
 }
 
@@ -908,11 +798,12 @@ void MdlPosVelEstimator::_refreshLogBuffers() {
     _logFootholds[3 * i + 0] = p.x();
     _logFootholds[3 * i + 1] = p.y();
     _logFootholds[3 * i + 2] = p.z();
-    // Trust rather than the boolean: it is what the filter actually weighted
-    // this foot by, so a recorded run carries the quantity that explains the
-    // estimate as well as the force needed to re-tune the thresholds.
+    // The trust the filter actually weighted this foot by, so a recorded run
+    // carries the quantity that explains the estimate.
     _logContacts[i] = _trust[i];
-    _logContacts[NUM_LEGS + i] = _footForce[i];
+
+    for (int j = 0; j < 3; j++)
+      _logFootTruth[3 * i + j] = _haveFootTruth ? _footTruePos[i][j] : 0.0;
   }
 
   for (int i = 0; i < DIM; i++) _logCov[i] = _P(i, i);
@@ -925,18 +816,13 @@ void MdlPosVelEstimator::_refreshLogBuffers() {
     _logError[3] = c.velocity_error.x();
     _logError[4] = c.velocity_error.y();
     _logError[5] = c.velocity_error.z();
-    _logError[6] = c.attitude_error.x();
-    _logError[7] = c.attitude_error.y();
-    _logError[8] = c.attitude_error.z();
-    _logError[9] = c.drift_percent;
-    _logError[10] = c.distance_travelled;
-    _logError[11] = c.net_displacement;
+    _logError[6] = c.drift_percent;
+    _logError[7] = c.distance_travelled;
+    _logError[8] = c.net_displacement;
 
-    for (int i = 0; i < NUM_LEGS; i++) {
-      _logSlip[i] = c.foothold_error[i];
-      _logSlip[NUM_LEGS + i] =
-          _stanceCount[i] > 0 ? _slipSum[i] / (double)_stanceCount[i] : 0.0;
-    }
+    // Negative for an untrusted leg, so a plot shows a gap where the foot was
+    // airborne rather than a spurious return to zero error.
+    for (int i = 0; i < NUM_LEGS; i++) _logFootErr[i] = c.foothold_error[i];
   }
 }
 
@@ -1043,17 +929,7 @@ bool MdlPosVelEstimator::getFootPosition(int leg, Eigen::Vector3d& pos) const {
   return true;
 }
 
-bool MdlPosVelEstimator::getContactState(int leg) const {
-  if (leg < 0 || leg >= NUM_LEGS) return false;
-  return _contacts[leg];
-}
-
 double MdlPosVelEstimator::getContactTrust(int leg) const {
   if (leg < 0 || leg >= NUM_LEGS) return 0.0;
   return _trust[leg];
-}
-
-double MdlPosVelEstimator::getFootForce(int leg) const {
-  if (leg < 0 || leg >= NUM_LEGS) return 0.0;
-  return _footForce[leg];
 }
