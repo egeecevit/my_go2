@@ -83,6 +83,8 @@ void MdlOrientationEstimator::reset() {
   _qYawInv = Eigen::Quaterniond::Identity();
   _gyroBias.setZero();
   _accFilt.setZero();
+  _wcorr.setZero();
+  _gain = 0.0;
   _haveAttitude = false;
   _haveImu = false;
   _injectedAccBias = Eigen::Vector3d::Constant(_params.acc_bias_init);
@@ -125,22 +127,22 @@ void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
   const double a = dt / (_params.accel_filter_tau + dt);
   _accFilt += a * (acc - _accFilt);
 
-  Eigen::Vector3d wcorr = Eigen::Vector3d::Zero();
-  double gain = 0.0;
+  _wcorr.setZero();
+  _gain = 0.0;
 
   const double anorm = _accFilt.norm();
   if (anorm > 1e-6) {
     const Eigen::Vector3d upBody = _q.conjugate() * Eigen::Vector3d::UnitZ();
-    wcorr = (_accFilt / anorm).cross(upBody);
+    _wcorr = (_accFilt / anorm).cross(upBody);
 
     // The magnitude test still earns its place, but as a backstop rather than as
     // the main defence: it catches a genuinely sustained acceleration, a fall or
     // a shove, which no amount of averaging removes because it does not average
     // to zero. The paper's note that kappa is decreased "during highly-dynamic
     // portions of the gait". After filtering it is open nearly all the time.
-    gain = std::max(std::min(1.0, 1 - std::fabs(anorm - _params.gravity_magnitude) /
-                                      _params.gravity_magnitude),
-                    0.0);
+    _gain = std::max(std::min(1.0, 1 - std::fabs(anorm - _params.gravity_magnitude) /
+                                       _params.gravity_magnitude),
+                     0.0);
   }
 
   // The integral path, absent from equation (19) as printed. Without it a
@@ -149,9 +151,21 @@ void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
   // never named. Integrating the same error signal absorbs the constant, in the
   // way the I term of a PI loop does, and leaves the integrator holding the
   // quantity worth having.
-  _gyroBias -= _params.mahony_ki * gain * wcorr * dt;
+  _gyroBias -= _params.mahony_ki * _gain * _wcorr * dt;
 
-  const Eigen::Vector3d w = gyro - _gyroBias + _params.mahony_kp * gain * wcorr;
+  // Anti-windup. The gate above rejects a specific force whose *magnitude* has
+  // left the band, but a sustained acceleration that merely tilts the reference
+  // -- a shove, a slope, a long fall -- keeps the gate open while feeding the
+  // integrator an error that never averages away. Nothing else in the loop
+  // stops it, since to the filter that is indistinguishable from a gyroscope
+  // drifting. The limit is set far above any bias a flyable MEMS gyro has, so
+  // in normal operation this never binds; it exists so that a few seconds of
+  // abuse cannot leave a corrupted rate correction behind afterwards.
+  if (_params.mahony_bias_limit > 0.0)
+    _gyroBias = _gyroBias.cwiseMax(-_params.mahony_bias_limit)
+                    .cwiseMin(_params.mahony_bias_limit);
+
+  const Eigen::Vector3d w = gyro - _gyroBias + _params.mahony_kp * _gain * _wcorr;
 
   // qdot = 0.5 * q * (0, w) for a body-to-world Hamilton quaternion, with w in
   // the body frame. Explicit Euler is ample at 1 kHz against a body turning at
@@ -230,9 +244,15 @@ void MdlOrientationEstimator::init() {
   _readConfig();
 
   _logserver = (LogServer*)_mgr->findModule(LOGSERVER_NAME, 0);
-  if (_logserver)
+  if (_logserver) {
     _logserver->registerVar(LOG_DOUBLE, 16, ORIENTATIONMODULE_NAME, "state",
                             (unsigned char*)_logState);
+    // Separate from "state" rather than widening it: the offline plotting
+    // scripts index that variable by hand, so its width is part of its
+    // interface.
+    _logserver->registerVar(LOG_DOUBLE, 10, ORIENTATIONMODULE_NAME, "filter",
+                            (unsigned char*)_logFilter);
+  }
 }
 
 void MdlOrientationEstimator::uninit() {
@@ -240,6 +260,7 @@ void MdlOrientationEstimator::uninit() {
 
   if (_logserver) {
     _logserver->deleteVar(ORIENTATIONMODULE_NAME, "state");
+    _logserver->deleteVar(ORIENTATIONMODULE_NAME, "filter");
     _logserver = nullptr;
   }
 }
@@ -267,6 +288,7 @@ void MdlOrientationEstimator::_readConfig() {
   }
   p.mahony_kp = config.getDouble("mahony_kp", p.mahony_kp);
   p.mahony_ki = config.getDouble("mahony_ki", p.mahony_ki);
+  p.mahony_bias_limit = config.getDouble("mahony_bias_limit", p.mahony_bias_limit);
   p.accel_filter_tau = config.getDouble("accel_filter_tau", p.accel_filter_tau);
   p.gravity_magnitude = config.getDouble("gravity_magnitude", p.gravity_magnitude);
   // Silently ignoring a stale override left in a version or robot directory
@@ -378,4 +400,22 @@ void MdlOrientationEstimator::_refreshLogBuffer() {
     // question of whether this converges, and to what.
     _logState[13 + i] = _gyroBias[i];
   }
+
+  for (int i = 0; i < 3; i++) {
+    // The correction path, which used to be reconstructible only backwards from
+    // the attitude it produced. wcorr is the raw gravity disagreement and gain
+    // is how much of it was believed, so the two together say whether a bias
+    // estimate that went somewhere odd was fed a bad reference or simply not
+    // fed at all.
+    _logFilter[i] = _wcorr[i];
+    // The low passed specific force, since it and not the raw accelerometer is
+    // what the correction actually sees.
+    _logFilter[4 + i] = _accFilt[i];
+    // And the injected bias, which turns the question above from a judgement
+    // into a subtraction: with simnoise on, this is the exact quantity
+    // _logState[13 + i] is trying to find, so the true estimation error is a
+    // difference of two logged columns rather than an eyeball on a curve.
+    _logFilter[7 + i] = _injectedGyroBias[i];
+  }
+  _logFilter[3] = _gain;
 }

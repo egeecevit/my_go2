@@ -140,6 +140,30 @@ mahony_kp = 0.6
 # is monotone in it and nearly flat in mahony_kp over the usable range.
 mahony_ki = 0.09
 
+# Symmetric per-axis clamp on the bias estimate [rad/s]. Zero or negative leaves
+# the integrator unbounded, which is equation (19) plus a pure integral term and
+# nothing else.
+#
+# This is anti-windup and it bounds exactly one failure. The magnitude gate below
+# rejects a specific force whose length has left the band around g, but an
+# acceleration that merely tilts the reference without changing its length keeps
+# the gate wide open: a shove held for a few seconds, a run down a slope, the
+# free-fall part of a bad landing. Throughout, the integrator is handed an error
+# that does not average away, and it cannot tell that from a gyroscope drifting,
+# so it walks. The damage outlives the event, because the bias it ends up holding
+# is subtracted from the rate handed to the position filter for as long as it
+# takes the loop to unwind it -- eleven seconds at the gains above.
+#
+# 0.02 rad/s is about 1 deg/s, which is generous for any MEMS gyroscope worth
+# flying and an order of magnitude above the worst datasheet turn-on bias in that
+# class. It is deliberately not tight. In normal operation the estimate settles
+# near the 0.002 above, a factor of ten below the clamp, so this never binds and
+# has no effect on any number in the sweep table below; tightening it toward the
+# true bias would start rejecting honest estimates on a robot whose gyro is worse
+# than this one's. Set it from the gyroscope's specified bias, not from what the
+# filter happens to find.
+mahony_bias_limit = 0.02
+
 # Time constant for low passing the specific force before it is used as a gravity
 # reference [s]. Should span at least one gait period; the default is exactly the
 # trot period.

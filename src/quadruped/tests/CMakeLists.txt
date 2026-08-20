@@ -11,6 +11,12 @@ add_executable(test_state_estimator test_state_estimator.cc)
 target_link_libraries(test_state_estimator quadruped rtcore rtclient)
 add_test(NAME test_state_estimator COMMAND test_state_estimator)
 
+# Same reason as test_state_estimator: pulls in MdlOrientationEstimator.o, which
+# carries the rtcore Module base class alongside the attitude filter.
+add_executable(test_mahony_filter test_mahony_filter.cc)
+target_link_libraries(test_mahony_filter quadruped rtcore rtclient)
+add_test(NAME test_mahony_filter COMMAND test_mahony_filter)
+
 # Same reason as test_state_estimator: pulls in MdlTrot.o, which carries the
 # rtcore Module base class alongside the gait schedule being tested.
 add_executable(test_trot_gait test_trot_gait.cc)

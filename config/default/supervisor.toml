@@ -26,7 +26,7 @@ log = {
   # RHEX_LOG_MAX_MSG/2, which is 1024 bytes, so the whole list must fit in 128
   # doubles. On the Go2 the simulator entries alone are large -- qpos is 19 and
   # qvel is 18 -- so this fills up faster than it looks. The list below comes to
-  # 114, and the failure mode when it overflows is a "Failed to add <name>"
+  # 124, and the failure mode when it overflows is a "Failed to add <name>"
   # warning on the *last* variable that fit, which reads as a misspelling.
   #
   # Two entries were dropped to make room. MdlSimDriver_qacc: the acceleration
@@ -36,7 +36,7 @@ log = {
   # at the horizontal clamp and mean nothing anyway. Add either back with -c if
   # you need it, and drop something else in the same breath.
   vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
-        "MdlOrientationEstimator_state",
+        "MdlOrientationEstimator_state", "MdlOrientationEstimator_filter",
         "MdlPosVelEstimator_state", "MdlPosVelEstimator_footholds",
         "MdlPosVelEstimator_error",
         "MdlPosVelEstimator_contacts", "MdlPosVelEstimator_footerr",

@@ -134,6 +134,19 @@ class MdlOrientationEstimator : public rtcore::Module {
       See _filterAttitude() for why gating cannot substitute. */
     double accel_filter_tau = 0.5;
 
+    /** \brief Symmetric per-axis clamp on the bias estimate [rad/s], zero or
+        negative to leave it unbounded.
+
+      Bounds one failure, and only one: a sustained acceleration that averaging
+      does not remove -- a long fall, a shove held for seconds, a run down a
+      slope -- tilts the filtered gravity reference for as long as it lasts, and
+      the integrator, having no way to tell that from a gyroscope drifting, walks
+      off to a value no real gyro bias could have. Since the bias is subtracted
+      from the rate handed to the position filter, that walk outlives the event
+      that caused it. The clamp costs nothing in normal operation, where the
+      estimate sits near the true 0.002 rad/s, two orders below the default. */
+    double mahony_bias_limit = 0.02;
+
     /** \brief Magnitude of gravity [m/s^2].
 
       Doubles as the width of the band around g over which the gravity
@@ -189,7 +202,10 @@ class MdlOrientationEstimator : public rtcore::Module {
     @param q Body to inertial orientation, as reported by the IMU
     @param gyro Angular rate in the body frame [rad/s]
     @param acc Specific force in the body frame [m/s^2], gravity not removed
-    @param dt Timestep, used only by the synthetic bias random walk */
+    @param dt Timestep [s]: the attitude propagation and bias integration step
+           of the filter, and the interval the synthetic bias random walk is
+           scaled by. Ignored on the passthrough path, which does not
+           integrate anything. */
   void step(const Eigen::Quaterniond& q, const Eigen::Vector3d& gyro,
             const Eigen::Vector3d& acc, double dt);
 
@@ -212,8 +228,13 @@ class MdlOrientationEstimator : public rtcore::Module {
 
   /** \brief Gyroscope bias the attitude filter has found [rad/s].
 
-    Zero unless filter_attitude is set, and always zero on the yaw axis, which
-    gravity cannot observe. Already subtracted from getAngularVelocity(). */
+    Zero unless filter_attitude is set. Roll and pitch are the axes gravity
+    observes and the only ones that converge; the z component is not pinned to
+    zero, because wcorr is perpendicular to the *measured* gravity direction
+    rather than to body z, so any tilt cross-couples a little of the correction
+    onto that axis. It stays small and means nothing: global yaw is unobservable
+    from gravity whatever lands there. Already subtracted from
+    getAngularVelocity(). */
   const Eigen::Vector3d& getGyroBias() const { return _gyroBias; }
 
   /** \brief Roll, pitch and yaw of a quaternion, ZYX order.
@@ -246,6 +267,13 @@ class MdlOrientationEstimator : public rtcore::Module {
   Eigen::Vector3d _accFilt = Eigen::Vector3d::Zero();
   bool _haveAttitude = false;
 
+  // The last step's correction and its weight. Members rather than locals only
+  // so they can be logged: they are the whole correction path, and without them
+  // a bias estimate going somewhere unexpected can only be reasoned about
+  // backwards from the attitude it produced.
+  Eigen::Vector3d _wcorr = Eigen::Vector3d::Zero();
+  double _gain = 0.0;
+
   // Persistent, because IMUHW::getLastReading() is edge triggered: it reports
   // no new data when the timestamp it is handed matches the one it holds. A
   // stack local would be zeroed each cycle and would therefore always appear to
@@ -265,6 +293,10 @@ class MdlOrientationEstimator : public rtcore::Module {
   rtcore::LogServer* _logserver = nullptr;
   // quat(w,x,y,z), rpy, omegaBody, aWorld, gyroBias
   double _logState[16] = {0};
+  // Attitude filter internals: wcorr, gain, accFilt, injectedGyroBias. Kept in
+  // a second variable rather than appended to the one above, whose width the
+  // offline plotting scripts index into by hand.
+  double _logFilter[10] = {0};
 
   void _readConfig();
   /** \brief One step of the Mahony complementary filter; see params_t. */
