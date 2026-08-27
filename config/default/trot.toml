@@ -1,19 +1,22 @@
 # --- trot.toml ---
 #
-# Configuration for MdlTrot, an open loop diagonal trot.
+# Configuration for MdlTrot, a diagonal trot whose stance phase is carried by
+# the convex MPC in MdlConvexMPC. See mpc.toml for the solver itself; the two
+# files split along a real seam, with everything that describes the robot or the
+# optimization problem there and everything that describes the gait here.
 #
-# The module reads no state estimate and closes no loop around the body pose.
-# It exists to give MdlStateEstimator motion to track, and feeding the estimate
-# back into the gait would make the two impossible to judge separately.
+# The module reads both estimators and closes a loop around the body pose. That
+# is a change from the revision this replaces, which was deliberately open loop
+# so the state estimator could be judged on its own; see the stance section
+# below for why that could not survive.
 
 [trot]
 
 # ---- COMMANDED BODY TWIST
 #
-# What the robot is asked to do. Open loop, so this is a feedforward intent
-# rather than a tracked setpoint, but it is also the figure to hold the
-# estimator's velocity output up against: the two should agree to within the
-# gait's own tracking error.
+# What the robot is asked to do, in the body frame. This is now a tracked
+# setpoint rather than a feedforward intent: it is integrated into the MPC's
+# body reference, and the solver spends ground reaction force to follow it.
 #
 # 0.15 m/s with the gait below works out to a 3.75 cm stride, which is short
 # enough that the swing foot never leaves the leg's comfortable workspace.
@@ -23,49 +26,18 @@ forward_velocity = 0.15   # v_x [m/s], positive is forward
 lateral_velocity = 0.0    # v_y [m/s], positive is left
 yaw_rate         = 0.0    # [rad/s], positive turns left
 
-# ---- STANCE VELOCITY FEEDBACK
+# Low pass on the estimated body velocity before it is used to place the
+# touchdown point (paper equation 33). A planted foot only avoids scrubbing if
+# it is swept backwards at the body's real speed, so the sweep is built on the
+# estimate; the filter is there because the estimate is refreshed every
+# millisecond and carries the trunk's own bounce at the gait frequency, which
+# would otherwise modulate the stride within a single stance. Well under the
+# gait period, so a genuine change of speed still gets through.
 #
-# A planted foot only avoids scrubbing if it is swept backwards at exactly the
-# body's real speed. Open loop the gait uses the commanded speed, and any
-# difference drags the foot along the ground for the whole stance. Enabling this
-# sweeps against MdlPosVelEstimator's velocity instead.
-#
-# Off by default on purpose. It is the only feedback path in this module, and
-# with it off the estimator's reported drift measures the estimator alone rather
-# than the estimator and the gait together.
-#
-# gain blends command to estimate: 0 is open loop, 1 is fully closed.
-# tau low passes the estimate, well under the gait period so the trunk's own
-#     bounce does not modulate the stride within a single stance.
-# limit caps the correction per axis. This loop is positive feedback -- an
-#     estimate that reads low shortens the stride, which slows the robot, which
-#     reads lower still -- so the cap is what stops it running away.
-#
-# Measured over a 90 s trot, and the reason it stays off:
-#
-#   gain / source        distance   front slip   drift
-#   0    (open loop)      1.38 m      2.8 mm     4.7%
-#   1.0  estimate         0.71 m      3.8 mm     3.9%
-#   1.0  ground truth     0.70 m      3.8 mm      --
-#   0.3  estimate         1.19 m      2.5 mm    13.1%
-#
-# Full feedback halves the distance covered for no real drift gain, since the
-# error falls only as far as the path does. Partial feedback is worse still.
-# Note the ground truth row: a perfect velocity produces the same slowdown as
-# the estimate, so this is not an estimator problem.
-#
-# The cause is upstream of anything tunable here. Open loop the robot only makes
-# about a tenth of the commanded 0.15 m/s, because a position controlled stance
-# leg cannot sweep a planted foot at that rate -- the tracking error becomes leg
-# deflection instead of body motion. Feeding the resulting low velocity back
-# asks for an even smaller sweep, hence less propulsion. The fix is torque
-# controlled stance, not a gain in this table.
-velocity_feedback = {
-  enable = false
-  gain  = 1.0
-  tau   = 0.1    # [s]
-  limit = 0.1    # [m/s]
-}
+# The gain/limit machinery that used to sit here is gone. It existed to blend
+# between the command and the estimate for an open-loop gait, and the body
+# reference is the closed loop now.
+velocity_filter_tau = 0.1   # [s]
 
 # ---- GAIT
 
@@ -75,8 +47,8 @@ period = 0.5              # [s]
 # Stance fraction. 0.5 is a pure trot, with one diagonal pair landing exactly
 # as the other lifts. Above 0.5 the pairs overlap, so there are brief intervals
 # with all four feet down: slower, but much easier to keep upright, and it
-# gives the estimator's contact detector cleaner transitions to find. Try 0.6
-# first if the robot is unsteady.
+# gives the MPC a redundant support polygon to distribute force over instead of
+# a line. Try 0.6 first if the robot is unsteady.
 duty = 0.5
 
 # Peak foot clearance at mid swing. Enough to clear the ground without the
@@ -99,16 +71,23 @@ phase_offset = [0.0, 0.5, 0.5, 0.0]
 #
 # y = 0.10 sits close to the Go2's 0.0955 m hip flexion offset, which keeps the
 # abduction joint near zero and the leg plane vertical, where the leg Jacobian
-# is best conditioned. z sets the standing height; -0.28 leaves the knee well
-# bent, so the leg has travel in both directions and never nears full extension
-# where the Jacobian degenerates.
+# is best conditioned. That matters more than it used to: stance torque is now
+# J^T f, so a badly conditioned Jacobian turns a modest ground force into a
+# large joint torque. z sets the standing height; -0.28 leaves the knee well
+# bent, so the leg has travel in both directions and never nears full extension.
+#
+# This is also what sets the height the MPC holds: MdlTrot captures the COM
+# height at TROT entry, which is whatever this footprint produced during PREP,
+# and uses it as the horizon's desired z. Change it and the trot height follows.
 origin = [0.0, 0.10, -0.28]
 
 # ---- BLEND DURATIONS
 #
 # WAIT holds the pose the module was activated in, PREP blends from there to
 # the nominal footprint, then TROT runs. CENTERING decelerates back to the
-# footprint with zero velocity when the behavior is asked to stop.
+# footprint with zero velocity when the behavior is asked to stop. Only TROT is
+# torque controlled; the other three hold a pose through IK and joint PD, which
+# is the right controller for that job.
 
 wait_duration      = 0.3   # [s]
 prep_duration      = 1.5   # [s]
@@ -119,60 +98,80 @@ centering_duration = 1.5   # [s]
 # at the PREP handoff, and it keeps the first strides gentle.
 rampup_duration    = 2.0   # [s]
 
-# ---- JOINT GAINS
+# ---- POSE-HOLDING GAINS
 #
-# Split by gait phase. Stiff while a leg supports the body, soft while it
-# swings, so a foot that catches on something yields instead of fighting.
-#
-# The swing gains matter far more than they look, because MdlStateEstimator
-# infers ground reaction force from joint torque through the leg Jacobian and
-# has no way to tell a contact force from the torque a stiff swing leg spends
-# on its own trajectory. Too stiff and it never releases the foot, so the
-# filter keeps fusing an airborne leg as a fixed point in the world.
-#
-# This gain is the dominant term in the estimator's position drift, by a wide
-# margin, and it acts entirely through how far a planted foot slides. Measured
-# over 30 s of trotting on the Go2, everything else held fixed:
-#
-#   swing_kp        40      25      15       8       4
-#   slip/stance   27mm    16mm   4.1mm   4.3mm   8.7mm
-#   drift          108%     99%     29%     50%     67%
-#
-# Drift tracks slip almost linearly, which is the whole story: the filter's
-# measurement model asserts a foot in contact is a fixed point in the world, and
-# every millimetre it actually travels is model error that is invisible to the
-# filter and not zero mean, so it biases velocity and integrates into position.
-# For contrast, MdlDrawSquare keeps all four feet planted and the same filter
-# drifts 1.3%.
-#
-# 15 is the minimum of that curve. Softer is not better: below it the leg stops
-# tracking its swing trajectory, lands badly and slides more.
-#
-# An earlier revision of this table quoted 4.0% at 15 and 1.5% at 8. Those came
-# from a distance metric that summed the body's raw 3D motion every millisecond
-# and so counted the gait's own bounce and sway as distance travelled, inflating
-# the denominator about fourfold. The ordering was right, the numbers were not.
-#
-# Judge any change here by the drift figure, not by the contacts= field in the
-# estimator's report. That report fires every groundtruth.report_period, which
-# at the default 2.0 s is an exact multiple of the 0.5 s gait period, so it
-# samples the same phase of the stride every time and prints a constant value
-# whether or not the feet are actually alternating. Change report_period to
-# something incommensurate, 0.7 say, before reading anything into it.
+# Joint space [Nm/rad] and [Nm/(rad/s)], used by WAIT, PREP and CENTERING only.
+# All three keep four feet planted and are tracking a foot position through IK,
+# so a single stiff pair is right and there is no swing case to soften for.
+prep_kp = 150.0
+prep_kd = 4.0
 
-stance_kp = 150.0   # Nm/rad
-stance_kd = 4.0     # Nm/(rad/s)
-swing_kp  = 15.0
-swing_kd  = 0.6
+# ---- SWING GAINS
+#
+# Cartesian, [N/m] and [N/(m/s)]. Not the old swing_kp/swing_kd renamed: those
+# were joint-space gains inside setFootCommand(), and the units changed with the
+# control law. Do not carry the old numbers over.
+#
+# This is equation (1) of the paper with tau_ff = 0. The feedforward term of
+# equation (2) needs a full multibody dynamics model, which this implementation
+# does not have, so the feedback has to cover the swing leg's own inertia and
+# weight on its own -- which is why these sit above what MIT uses with the
+# feedforward in place, scaled for the Go2's lighter leg.
+#
+# Starting values, chosen by argument rather than measured: the swing foot's
+# peak acceleration through the raised-cosine lift is about 16 m/s^2, which at
+# the leg's roughly half-kilo effective foot mass is order 10 N, and a
+# centimetre of tracking error at 500 N/m supplies it. Tune against actual swing
+# tracking in simulation before trusting them.
+#
+# There is no longer an estimator argument for keeping these low. The old table
+# here tied swing stiffness to estimator drift through a force-threshold contact
+# detector; that detector is gone, and MdlPosVelEstimator now takes its contact
+# phase from this module's gait schedule, which a swing gain cannot influence.
+swing_kp_cartesian = 800.0
+swing_kd_cartesian = 8.0
+
+# Joint-space damping carried alongside every TROT command, both phases
+# [Nm/(rad/s)]. Small and strictly positive, and it must stay that way:
+# MdlSimDriver substitutes 5.0 for any non-positive kd, and it does so by
+# mutating the stored command, so a single zero installs a damping twenty-five
+# times this one and no later command undoes it. 0.2 is the public Cheetah
+# controller's value.
+joint_damping = 0.2
+
+# ---- BODY REFERENCE
+#
+# The commanded velocity is integrated into a desired world position at the
+# 1 kHz behavior rate. Left alone that is a pure integrator, so a slip, a shove
+# or a foot that never lands leaves a position error that grows without bound
+# and the MPC ends up spending its whole force budget chasing a point the robot
+# will never reach. This clamps the desired horizontal position to stay within
+# this distance of the estimate, which bounds the error the solver ever sees
+# without touching the velocity reference, where the actual tracking happens.
+position_reference_clamp = 0.1   # [m]
 
 # ---- SAFETY
 
 # Maximum joint tracking error before the behavior aborts. Larger than the
-# stand limit, since a trot legitimately runs further behind its command.
+# stand limit, since a pose blend legitimately runs behind its command.
+#
+# Checked in PREP and CENTERING only. In TROT the joint kp is zero and the
+# commanded position is the measured one, so this error is identically zero and
+# the check would be vacuous; motor readiness, finite torque and solver status
+# are what stand in for it there.
 tracking_error_limit = 0.5   # [rad]
 
-# A foot target outside the workspace is rejected by the leg's IK, which leaves
-# the previous command latched. One miss is survivable; this many in a row
-# means the trajectory has left the workspace and the gait is not being
-# executed at all, so the behavior aborts.
-ik_failure_limit = 3
+# A leg command can be rejected for a target outside the workspace (WAIT, PREP,
+# CENTERING) or for motors that are not ready or a non-finite torque (TROT).
+# Either way the previous command stays latched, so one miss is survivable; this
+# many in a row means the leg is not executing what the controller asked for and
+# the behavior aborts.
+command_failure_limit = 3
+
+# Consecutive failed MPC solves for which the last valid force is held before
+# the behavior aborts. A failed *first* solve aborts immediately whatever this
+# is set to: there is nothing to hold. Deliberately small -- the alternative to
+# aborting is not a safe fallback, because the old position-controlled stance
+# has been removed on purpose, and a robot silently trotting on a stale force is
+# worse than one that stops.
+mpc_failure_limit = 3

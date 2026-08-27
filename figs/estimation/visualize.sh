@@ -22,18 +22,28 @@ usage() {
   cat <<EOF
 Plot the state estimate against simulator ground truth.
 
-Usage: $(basename "$0") [options] [logfile]
+Usage: $(basename "$0") [options] [logfile1 [logfile2]]
 
-Writes one figure per quantity, each with x, y and z subplots, ground truth in
-solid blue and the estimate in solid red:
+Writes one figure per quantity for each log, each with x, y and z subplots.
+With one log, the original filenames are used:
 
   body_position.png  body_velocity.png  body_orientation.png
+  body_angular_velocity.png
   foot_position_FL.png  foot_position_FR.png  foot_position_RL.png
   foot_position_RR.png
 
+The last two need MdlOrientationEstimator_filter, which logs recorded before it
+was added do not carry; they are skipped with a note in that case:
+
+  gyro_bias.png  filtered_acceleration.png
+
+With two logs, each filename gains a <LOG> suffix, using the corresponding log
+filename without its extension, for example body_position_estrun.png.
+
 Arguments:
-  logfile             Supervisor .mat log to read
+  logfile1            Supervisor .mat log to read
                       (default: <repo>/bin/estrun.mat)
+  logfile2            Optional second Supervisor .mat log
 
 Options:
   -o, --outdir DIR    Write the figures here (default: $SCRIPT_DIR)
@@ -63,11 +73,12 @@ Recording a log (logging is off by default, and the run must exit cleanly via Q)
            -c 'supervisor.log.file_name = "estrun.mat"'
 
 Examples:
-  $(basename "$0")                          # plot bin/estrun.mat
-  $(basename "$0") --start 9                # skip the stand-up transient
-  $(basename "$0") -s 20 -e 21.5 -w         # zoom on one stride, and display it
-  $(basename "$0") -a -o /tmp/aligned       # without the heading drift
-  $(basename "$0") -o /tmp/figs run2.mat    # a different log, elsewhere
+  $(basename "$0")
+  $(basename "$0") run1.mat
+  $(basename "$0") bin/estrun.mat bin/lpf_estrun.mat
+  $(basename "$0") --start 9 run1.mat run2.mat
+  $(basename "$0") -s 20 -e 21.5 -w run1.mat run2.mat
+  $(basename "$0") -a -o /tmp/aligned run1.mat run2.mat
 
 See README.md in this directory for how to read the figures.
 EOF
@@ -82,7 +93,7 @@ setup_venv() {
   echo "Done."
 }
 
-LOGFILE=""
+LOGFILES=()
 ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -99,18 +110,18 @@ while [[ $# -gt 0 ]]; do
     -w|--show)   ARGS+=(--show); shift ;;
     -a|--heading-aligned)
                  ARGS+=(--heading-aligned); shift ;;
-    --)          shift; break ;;
+    --)          shift; LOGFILES+=("$@"); break ;;
     -*)          echo "Unknown option: $1" >&2; echo >&2
                  usage >&2; exit 2 ;;
-    *)           [[ -z "$LOGFILE" ]] || { echo "Only one logfile may be given" >&2; exit 2; }
-                 LOGFILE="$1"; shift ;;
+    *)           LOGFILES+=("$1"); shift ;;
   esac
 done
 
-# Anything after -- is a logfile too.
-if [[ $# -gt 0 ]]; then
-  [[ -z "$LOGFILE" ]] || { echo "Only one logfile may be given" >&2; exit 2; }
-  LOGFILE="$1"
+if [[ ${#LOGFILES[@]} -gt 2 ]]; then
+  echo "At most two logfiles may be given" >&2
+  echo >&2
+  usage >&2
+  exit 2
 fi
 
 [[ -x "$PY" ]] || setup_venv
@@ -118,4 +129,4 @@ fi
 # The venv's interpreter directly rather than `source .venv/bin/activate`: the
 # activation would be undone the moment this subshell exits, so it buys nothing,
 # and its unset PS1 reference trips over `set -u`.
-exec "$PY" "$PLOTTER" ${LOGFILE:+"$LOGFILE"} "${ARGS[@]+"${ARGS[@]}"}"
+exec "$PY" "$PLOTTER" "${ARGS[@]}" -- "${LOGFILES[@]}"

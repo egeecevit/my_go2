@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.5)
+# 3.18 rather than 3.5 because src/quadruped fetches qpOASES with FetchContent
+# and relies on FetchContent_MakeAvailable's subdirectory handling. Raising the
+# floor here rather than there keeps one number to look at.
+cmake_minimum_required(VERSION 3.18)
 project(go1control)
 
 option(DEBUG_ASAN "Enable ASAN debug option" OFF)

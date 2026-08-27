@@ -505,6 +505,107 @@ void test_stance_progress() {
   std::cout << "  PASS" << std::endl;
 }
 
+// The MPC horizon is built by querying this schedule at elapsed + k*dt_mpc for
+// a fixed number of steps ahead, which is only legitimate because TrotGait is a
+// pure function of time: nothing here caches a phase or advances an internal
+// clock. This test pins that property down, and pins the alignment of the
+// horizon's first interval to the present, which is the classic place for a
+// controller to end up reacting exactly one interval late.
+void test_future_horizon_samples() {
+  std::cout << "test_future_horizon_samples..." << std::endl;
+
+  const TrotGait g = makeGait();
+  const double T = g.getParams().period;
+  const double beta = g.getParams().duty;
+  const double dt = 0.04;  // mpc.dt
+  const int H = 10;        // MdlConvexMPC::HORIZON
+
+  for (double elapsed : {0.0, 0.0173, 0.0731, 0.31, 1.234, 7.77}) {
+    bool now[TrotGait::NUM_LEGS];
+    Eigen::Vector3d nowPos[TrotGait::NUM_LEGS], nowVel[TrotGait::NUM_LEGS];
+    for (int leg = 0; leg < TrotGait::NUM_LEGS; leg++) {
+      now[leg] = g.inStance(leg, elapsed);
+      g.sample(leg, elapsed, kU, nowPos[leg], nowVel[leg]);
+    }
+
+    // Walk the whole horizon, twice, interleaving the two passes so a cached
+    // phase or a mutated datum would show up as a disagreement.
+    bool horizon[H][TrotGait::NUM_LEGS];
+    for (int k = 0; k < H; k++) {
+      const double t = elapsed + k * dt;
+      for (int leg = 0; leg < TrotGait::NUM_LEGS; leg++) {
+        horizon[k][leg] = g.inStance(leg, t);
+
+        Eigen::Vector3d p1, v1, p2, v2;
+        g.sample(leg, t, kU, p1, v1);
+        g.stanceProgress(leg, t);
+        g.legPhase(leg, t);
+        g.sample(leg, t, kU, p2, v2);
+        T_VEC_NEAR(p2, p1, 0.0, "repeated future sample position");
+        T_VEC_NEAR(v2, v1, 0.0, "repeated future sample velocity");
+        T_CHECK(g.inStance(leg, t) == horizon[k][leg]);
+
+        // A foot the horizon calls planted has to be on the ground, or the
+        // moment arm handed to the QP describes a foot in the air pushing.
+        if (horizon[k][leg]) {
+          T_NEAR(p1.z(), 0.0, 1e-15);
+          T_VEC_NEAR(v1, kU, 1e-15, "future stance velocity");
+        }
+      }
+    }
+
+    // Querying the future left the present exactly where it was.
+    for (int leg = 0; leg < TrotGait::NUM_LEGS; leg++) {
+      T_CHECK(g.inStance(leg, elapsed) == now[leg]);
+      Eigen::Vector3d p, v;
+      g.sample(leg, elapsed, kU, p, v);
+      T_VEC_NEAR(p, nowPos[leg], 0.0, "present position after future queries");
+      T_VEC_NEAR(v, nowVel[leg], 0.0, "present velocity after future queries");
+
+      // Interval zero of the horizon is now, not one step from now. If this
+      // ever slips the controller applies interval one's forces during
+      // interval zero, which reads as a badly tuned gait rather than as a bug.
+      T_CHECK(horizon[0][leg] == now[leg]);
+    }
+
+    // Diagonals stay in step and the pairs stay opposed at every horizon step,
+    // for a pure trot. The MPC's support polygon is built from this.
+    for (int k = 0; k < H; k++) {
+      T_CHECK(horizon[k][0] == horizon[k][3]);
+      T_CHECK(horizon[k][1] == horizon[k][2]);
+      T_CHECK(horizon[k][0] != horizon[k][1]);
+    }
+
+    // The horizon is 0.4 s against a 0.5 s cycle, so every leg must both lift
+    // and land within it. A schedule that reported a constant mask over the
+    // horizon would leave the solver planning for a support state that never
+    // changes, which is the failure this catches.
+    for (int leg = 0; leg < TrotGait::NUM_LEGS; leg++) {
+      int changes = 0;
+      for (int k = 1; k < H; k++)
+        if (horizon[k][leg] != horizon[k - 1][leg]) changes++;
+      T_CHECK(changes >= 1);
+    }
+  }
+
+  // Transition alignment: contact flips exactly at the analytic liftoff and
+  // touchdown instants, so a horizon step landing arbitrarily close to one gets
+  // the side it is actually on.
+  const double eps = 1e-9;
+  for (int leg = 0; leg < TrotGait::NUM_LEGS; leg++) {
+    const double phi0 = g.getParams().phase_offset[leg];
+    const double tLiftoff = (beta - phi0 + 1.0) * T;
+    const double tTouchdown = (1.0 - phi0 + 1.0) * T;
+
+    T_CHECK(g.inStance(leg, tLiftoff - eps));
+    T_CHECK(!g.inStance(leg, tLiftoff + eps));
+    T_CHECK(!g.inStance(leg, tTouchdown - eps));
+    T_CHECK(g.inStance(leg, tTouchdown + eps));
+  }
+
+  std::cout << "  PASS" << std::endl;
+}
+
 int main() {
   std::cout << "=== Trot Gait Tests ===" << std::endl;
   test_phase_schedule();
@@ -517,6 +618,7 @@ int main() {
   test_velocity_matches_finite_difference();
   test_zero_command_steps_in_place();
   test_degenerate_params_are_clamped();
+  test_future_horizon_samples();
   std::cout << "All trot gait tests passed." << std::endl;
   return 0;
 }

@@ -69,7 +69,7 @@ use_ground_truth = false
 # exact by construction and nothing about it is ever tested. No amount of
 # simnoise changes that, because simnoise deliberately corrupts only the rates
 # and forces. Switch to "filter" and the corruption finally has somewhere to act.
-attitude_source = "filter"
+attitude_source = "imu"
 
 # Proportional gain, kappa in equation (19) [1/s]. The de-drifting time constant
 # is roughly its reciprocal. Larger tracks gravity harder and lets more of the

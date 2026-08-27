@@ -34,7 +34,6 @@ simulation | go1 | robot)
   echo "Building..."
   cmake --build .
   echo "Installing..."
-  rm -rf "$SCRIPT_DIR/bin" "$SCRIPT_DIR/lib"
   cmake --install .
   echo ""
   echo "Done. Binaries installed to $SCRIPT_DIR/bin/"

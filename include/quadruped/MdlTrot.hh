@@ -15,7 +15,10 @@
 
 #define TROTMODULE_NAME "MdlTrot"
 
+#include "quadruped/MdlConvexMPC.hh"
+
 class MdlLegControl;
+class MdlOrientationEstimator;
 class MdlPosVelEstimator;
 class QuadrupedKinematics;
 
@@ -100,28 +103,46 @@ struct TrotGait {
   params_t _params;
 };
 
-/** \brief Behavioral module that walks the robot with an open loop trot.
+/** \brief Behavioral module that walks the robot with a diagonal trot, with
+    stance carried by a convex MPC ground reaction force.
 
-  Commands all four feet along the TrotGait schedule, offset from a nominal
-  footprint built under the hips, through MdlLegControl's foot space interface.
+  MdlTrot is the coordinator. It owns gait phase, future contact timing, the
+  body reference and the swing foot references; MdlConvexMPC turns those plus
+  the estimated body state into four world frame ground reaction forces; and
+  MdlLegControl turns those into motor torque. The division follows the block
+  diagram of Di Carlo et al., *Dynamic Locomotion in the MIT Cheetah 3 through
+  Convex Model-Predictive Control* (IROS 2018).
 
-  The module is deliberately open loop: it reads no state estimate and closes
-  no loop around the body pose. It exists so that MdlStateEstimator has motion
-  to track, and feeding the estimate back into the gait would make the two
-  impossible to judge separately. Every other behavior on this platform keeps
-  four feet planted, which leaves the estimator's foothold relocation, its
-  velocity states and its bias states entirely unexercised.
+  Both control modes go through one call, MdlLegControl's Cartesian force
+  command, and differ only in what is passed to it:
 
-  The state machine mirrors MdlDrawSquare. WAIT holds the pose the module was
-  activated in, PREP blends from there to the nominal footprint, TROT runs the
-  gait, and CENTERING decelerates back to the footprint with zero velocity so
-  the handoff to whatever comes next has no discontinuity.
+    - swing:  Cartesian kp/kd about the gait's foot reference, zero feedforward
+    - stance: zero Cartesian gains, the MPC force rotated into the body frame
+
+  This is what the module could not do before. Its earlier revision commanded
+  stance through IK and joint PD, which caps the speed the robot can make good:
+  a planted foot swept by a position controlled leg turns the tracking error
+  into leg deflection rather than body motion, and the robot realized about a
+  tenth of the commanded velocity whatever the gains were. Stance is now a force
+  command and there is no position loop on a planted foot at all.
+
+  Only the TROT state changed. WAIT holds the pose the module was activated in,
+  PREP blends from there to the nominal footprint, and CENTERING decelerates
+  back to the footprint with zero velocity so the handoff to whatever comes next
+  has no discontinuity; all three keep four feet planted and stay on the
+  IK/joint-PD path, which is the right controller for holding a pose.
 
   Stride grows from zero over rampup_duration once TROT starts, so the robot
   steps in place before it accelerates. That removes the velocity step at the
   PREP handoff and keeps the first strides gentle.
 
-  Configuration lives in the [trot] table; see trot.toml.
+  There is no silent fallback. If either estimator is not ready, or the first
+  MPC solve fails, or solves keep failing, the module goes to ERROR rather than
+  quietly reverting to position controlled stance -- a robot trotting on the old
+  controller while the log says MPC is the thing nobody would notice.
+
+  Configuration lives in the [trot] table; see trot.toml, and in [mpc] for the
+  solver; see mpc.toml.
  */
 class MdlTrot : public rtcore::Module {
  public:
@@ -168,7 +189,9 @@ class MdlTrot : public rtcore::Module {
 
   MdlLegControl* _legs[NUM_LEGS] = {};
   QuadrupedKinematics* _kinematics = nullptr;
+  MdlOrientationEstimator* _orientation = nullptr;
   MdlPosVelEstimator* _posvel = nullptr;
+  MdlConvexMPC* _mpc = nullptr;
   TrotGait _gait;
 
   _state_t _state = _state_t::WAIT;
@@ -192,30 +215,53 @@ class MdlTrot : public rtcore::Module {
   double _mark = 0.0;       // entry time of the current state
   double _trot_mark = 0.0;  // entry time of TROT, the gait phase datum
 
-  int _ikFailures[NUM_LEGS] = {0, 0, 0, 0};
+  int _cmdFailures[NUM_LEGS] = {0, 0, 0, 0};
+
+  // -- Measured body state, refreshed once per TROT cycle --------------------
+  //
+  // At the whole-robot centre of mass, not the body frame origin: that is the
+  // point the paper's rigid body model and mpc.inertia_body are both about, and
+  // MdlPosVelEstimator estimates the other one. Mixing them puts a fixed lever
+  // arm error into every predicted moment.
+  Eigen::Matrix3d _Rbw = Eigen::Matrix3d::Identity();
+  Eigen::Vector3d _comPos = Eigen::Vector3d::Zero();
+  Eigen::Vector3d _comVel = Eigen::Vector3d::Zero();
+  Eigen::Vector3d _rpy = Eigen::Vector3d::Zero();
+  Eigen::Vector3d _omegaWorld = Eigen::Vector3d::Zero();
+  bool _stateValid = false;
+
+  // Yaw carried on a continuous branch rather than wrapped into (-pi, pi]. The
+  // QP sees the difference between the current and reference yaw directly, so a
+  // wrap between the two would read as a full turn of heading error.
+  double _yawUnwrapped = 0.0;
+  double _yawWrapped = 0.0;  // last raw estimate, for the unwrap increment
+  bool _haveYaw = false;
+
+  // -- Body reference, integrated at the behavior rate -----------------------
+  Eigen::Vector3d _desPos = Eigen::Vector3d::Zero();  // world x, y and hold height
+  double _desYaw = 0.0;
+
+  // Filtered body-frame velocity estimate, refreshed once per cycle in TROT.
+  // The touchdown geometry is built on the estimate rather than the command,
+  // matching paper equation (33): a planted foot only avoids scrubbing if it is
+  // swept at the negated *actual* body velocity. The filter is there because
+  // the estimate is refreshed every millisecond and carries the trunk's own
+  // bounce, which would otherwise modulate the stride within a single stance.
+  Eigen::Vector3d _vfilt = Eigen::Vector3d::Zero();
+  bool _vfiltValid = false;
+
+  // -- MPC cadence and result ------------------------------------------------
+  MdlConvexMPC::output_t _mpcOut;
+  bool _mpcHave = false;   // a valid force has been solved for at least once
+  double _mpcMark = 0.0;   // time of the last solve attempt
+  int _mpcFailures = 0;    // consecutive failed solves
+  bool _mpcMask[NUM_LEGS] = {true, true, true, true};  // contact mask at that solve
 
   // -- Configuration, all from the [trot] table
 
   Eigen::Vector3d _vcmd = Eigen::Vector3d(0.15, 0.0, 0.0);
   double _yawRate = 0.0;
-
-  // Stance sweep velocity feedback. Off by default, which keeps the module
-  // open loop and so keeps the estimator's drift figure a measurement of the
-  // estimator rather than of the two together.
-  //
-  // A planted foot only avoids scrubbing if it is swept at the negated *actual*
-  // body velocity. Open loop the gait uses the commanded one, and the
-  // difference drags the foot for the whole stance. Enabling this replaces the
-  // command with the estimate, blended by gain so that 0 is fully open loop
-  // and 1 fully closed, and clamped so a bad estimate cannot run away with the
-  // stride.
-  bool _vfbEnable = false;
-  double _vfbGain = 1.0;
-  double _vfbTau = 0.1;    // [s] low pass on the estimate
-  double _vfbLimit = 0.1;  // [m/s] cap on the correction, per axis
-  // Filtered body-frame velocity estimate, updated once per cycle in TROT.
-  Eigen::Vector3d _vfilt = Eigen::Vector3d::Zero();
-  bool _vfbActive = false;  // estimate was usable on the last cycle
+  double _velocityFilterTau = 0.1;  // [s]
 
   double _origin[3] = {0.0, 0.10, -0.28};
 
@@ -224,13 +270,21 @@ class MdlTrot : public rtcore::Module {
   double _rampup_duration = 2.0;
   double _centering_duration = 1.5;
 
-  Eigen::Vector3d _stance_kp = Eigen::Vector3d::Constant(150.0);
-  Eigen::Vector3d _stance_kd = Eigen::Vector3d::Constant(4.0);
-  Eigen::Vector3d _swing_kp = Eigen::Vector3d::Constant(15.0);
-  Eigen::Vector3d _swing_kd = Eigen::Vector3d::Constant(0.6);
+  // Joint-space gains, used only by the states that hold a pose through IK.
+  Eigen::Vector3d _prep_kp = Eigen::Vector3d::Constant(150.0);
+  Eigen::Vector3d _prep_kd = Eigen::Vector3d::Constant(4.0);
 
+  // Cartesian swing gains [N/m] and [N/(m/s)], and the joint damping that rides
+  // along with every TROT command. Not the old joint-space numbers under new
+  // names: the units changed with the control law.
+  Eigen::Vector3d _swing_kp = Eigen::Vector3d::Constant(500.0);
+  Eigen::Vector3d _swing_kd = Eigen::Vector3d::Constant(8.0);
+  double _jointDamping = 0.2;
+
+  double _positionClamp = 0.1;  // [m]
   double _trackingErrorLimit = 0.5;
-  int _ikFailureLimit = 3;
+  int _cmdFailureLimit = 3;
+  int _mpcFailureLimit = 3;
 
   void _readConfig();
 
@@ -240,13 +294,24 @@ class MdlTrot : public rtcore::Module {
   /** \brief Foot velocity in the body frame while this leg is planted. */
   Eigen::Vector3d _stanceVelocity(int leg) const;
 
-  /** \brief Refreshes _vfilt from the estimator. Once per cycle, not once per
-      leg, so all four feet are swept against the same velocity. */
-  void _updateVelocityFeedback();
+  /** \brief Refreshes _comPos, _comVel, _rpy, _omegaWorld and the unwrapped yaw
+      from the two estimators. False when either has nothing usable to say. */
+  bool _readBodyState();
 
-  /** \brief Body velocity the stance sweep is built on: the command, or the
-      estimate when velocity feedback is enabled and available. */
+  /** \brief Advances the commanded world position and yaw by one behavior
+      cycle, and clamps the position back toward the estimate. */
+  void _integrateBodyReference();
+
+  /** \brief Builds one horizon from the gait and runs the solver. */
+  bool _solveMPC(double elapsed);
+
+  /** \brief Body velocity the stance sweep is built on: the filtered estimate,
+      or the command when no estimate is available. */
   Eigen::Vector3d _sweepVelocity() const;
+
+  /** \brief Rotation about the world z axis, the only reference attitude the
+      body reference ever has. */
+  static Eigen::Matrix3d _rotZ(double yaw);
 
   void _sendTarget();
   bool _checkTrackingError() const;

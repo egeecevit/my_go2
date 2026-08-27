@@ -8,16 +8,27 @@
 
 """Plots the state estimate against simulator ground truth.
 
-Reads a .mat file written by the Supervisor's logging thread and produces one
-figure per estimated quantity, each with an x, y and z subplot. Ground truth is
-solid blue and the estimate is solid red throughout, so the two are the same two
-colours on every axis of every figure.
+Reads one or two .mat files written by the Supervisor's logging thread and
+produces one figure per estimated quantity for each log, each with an x, y and z
+subplot. Ground truth is solid blue and estimates are solid red throughout; the
+angular-velocity figure additionally shows the reconstructed raw gyro in orange.
+With two logs, each log's filename appears in both its figure titles and output
+filenames. With one log, the original unsuffixed output filenames are retained.
 
-  body_position.png      r,      against qpos[0:3]
-  body_velocity.png      v,      against qvel[0:3]
-  body_orientation.png   rpy,    against qpos[3:7] converted to rpy
-  foot_position_<LEG>.png  foothold p_i, against the simulator's foot geom, one
-                           figure per leg in FL, FR, RL, RR order
+  body_position[_<LOG>].png      r,      against qpos[0:3]
+  body_velocity[_<LOG>].png      v,      against qvel[0:3]
+  body_orientation[_<LOG>].png   rpy,    against qpos[3:7] converted to rpy
+  body_angular_velocity[_<LOG>].png  corrected and raw gyro against qvel[3:6]
+  foot_position_<LEG>[_<LOG>].png  foothold p_i, against the simulator's foot
+                                   geom, one figure per leg in FL, FR, RL, RR order
+
+The last two need MdlOrientationEstimator_filter, which older logs predate. They
+are skipped with a note if it is absent rather than being a hard requirement:
+
+  gyro_bias[_<LOG>].png          the attitude filter's bias estimate against the
+                                 injected true bias
+  filtered_acceleration[_<LOG>].png  the low-passed gravity reference against the
+                                 ideal one, with the raw specific force overlaid
 
 See README.md in this directory for how to record the log.
 """
@@ -42,8 +53,21 @@ LEG_NAMES = ["FL", "FR", "RL", "RR"]
 
 TRUTH_STYLE = dict(color="blue", linestyle="-", linewidth=1.2, label="ground truth")
 EST_STYLE = dict(color="red", linestyle="-", linewidth=1.0, label="estimate")
+RAW_GYRO_STYLE = dict(color="darkorange", linestyle="-", linewidth=0.8,
+                      alpha=0.8, label="raw gyro (reconstructed)")
+CORRECTED_GYRO_STYLE = dict(color="red", linestyle="-", linewidth=1.0,
+                            label="bias-corrected gyro")
+# Same weight and colour as the raw gyro: on both figures the orange trace is the
+# unprocessed sensor and the red one is what the module made of it.
+RAW_ACCEL_STYLE = dict(color="darkorange", linestyle="-", linewidth=0.8,
+                       alpha=0.8, label="raw specific force")
 
 AXES = ["x", "y", "z"]
+
+# Magnitude of gravity, matching orientationestimator.gravity_magnitude and
+# posvelestimator.gravity in config/default/stateestimator.toml. Only used to
+# build the ideal gravity reference the filtered accelerometer is compared with.
+GRAVITY = 9.81
 
 
 def load_log(path):
@@ -123,6 +147,32 @@ def quat_to_rpy(q):
     return np.column_stack([roll, pitch, yaw])
 
 
+def quat_rotate(q, v, inverse=False):
+    """Rotates (N,3) vectors by (N,4) w-first quaternions; (3,) v broadcasts.
+
+    q is body to world throughout this code base, so `inverse=True` is the world
+    to body direction -- the one both accelerometer traces need, since the
+    specific force is a body frame quantity.
+
+    Written out as v + 2w(u x v) + 2u x (u x v) rather than by building rotation
+    matrices, so a minute of logging at 1 kHz stays a handful of array
+    operations instead of 60k small matmuls.
+    """
+    v = np.broadcast_to(np.asarray(v, dtype=float), (q.shape[0], 3))
+    w = q[:, 0:1]
+    u = q[:, 1:4]
+    if inverse:
+        u = -u
+    uxv = np.cross(u, v)
+    return v + 2.0 * (w * uxv + np.cross(u, uxv))
+
+
+def wrapped_angle_error(est, truth):
+    """Shortest signed Euler-angle difference, component by component."""
+    delta = est - truth
+    return np.arctan2(np.sin(delta), np.cos(delta))
+
+
 def heading_leak(t, dyaw, v_truth):
     """Position error attributable to the drifted heading alone, (N,3).
 
@@ -168,9 +218,11 @@ def heading_align(est, leak, dyaw, lever=None):
     return out
 
 
-def triple_plot(t, truth, est, title, ylabels, outpath, show):
+def triple_plot(t, truth, est, title, ylabels, outpath, show, error_fn=None):
     """One figure, three stacked subplots, truth and estimate overlaid."""
     fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+
+    error = est - truth if error_fn is None else error_fn(est, truth)
 
     for i in range(3):
         axs[i].plot(t, truth[:, i], **TRUTH_STYLE)
@@ -180,7 +232,7 @@ def triple_plot(t, truth, est, title, ylabels, outpath, show):
 
         # Error as an annotation rather than a fourth panel: it keeps the three
         # subplots the user asked for while still answering "how far off is it".
-        rms = float(np.sqrt(np.mean((est[:, i] - truth[:, i]) ** 2)))
+        rms = float(np.sqrt(np.mean(error[:, i] ** 2)))
         axs[i].text(
             0.995,
             0.04,
@@ -202,79 +254,180 @@ def triple_plot(t, truth, est, title, ylabels, outpath, show):
         plt.close(fig)
 
 
-def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("logfile", nargs="?",
-                    default=os.path.join(here, "..", "..", "bin", "estrun.mat"),
-                    help="Supervisor .mat log (default: bin/estrun.mat)")
-    ap.add_argument("-o", "--outdir", default=here,
-                    help="where to write the figures (default: this directory)")
-    ap.add_argument("--start", type=float, default=0.0,
-                    help="drop samples before this time [s]")
-    ap.add_argument("--stop", type=float, default=None,
-                    help="drop samples after this time [s]")
-    ap.add_argument("--show", action="store_true",
-                    help="also open the figures in a window")
-    ap.add_argument("-a", "--heading-aligned", action="store_true",
-                    help="rotate position errors out of the drifted heading "
-                         "before plotting; see heading_align()")
-    args = ap.parse_args()
+def body_rate_series(t, qvel, ori):
+    """Returns time-aligned body-rate truth, raw gyro and corrected gyro.
 
-    if args.show:
-        matplotlib.use("TkAgg", force=True)
+    MdlSimDriver runs after MdlOrientationEstimator. Consequently qvel at log
+    index i is one control sample newer than the IMU reading represented by the
+    orientation state at index i. Comparing ori[i] with qvel[i-1] removes that
+    deterministic logger skew. The estimator logs corrected gyro and its bias
+    estimate separately, so their sum reconstructs the raw gyro exactly.
+    """
+    if len(t) < 2:
+        raise SystemExit("at least two samples are needed for angular velocity")
+    corrected = ori[1:, 7:10]
+    raw = corrected + ori[1:, 13:16]
+    return t[1:], qvel[:-1, 3:6], raw, corrected
 
-    if not os.path.exists(args.logfile):
-        raise SystemExit(f"{args.logfile}: not found. See README.md for how to record one.")
 
-    t, data = load_log(args.logfile)
+def angular_velocity_plot(t, truth, raw, corrected, title, outpath, show):
+    """Body angular velocity with raw and corrected gyro RMSE per axis."""
+    fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+
+    for i in range(3):
+        axs[i].plot(t, truth[:, i], **TRUTH_STYLE)
+        axs[i].plot(t, raw[:, i], **RAW_GYRO_STYLE)
+        axs[i].plot(t, corrected[:, i], **CORRECTED_GYRO_STYLE)
+        axs[i].set_ylabel(f"omega_{AXES[i]} [rad/s]")
+        axs[i].grid(True, alpha=0.3)
+
+        raw_rms = float(np.sqrt(np.mean((raw[:, i] - truth[:, i]) ** 2)))
+        corrected_rms = float(np.sqrt(np.mean((corrected[:, i] - truth[:, i]) ** 2)))
+        axs[i].text(
+            0.995,
+            0.04,
+            f"raw rms {raw_rms:.4g}\ncorrected rms {corrected_rms:.4g}",
+            transform=axs[i].transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.7", alpha=0.85),
+        )
+
+    axs[0].legend(loc="upper left", fontsize=9)
+    axs[-1].set_xlabel("time [s]")
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(outpath, dpi=140)
+    print(f"wrote {outpath}")
+    if not show:
+        plt.close(fig)
+
+
+def filtered_acceleration_plot(t, ideal, raw, filtered, title, outpath, show):
+    """The attitude filter's gravity reference against the ideal one.
+
+    Three traces per axis: the ideal body-frame gravity from ground truth, the
+    raw specific force the accelerometer actually reports, and `_accFilt`, the
+    low-passed version the Mahony correction is built from. The gap between
+    orange and red is exactly what accel_filter_tau removes.
+    """
+    fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+
+    for i in range(3):
+        axs[i].plot(t, ideal[:, i], **TRUTH_STYLE)
+        axs[i].plot(t, raw[:, i], **RAW_ACCEL_STYLE)
+        axs[i].plot(t, filtered[:, i], **EST_STYLE)
+        axs[i].set_ylabel(f"a_{AXES[i]} [m/s^2]")
+        axs[i].grid(True, alpha=0.3)
+
+        raw_rms = float(np.sqrt(np.mean((raw[:, i] - ideal[:, i]) ** 2)))
+        filt_rms = float(np.sqrt(np.mean((filtered[:, i] - ideal[:, i]) ** 2)))
+        axs[i].text(
+            0.995,
+            0.04,
+            f"raw rms {raw_rms:.4g}\nfiltered rms {filt_rms:.4g}",
+            transform=axs[i].transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.7", alpha=0.85),
+        )
+
+    axs[0].legend(loc="upper left", fontsize=9)
+    axs[-1].set_xlabel("time [s]")
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(outpath, dpi=140)
+    print(f"wrote {outpath}")
+    if not show:
+        plt.close(fig)
+
+
+def reference_tilt(filtered, ideal):
+    """Angle between the filtered gravity reference and the true one [rad].
+
+    This is rho, the attitude error the gravity reference itself asserts, and it
+    is the whole reason accel_filter_tau exists. The Mahony loop can do no better
+    than its reference: with mahony_ki > 0 the estimate settles at exactly the
+    mean of this signal, so its DC is the estimator's steady tilt error and its
+    oscillation is not. See reports/mahony_error_decomposition.md.
+    """
+    cross = np.linalg.norm(np.cross(filtered, ideal), axis=1)
+    dot = np.sum(filtered * ideal, axis=1)
+    return np.arctan2(cross, dot)
+
+
+def logfile_tag(path):
+    """Returns a filesystem-friendly label based on a log's filename."""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    tag = "".join(c if c.isalnum() or c in "-_." else "_" for c in stem)
+    return tag or "log"
+
+
+def unique_log_tags(paths):
+    """Returns stable output tags, disambiguating equal/sanitized basenames."""
+    base_tags = [logfile_tag(path) for path in paths]
+    totals = {tag: base_tags.count(tag) for tag in base_tags}
+    seen = {}
+    tags = []
+    for tag in base_tags:
+        seen[tag] = seen.get(tag, 0) + 1
+        tags.append(f"{tag}_{seen[tag]}" if totals[tag] > 1 else tag)
+    return tags
+
+
+def plot_log(logfile, log_tag, outdir, start, stop, show, heading_aligned):
+    """Loads one log and writes its complete set of estimator figures."""
+    t, data = load_log(logfile)
 
     # Window before anything else, so the rms annotations describe the interval
     # actually plotted. The default log starts at supervisor.log.start, several
     # seconds before the robot stands, and that idle stretch flattens the scale
     # of every trace.
-    keep = t >= args.start
-    if args.stop is not None:
-        keep &= t <= args.stop
+    keep = t >= start
+    if stop is not None:
+        keep &= t <= stop
     if not keep.any():
-        raise SystemExit(f"no samples in [{args.start}, {args.stop}]; log spans "
+        raise SystemExit(f"{logfile}: no samples in [{start}, {stop}]; log spans "
                          f"0 to {t[-1]:.1f}s")
     t = t[keep]
     data = {k: v[keep] for k, v in data.items()}
 
-    os.makedirs(args.outdir, exist_ok=True)
-    out = lambda n: os.path.join(args.outdir, n)  # noqa: E731
+    filename_suffix = f"_{log_tag}" if log_tag else ""
+    out = lambda n: os.path.join(outdir, f"{n}{filename_suffix}.png")  # noqa: E731
+    log_title = f"\nLog: {os.path.basename(logfile)}" if log_tag else ""
 
     qpos = require(data, "MdlSimDriver_qpos", 7, "body position and orientation truth")
-    qvel = require(data, "MdlSimDriver_qvel", 3, "body velocity truth")
+    qvel = require(data, "MdlSimDriver_qvel", 6, "body velocity and angular velocity truth")
     pv = require(data, "MdlPosVelEstimator_state", 6, "body position and velocity")
-    ori = require(data, "MdlOrientationEstimator_state", 7, "estimated orientation")
+    ori = require(data, "MdlOrientationEstimator_state", 16,
+                  "estimated orientation, angular velocity and gyro bias")
 
     rpy_truth = quat_to_rpy(qpos[:, 3:7])
-    if args.heading_aligned:
+    if heading_aligned:
         # Wrapped, so a heading error that crosses pi does not read as 2*pi.
         dyaw = np.arctan2(np.sin(ori[:, 6] - rpy_truth[:, 2]),
                           np.cos(ori[:, 6] - rpy_truth[:, 2]))
         leak = heading_leak(t, dyaw, qvel[:, 0:3])
         align = lambda es, lever=None: heading_align(es, leak, dyaw, lever)  # noqa: E731
-        suffix = "\n(heading aligned: the drifted yaw's contribution removed)"
+        position_suffix = "\n(heading aligned: the drifted yaw's contribution removed)"
     else:
         align = lambda es, lever=None: es  # noqa: E731
-        suffix = ""
+        position_suffix = ""
 
     # -- Body position. qpos[0:3] is the free joint origin, which is the same
     #    point the filter's r describes, so no offset correction is needed.
     triple_plot(t, qpos[:, 0:3], align(pv[:, 0:3]),
-                "Body position: estimate vs ground truth" + suffix,
-                ["x [m]", "y [m]", "z [m]"], out("body_position.png"), args.show)
+                "Body position: estimate vs ground truth" + position_suffix + log_title,
+                ["x [m]", "y [m]", "z [m]"], out("body_position"), show)
 
     # -- Body velocity, world frame. The filter also carries a body frame
     #    velocity in columns 6:9; the world frame one is what qvel reports.
     triple_plot(t, qvel[:, 0:3], pv[:, 3:6],
-                "Body velocity (world frame): estimate vs ground truth",
-                ["vx [m/s]", "vy [m/s]", "vz [m/s]"], out("body_velocity.png"),
-                args.show)
+                "Body velocity (world frame): estimate vs ground truth" + log_title,
+                ["vx [m/s]", "vy [m/s]", "vz [m/s]"], out("body_velocity"),
+                show)
 
     # -- Body orientation.
     #
@@ -295,9 +448,68 @@ def main():
                 + ("(attitude_source = \"imu\": identical by construction, the IMU "
                    "quaternion is the simulator's own)" if passthrough else
                    "(attitude_source = \"filter\": estimated here, so these curves "
-                   "can and do differ)"),
+                   "can and do differ)") + log_title,
                 ["roll [rad]", "pitch [rad]", "yaw [rad]"],
-                out("body_orientation.png"), args.show)
+                out("body_orientation"), show, wrapped_angle_error)
+
+    # -- Body angular velocity. Both qvel[3:6] and the gyroscope use the body
+    #    frame. The proportional Mahony term corrects quaternion propagation but
+    #    is not a physical rate; the published rate therefore subtracts only the
+    #    integral bias estimate. Plotting raw and corrected gyro separately makes
+    #    it visible whether that bias estimate actually improves the measurement.
+    rate_t, rate_truth, raw_gyro, corrected_gyro = body_rate_series(t, qvel, ori)
+    angular_velocity_plot(
+        rate_t, rate_truth, raw_gyro, corrected_gyro,
+        "Body angular velocity (body frame): gyro vs ground truth\n"
+        "(ground truth shifted by one sample to match estimator logging)" + log_title,
+        out("body_angular_velocity"), show)
+
+    # -- Attitude filter internals. Optional: MdlOrientationEstimator_filter was
+    #    added after these plots existed, so any log recorded before it is
+    #    complete without these two figures and must still plot the rest.
+    #    Deliberately not require(), which exits.
+    if "MdlOrientationEstimator_filter" not in data:
+        print("note: 'MdlOrientationEstimator_filter' is not in this log; "
+              "skipping gyro_bias and filtered_acceleration. Add it to "
+              "supervisor.log.vars and re-record to get them.")
+    else:
+        filt = require(data, "MdlOrientationEstimator_filter", 10,
+                       "the attitude filter's correction, gain, filtered "
+                       "acceleration and injected true gyro bias")
+
+        # -- Gyro bias. The only figure here whose "truth" is injected rather
+        #    than physical: filt[7:10] is the synthetic bias simnoise added to
+        #    the simulator's clean gyro, so this measures the estimator against
+        #    the exact quantity it is trying to find. Note it is not constant --
+        #    gyro_bias_walk keeps it wandering for the whole run, which is why it
+        #    is plotted as a trace and not quoted as a number.
+        #
+        #    With mahony_ki = 0 the red trace is identically zero by
+        #    construction: the ki line is the only write to _gyroBias. That flat
+        #    line is the correct output, not a broken plot.
+        triple_plot(t, filt[:, 7:10], ori[:, 13:16],
+                    "Gyroscope bias: attitude filter estimate vs injected truth"
+                    + log_title,
+                    [f"b_{a} [rad/s]" for a in AXES], out("gyro_bias"), show)
+
+        # -- The gravity reference. The Mahony correction is built from
+        #    _accFilt, so how well it can possibly do is bounded by how far that
+        #    vector sits from true gravity; the angle between the red and blue
+        #    traces is rho, quoted in the title.
+        #
+        #    Ideal reference: gravity carried into the true body frame. The raw
+        #    overlay is reconstructed rather than logged -- aWorld is exactly
+        #    R_est * aBody, so rotating it back by the estimate quaternion
+        #    recovers the accelerometer reading bit for bit.
+        ideal_acc = quat_rotate(qpos[:, 3:7], [0.0, 0.0, GRAVITY], inverse=True)
+        raw_acc = quat_rotate(ori[:, 0:4], ori[:, 10:13], inverse=True)
+        rho = reference_tilt(filt[:, 4:7], ideal_acc)
+        filtered_acceleration_plot(
+            t, ideal_acc, raw_acc, filt[:, 4:7],
+            "Gravity reference (body frame): _accFilt vs true gravity\n"
+            f"(reference tilt rho: mean {1e3 * float(np.mean(rho)):.2f} mrad, "
+            f"rms {1e3 * float(np.sqrt(np.mean(rho ** 2))):.2f} mrad)" + log_title,
+            out("filtered_acceleration"), show)
 
     # -- Foot positions, one figure per leg.
     fh = require(data, "MdlPosVelEstimator_footholds", 12, "foot position estimates")
@@ -306,9 +518,59 @@ def main():
         s = slice(3 * leg, 3 * leg + 3)
         triple_plot(t, ft[:, s], align(fh[:, s], ft[:, s] - qpos[:, 0:3]),
                     f"{name} foot position (world frame): estimate vs ground truth"
-                    + suffix,
+                    + position_suffix + log_title,
                     [f"{a} [m]" for a in AXES],
-                    out(f"foot_position_{name}.png"), args.show)
+                    out(f"foot_position_{name}"), show)
+
+
+def main():
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(here, "..", ".."))
+    default_logfile = os.path.join(repo_root, "bin", "estrun.mat")
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("logfile", nargs="?", metavar="LOGFILE1",
+                    help="Supervisor .mat log to plot (default: bin/estrun.mat)")
+    ap.add_argument("logfile2", nargs="?", metavar="LOGFILE2",
+                    help="optional second Supervisor .mat log to plot")
+    ap.add_argument("-o", "--outdir", default=here,
+                    help="where to write the figures (default: this directory)")
+    ap.add_argument("--start", type=float, default=0.0,
+                    help="drop samples before this time [s] in both logs")
+    ap.add_argument("--stop", type=float, default=None,
+                    help="drop samples after this time [s] in both logs")
+    ap.add_argument("--show", action="store_true",
+                    help="also open the figures in a window")
+    ap.add_argument("-a", "--heading-aligned", action="store_true",
+                    help="rotate position errors out of the drifted heading "
+                         "before plotting; see heading_align()")
+    args = ap.parse_args()
+
+    logfiles = [path for path in (args.logfile, args.logfile2) if path is not None]
+    if not logfiles:
+        logfiles = [default_logfile]
+
+    if args.show:
+        matplotlib.use("TkAgg", force=True)
+
+    resolved_logfiles = []
+    for logfile in logfiles:
+        candidates = [logfile]
+        if not os.path.isabs(logfile):
+            candidates.append(os.path.join(repo_root, logfile))
+        resolved = next((path for path in candidates if os.path.exists(path)), None)
+        if resolved is None:
+            checked = " and ".join(os.path.abspath(path) for path in candidates)
+            raise SystemExit(f"{logfile}: not found (checked {checked}). "
+                             "See README.md for how to record one.")
+        resolved_logfiles.append(os.path.abspath(resolved))
+
+    os.makedirs(args.outdir, exist_ok=True)
+    log_tags = unique_log_tags(resolved_logfiles) if len(resolved_logfiles) == 2 \
+        else [None]
+    for logfile, log_tag in zip(resolved_logfiles, log_tags):
+        plot_log(logfile, log_tag, args.outdir, args.start, args.stop,
+                 args.show, args.heading_aligned)
 
     if args.show:
         plt.show()

@@ -10,6 +10,7 @@
 #include "rtcore/LogServer.hh"
 
 #include "quadruped/CoreModules.hh"
+#include "quadruped/MdlConvexMPC.hh"
 #include "quadruped/MdlDrawSquare.hh"
 #include "quadruped/MdlTrot.hh"
 #include "quadruped/MdlStand.hh"
@@ -25,6 +26,7 @@ static LogServer  *_logserver = nullptr;
 static MdlOrientationEstimator *_ori = nullptr;
 static MdlPosVelEstimator *_pv = nullptr;
 static MdlDrawSquare *_wm = nullptr;
+static MdlConvexMPC *_mpc = nullptr;
 static MdlTrot *_trot = nullptr;
 static MdlStand *_sm = nullptr;
 static MdlSit *_sit = nullptr;
@@ -42,6 +44,9 @@ void AddCoreModules( ModuleManager *mgr ) {
     CREATE_MODULE(mgr, MdlLegControl(i), _lm[i] );
 
   CREATE_MODULE(mgr, MdlDrawSquare, _wm );
+  // The solver before the behavior that grabs it: MdlTrot::init() looks it up,
+  // and addModule() runs init() as the module is added.
+  CREATE_MODULE(mgr, MdlConvexMPC, _mpc);
   CREATE_MODULE(mgr, MdlTrot, _trot);
   CREATE_MODULE(mgr, MdlStand, _sm);
   CREATE_MODULE(mgr, MdlSit, _sit);
@@ -62,6 +67,8 @@ void DeactivateCoreModules(ModuleManager *mgr ) {
   DEACTIVATE_MODULE(mgr, _sit);
   DEACTIVATE_MODULE(mgr, _sm);
   DEACTIVATE_MODULE(mgr, _trot);
+  // After MdlTrot, which owns it: the behavior has to release it first.
+  DEACTIVATE_MODULE(mgr, _mpc);
   DEACTIVATE_MODULE(mgr, _wm);
   for (int i = 0; i < 4; i++) DEACTIVATE_MODULE(mgr, _lm[i]);
   DEACTIVATE_MODULE(mgr, _pv);
@@ -73,6 +80,7 @@ void RemoveCoreModules(ModuleManager *mgr ) {
   DESTROY_MODULE(mgr, _sit);
   DESTROY_MODULE(mgr, _sm);
   DESTROY_MODULE(mgr, _trot);
+  DESTROY_MODULE(mgr, _mpc);
   DESTROY_MODULE(mgr, _wm);
   for (int i = 0; i < 4; i++) DESTROY_MODULE(mgr, _lm[i]);
   DESTROY_MODULE(mgr, _pv);

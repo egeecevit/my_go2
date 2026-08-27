@@ -29,6 +29,7 @@ file_rev = 1   # list.toml file revision
 # -- These are for fine-tuning of behavior based on robot structure
 %include drawsquare.toml
 %include trot.toml
+%include mpc.toml             # Solver MdlTrot's stance phase runs on
 %include legcontrol.toml
 %include sit.toml
 

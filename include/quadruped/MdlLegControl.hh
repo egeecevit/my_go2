@@ -38,6 +38,57 @@ public:
                       const Eigen::Vector3d &kp, const Eigen::Vector3d &kd,
                       const Eigen::Vector3d &tau_ff);
 
+  /** \brief Cartesian impedance about the *measured* foot state, emitted as
+      joint torque. Equation (1) of the MIT Cheetah 3 convex MPC paper.
+
+    The complement of setFootCommand(), which tracks a foot position through IK
+    and joint-space PD. Here nothing is inverted: the foot state comes from
+    forward kinematics on the measured joint angles, the Cartesian error is
+    turned into a force, and J^T maps that force to torque. That is what lets
+    one call serve both gait phases -- a swing leg gets Cartesian stiffness and
+    no feedforward, a stance leg gets zero stiffness and the ground reaction
+    force the MPC asked for -- and it is the only way to command a stance force
+    at all, since a position controlled stance leg turns tracking error into leg
+    deflection rather than body motion.
+
+    Units differ from setFootCommand(): kp and kd here are N/m and N/(m/s), not
+    Nm/rad and Nm/(rad/s).
+
+    @param force_feedforward_body Force the *actuators apply at the foot*, body
+           frame. For stance that is the negated, rotated ground reaction force;
+           the caller has already flipped the sign.
+    @param joint_damping Joint-space kd applied alongside the torque. Must be
+           positive: MdlSimDriver substitutes 5.0 for any non-positive kd and
+           does so by mutating the stored command, so a zero sent once sticks.
+    @return false, with nothing emitted, if the motors are not ready or the
+            resulting torque is not finite. */
+  bool setCartesianForceCommand(const Eigen::Vector3d &position_ref_body,
+                                const Eigen::Vector3d &velocity_ref_body,
+                                const Eigen::Vector3d &kp_cartesian,
+                                const Eigen::Vector3d &kd_cartesian,
+                                const Eigen::Vector3d &force_feedforward_body,
+                                double joint_damping);
+
+  /** \brief The equation (1) computation on its own, with no hardware.
+
+    Split out of setCartesianForceCommand() so the control law can be unit
+    tested: this repository has no mocking infrastructure and a MotorHW cannot
+    be faked, so the only testable form is one that takes the measured state as
+    an argument. Uses nothing but the leg's own kinematics.
+
+    @param q Measured joint angles [rad]
+    @param qdot Measured joint velocities [rad/s]
+    @param tau_ff Output feedforward joint torque [Nm]
+    @return false if the kinematics fail or any input or result is not finite,
+            in which case tau_ff is not meaningful. */
+  bool computeCartesianForceCommand(const Eigen::Vector3d &q, const Eigen::Vector3d &qdot,
+                                    const Eigen::Vector3d &position_ref_body,
+                                    const Eigen::Vector3d &velocity_ref_body,
+                                    const Eigen::Vector3d &kp_cartesian,
+                                    const Eigen::Vector3d &kd_cartesian,
+                                    const Eigen::Vector3d &force_feedforward_body,
+                                    Eigen::Vector3d &tau_ff) const;
+
   // FK from current joint state. False if motors not STATUS_READY.
   bool getFootPosition(Eigen::Vector3d &pos) const;
 

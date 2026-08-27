@@ -54,6 +54,10 @@ const std::map<ModuleId_t, ModuleConfig_t, ModuleCompare_t> moduleConfig = {
   { {"MdlPosVelEstimator", -1},      { 1, 0, SENSING_MODULES + 1 } },
   { {"MdlDrawSquare", -1},   { 1, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlTrot", -1},          { 1, 0, BEHAVIORAL_CONTROLLERS   } },
+  // The solver's update() is a no-op -- MdlTrot calls solve() synchronously at
+  // its own cadence -- so the order here is irrelevant. The entry exists only
+  // because CREATE_MODULE fatal-errors on a name missing from this table.
+  { {"MdlConvexMPC", -1},     { 1, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlStand", -1},         { 1, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlSit", -1},           { 1, 0, BEHAVIORAL_CONTROLLERS   } },
   { {"MdlLegControl", 0},     { 1, 0, BEHAVIORAL_CONTROLLERS+1 } },

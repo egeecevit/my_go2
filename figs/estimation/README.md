@@ -1,17 +1,27 @@
 # State estimator figures
 
 Plots `MdlOrientationEstimator` and `MdlPosVelEstimator` against the simulator's
-own state. One figure per quantity, three subplots for x, y and z, ground truth
-in solid blue and the estimate in solid red on every one.
+own state for one or two logs. One figure per quantity and log, three subplots
+for x, y and z, ground truth in solid blue and the estimate in solid red on every
+one. When two logs are supplied, `<LOG>` is the corresponding log's filename
+without its `.mat` extension; with one log, the original unsuffixed filenames
+are retained.
 
 | file | estimate | ground truth |
 |---|---|---|
-| `body_position.png` | `MdlPosVelEstimator_state[0:3]` | `MdlSimDriver_qpos[0:3]` |
-| `body_velocity.png` | `MdlPosVelEstimator_state[3:6]` | `MdlSimDriver_qvel[0:3]` |
-| `body_orientation.png` | `MdlOrientationEstimator_state[4:7]` | `MdlSimDriver_qpos[3:7]` → rpy |
-| `foot_position_{FL,FR,RL,RR}.png` | `MdlPosVelEstimator_footholds[3i:3i+3]` | `MdlPosVelEstimator_foottruth[3i:3i+3]` |
+| `body_position[_<LOG>].png` | `MdlPosVelEstimator_state[0:3]` | `MdlSimDriver_qpos[0:3]` |
+| `body_velocity[_<LOG>].png` | `MdlPosVelEstimator_state[3:6]` | `MdlSimDriver_qvel[0:3]` |
+| `body_orientation[_<LOG>].png` | `MdlOrientationEstimator_state[4:7]` | `MdlSimDriver_qpos[3:7]` → rpy |
+| `body_angular_velocity[_<LOG>].png` | corrected gyro `state[7:10]`; raw gyro reconstructed as `state[7:10] + state[13:16]` | `MdlSimDriver_qvel[3:6]` |
+| `foot_position_{FL,FR,RL,RR}[_<LOG>].png` | `MdlPosVelEstimator_footholds[3i:3i+3]` | `MdlPosVelEstimator_foottruth[3i:3i+3]` |
+| `gyro_bias[_<LOG>].png` | `MdlOrientationEstimator_state[13:16]` | `MdlOrientationEstimator_filter[7:10]`, the injected bias |
+| `filtered_acceleration[_<LOG>].png` | `MdlOrientationEstimator_filter[4:7]`; raw specific force reconstructed as `R_est^T · state[10:13]` | `R_true^T · (0,0,9.81)` from `MdlSimDriver_qpos[3:7]` |
 
 Each subplot is annotated with the RMS difference over the plotted window.
+
+The last two figures need `MdlOrientationEstimator_filter`, which was added after
+the others and which logs recorded before it do not carry. They are skipped with
+a printed note in that case; every other figure is unaffected.
 
 ## Recording a log
 
@@ -43,11 +53,14 @@ figs/estimation/.venv/bin/pip install numpy scipy matplotlib
 figs/estimation/.venv/bin/python figs/estimation/plot_estimation.py
 ```
 
-It defaults to `bin/estrun.mat` and writes the PNGs next to itself.
+With no argument it plots `bin/estrun.mat`. Relative log paths are first resolved
+from the current directory and then from the repository root, so `bin/estrun.mat`
+works regardless of where the command is launched. It writes PNGs next to the
+script by default.
 
 ```
-plot_estimation.py [logfile] [-o OUTDIR] [--start S] [--stop S] [--show]
-                   [-a | --heading-aligned]
+plot_estimation.py [logfile1 [logfile2]] [-o OUTDIR] [--start S] [--stop S]
+                   [--show] [-a | --heading-aligned]
 ```
 
 `--start` and `--stop` window the data before anything is computed, so the RMS
@@ -72,6 +85,16 @@ Under `"filter"`, the current default, the attitude is estimated from the rates
 and gravity and the comparison is real: roll and pitch should track within a
 couple of milliradians, and yaw drifts at the gyroscope's yaw bias times elapsed
 time because gravity says nothing about heading.
+
+**The angular-velocity figure checks a different output of the same stage.** The
+proportional Mahony correction changes quaternion propagation; it is not itself
+a physical angular rate. The integral correction estimates gyroscope bias, and
+the module publishes `gyro - gyroBias` for use by the position estimator's
+`omega x p` foot-velocity transport term. The figure therefore shows simulator
+body rate, reconstructed raw gyro and the published bias-corrected gyro. Logged
+simulator truth is one control sample newer than the estimator state because the
+simulation driver runs last, so the plot shifts truth back one sample before
+computing either RMSE.
 
 Either way the figure shows what the trunk actually does, which is worth knowing:
 during a kinematic trot roll swings about ±0.03 rad and yaw about ±0.04 rad at

@@ -10,7 +10,9 @@
 #include <cstdio>
 
 #include "hardware/MotorHW.hh"
+#include "quadruped/MdlConvexMPC.hh"
 #include "quadruped/MdlLegControl.hh"
+#include "quadruped/MdlOrientationEstimator.hh"
 #include "quadruped/MdlPosVelEstimator.hh"
 #include "quadruped/MdlTrot.hh"
 #include "quadruped/QuadrupedConfigs.hh"
@@ -130,11 +132,24 @@ void MdlTrot::init() {
   for (int i = 0; i < NUM_LEGS; i++)
     _legs[i] = (MdlLegControl*)_mgr->findModule(LEGMODULE_NAME, i);
 
-  // Optional, and read only: the estimator is created before this module in
-  // AddCoreModules, runs at SENSING_MODULES so its answer is from this cycle,
-  // and is MULTI_USER, so there is nothing to grab and nobody to contend with.
-  // A null pointer simply leaves the gait open loop.
+  // Read only, and no longer optional. Both estimators are MULTI_USER shared
+  // sensors created before this module in AddCoreModules and running at
+  // SENSING_MODULES, so their answer is from this cycle and there is nothing to
+  // grab. Stance is a force command now, and a force command with no idea where
+  // the body is or which way it is pointing is not something to fall back to.
+  _orientation = (MdlOrientationEstimator*)_mgr->findModule(ORIENTATIONMODULE_NAME, 0);
   _posvel = (MdlPosVelEstimator*)_mgr->findModule(POSVELMODULE_NAME, 0);
+  if (!_orientation || !_posvel)
+    _mgr->fatalError(TROTMODULE_NAME,
+                     "%s and %s must be created before %s in AddCoreModules()",
+                     ORIENTATIONMODULE_NAME, POSVELMODULE_NAME, TROTMODULE_NAME);
+
+  // The solver, on the other hand, is SINGLE_USER and is grabbed alongside the
+  // legs: it holds warm start state that belongs to whoever is walking.
+  _mpc = (MdlConvexMPC*)_mgr->findModule(MPCMODULE_NAME, 0);
+  if (!_mpc)
+    _mgr->fatalError(TROTMODULE_NAME, "%s must be created before %s in AddCoreModules()",
+                     MPCMODULE_NAME, TROTMODULE_NAME);
 
   ConfigTable hwConfig;
   std::string hwlib;
@@ -162,20 +177,10 @@ void MdlTrot::_readConfig() {
   _vcmd.z() = 0.0;
   _yawRate = config.getDouble("yaw_rate", _yawRate);
 
-  ConfigTable vfb;
-  if (config.getTable("velocity_feedback", vfb)) {
-    _vfbEnable = vfb.getBool("enable", _vfbEnable);
-    _vfbGain = vfb.getDouble("gain", _vfbGain);
-    _vfbTau = vfb.getDouble("tau", _vfbTau);
-    _vfbLimit = vfb.getDouble("limit", _vfbLimit);
-
-    if (!(_vfbGain >= 0.0)) _vfbGain = 0.0;
-    if (_vfbGain > 1.0) _vfbGain = 1.0;
-    // A zero time constant would make the filter a passthrough of a 1 kHz
-    // signal, which is exactly what it is there to avoid.
-    if (!(_vfbTau > 0.0)) _vfbTau = 0.01;
-    if (!(_vfbLimit >= 0.0)) _vfbLimit = 0.0;
-  }
+  _velocityFilterTau = config.getDouble("velocity_filter_tau", _velocityFilterTau);
+  // A zero time constant would make the filter a passthrough of a 1 kHz signal,
+  // which is exactly what it is there to avoid.
+  if (!(_velocityFilterTau > 0.0)) _velocityFilterTau = 0.01;
 
   TrotGait::params_t gp;
   gp.period = config.getDouble("period", gp.period);
@@ -205,14 +210,27 @@ void MdlTrot::_readConfig() {
   if (!(_rampup_duration > 0.0)) _rampup_duration = 0.01;
   if (!(_centering_duration > 0.0)) _centering_duration = 0.01;
 
-  _stance_kp = Eigen::Vector3d::Constant(config.getDouble("stance_kp", _stance_kp.x()));
-  _stance_kd = Eigen::Vector3d::Constant(config.getDouble("stance_kd", _stance_kd.x()));
-  _swing_kp = Eigen::Vector3d::Constant(config.getDouble("swing_kp", _swing_kp.x()));
-  _swing_kd = Eigen::Vector3d::Constant(config.getDouble("swing_kd", _swing_kd.x()));
+  _prep_kp = Eigen::Vector3d::Constant(config.getDouble("prep_kp", _prep_kp.x()));
+  _prep_kd = Eigen::Vector3d::Constant(config.getDouble("prep_kd", _prep_kd.x()));
+  _swing_kp =
+      Eigen::Vector3d::Constant(config.getDouble("swing_kp_cartesian", _swing_kp.x()));
+  _swing_kd =
+      Eigen::Vector3d::Constant(config.getDouble("swing_kd_cartesian", _swing_kd.x()));
+
+  _jointDamping = config.getDouble("joint_damping", _jointDamping);
+  // MdlSimDriver substitutes 5.0 for a non-positive kd by mutating the stored
+  // command, so a zero here would silently install a damping forty times the
+  // intended one and keep it there.
+  if (!(_jointDamping > 0.0)) _jointDamping = 0.2;
+
+  _positionClamp = config.getDouble("position_reference_clamp", _positionClamp);
+  if (!(_positionClamp > 0.0)) _positionClamp = 0.1;
 
   _trackingErrorLimit = config.getDouble("tracking_error_limit", _trackingErrorLimit);
-  _ikFailureLimit = (int)config.getInt("ik_failure_limit", _ikFailureLimit);
-  if (_ikFailureLimit < 1) _ikFailureLimit = 1;
+  _cmdFailureLimit = (int)config.getInt("command_failure_limit", _cmdFailureLimit);
+  if (_cmdFailureLimit < 1) _cmdFailureLimit = 1;
+  _mpcFailureLimit = (int)config.getInt("mpc_failure_limit", _mpcFailureLimit);
+  if (_mpcFailureLimit < 0) _mpcFailureLimit = 0;
 }
 
 void MdlTrot::uninit() {
@@ -229,17 +247,22 @@ void MdlTrot::activate() {
   _mark = _mgr->readTime();
 
   for (int i = 0; i < NUM_LEGS; i++) {
-    _ikFailures[i] = 0;
+    _cmdFailures[i] = 0;
     _stance[i] = true;
     _mgr->grabModule(_legs[i], this);
   }
+  // The solver goes with the legs. Its warm start describes the gait it was
+  // last solving, so handing it to another owner mid-stride would be worse than
+  // useless.
+  _mgr->grabModule(_mpc, this);
 
-  // Grab all legs first, then capture FK. If any capture fails, release
+  // Grab everything first, then capture FK. If any capture fails, release
   // everything before reporting the error.
   for (int i = 0; i < NUM_LEGS; i++) {
     if (!_legs[i]->getFootPosition(_footpos_start[i])) {
       _mgr->warning(TROTMODULE_NAME, "Failed to capture foot %d position", i);
       for (int j = 0; j < NUM_LEGS; j++) _mgr->releaseModule(_legs[j], this);
+      _mgr->releaseModule(_mpc, this);
       _status = ERROR;
       return;
     }
@@ -258,6 +281,7 @@ void MdlTrot::deactivate() {
   // Status is deliberately left alone: the Supervisor reads it to decide what
   // to do next, and clearing it here would erase an ERROR it has not seen yet.
   for (int i = 0; i < NUM_LEGS; i++) _mgr->releaseModule(_legs[i], this);
+  _mgr->releaseModule(_mpc, this);
 }
 
 bool MdlTrot::getStancePhase(double phase[NUM_LEGS]) const {
@@ -271,6 +295,14 @@ bool MdlTrot::getStancePhase(double phase[NUM_LEGS]) const {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+//  Geometry helpers
+// ---------------------------------------------------------------------------
+
+Eigen::Matrix3d MdlTrot::_rotZ(double yaw) {
+  return Eigen::Matrix3d(Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()));
+}
+
 Eigen::Vector3d MdlTrot::_originFoot(int leg) const {
   // Nominal resting foot position for this leg, relative to the body. Same
   // construction as MdlDrawSquare: hip location, shifted by the configured
@@ -282,43 +314,12 @@ Eigen::Vector3d MdlTrot::_originFoot(int leg) const {
   return p;
 }
 
-void MdlTrot::_updateVelocityFeedback() {
-  _vfbActive = false;
-  if (!_vfbEnable || !_posvel) return;
-
-  Eigen::Vector3d v;
-  if (!_posvel->getBodyVelocityInBody(v) || !v.allFinite()) return;
-
-  // Low pass before use. The estimate is refreshed every millisecond and
-  // carries the trunk's own bounce and sway at the gait frequency; feeding that
-  // straight into the sweep would modulate the stride within a single stance.
-  // A time constant well under the gait period tracks a genuine change in speed
-  // while leaving the per-stride oscillation behind.
-  const double dt = CLOCK_TO_SEC(_mgr->getStepPeriod());
-  const double a = dt / (_vfbTau + dt);
-  _vfilt += a * (v - _vfilt);
-  _vfbActive = true;
-}
-
 Eigen::Vector3d MdlTrot::_sweepVelocity() const {
-  if (!_vfbActive) return _vcmd;
-
-  // Blend from the command toward the estimate, then clamp. The clamp is the
-  // part that matters: this is a positive feedback path, since a velocity
-  // estimate that is too low shortens the stride, which slows the robot, which
-  // lowers the estimate again. Bounding the correction keeps a bad estimate
-  // from walking the stride away entirely.
-  Eigen::Vector3d correction = _vfbGain * (_vfilt - _vcmd);
-  for (int i = 0; i < 3; i++) {
-    if (correction[i] > _vfbLimit) correction[i] = _vfbLimit;
-    if (correction[i] < -_vfbLimit) correction[i] = -_vfbLimit;
-  }
-  // Horizontal only. The trunk really does rise and fall during a trot, but
-  // that is the gait working, not a tracking error, and sweeping the stance
-  // feet vertically to chase it would fight the stance height instead.
-  correction.z() = 0.0;
-
-  return _vcmd + correction;
+  // The estimate, not the command. Paper equation (33) places the touchdown
+  // point against the velocity the body actually has; using the command instead
+  // drags every planted foot by the tracking error for the whole of stance.
+  // The command is only the fallback for a cycle in which no estimate arrived.
+  return _vfiltValid ? _vfilt : _vcmd;
 }
 
 Eigen::Vector3d MdlTrot::_stanceVelocity(int leg) const {
@@ -329,28 +330,186 @@ Eigen::Vector3d MdlTrot::_stanceVelocity(int leg) const {
   return -(_sweepVelocity() + omega.cross(_originFoot(leg)));
 }
 
+// ---------------------------------------------------------------------------
+//  Body state and reference
+// ---------------------------------------------------------------------------
+
+bool MdlTrot::_readBodyState() {
+  _stateValid = false;
+  if (!_orientation || !_posvel || !_mpc) return false;
+  if (!_orientation->isReady() || !_posvel->isReady()) return false;
+
+  Eigen::Vector3d pBody, vBody;
+  if (!_posvel->getBodyPosition(pBody) || !_posvel->getBodyVelocity(vBody)) return false;
+  if (!pBody.allFinite() || !vBody.allFinite()) return false;
+
+  _Rbw = _orientation->getRotation();
+  _rpy = _orientation->getRPY();
+  _omegaWorld = _orientation->getAngularVelocityWorld();
+  if (!_Rbw.allFinite() || !_rpy.allFinite() || !_omegaWorld.allFinite()) return false;
+
+  // Body frame origin to whole-robot COM. Both the rigid body model and
+  // mpc.inertia_body are about the COM, and the estimator reports the origin.
+  const Eigen::Vector3d r = _Rbw * _mpc->getParams().com_offset_body;
+  _comPos = pBody + r;
+  _comVel = vBody + _omegaWorld.cross(r);
+
+  // Unwrap onto a continuous branch. The QP differences the current and
+  // reference yaw directly, so a wrap between the two reads as a full turn of
+  // heading error and would produce a violent correcting moment.
+  const double yaw = _rpy.z();
+  if (!_haveYaw) {
+    _yawUnwrapped = yaw;
+    _haveYaw = true;
+  } else {
+    double d = yaw - _yawWrapped;
+    while (d > M_PI) d -= 2.0 * M_PI;
+    while (d < -M_PI) d += 2.0 * M_PI;
+    _yawUnwrapped += d;
+  }
+  _yawWrapped = yaw;
+
+  // Low passed body-frame COM velocity, for the touchdown geometry only.
+  const Eigen::Vector3d vb = _Rbw.transpose() * _comVel;
+  if (!_vfiltValid) {
+    _vfilt = vb;
+    _vfiltValid = true;
+  } else {
+    const double dt = CLOCK_TO_SEC(_mgr->getStepPeriod());
+    const double a = dt / (_velocityFilterTau + dt);
+    _vfilt += a * (vb - _vfilt);
+  }
+  // Horizontal only. The trunk really does rise and fall during a trot, but
+  // that is the gait working, not a tracking error, and sweeping the stance
+  // feet vertically to chase it would fight the stance height instead.
+  _vfilt.z() = 0.0;
+
+  _stateValid = true;
+  return true;
+}
+
+void MdlTrot::_integrateBodyReference() {
+  const double dt = CLOCK_TO_SEC(_mgr->getStepPeriod());
+
+  // _vcmd is a body-frame twist, so it has to be rotated by the *desired*
+  // heading before it can be integrated in the world. Using the measured
+  // heading instead would let a heading error steer the reference.
+  _desYaw += _yawRate * dt;
+  const Eigen::Vector3d v = _rotZ(_desYaw) * Eigen::Vector3d(_vcmd.x(), _vcmd.y(), 0.0);
+  _desPos.x() += v.x() * dt;
+  _desPos.y() += v.y() * dt;
+
+  // Clamp back toward the estimate. Left alone the reference is a pure
+  // integrator, so a slip, a shove, or a foot that never lands leaves a
+  // position error that grows without bound, and the MPC then spends its whole
+  // force budget chasing a point the robot is never going to reach.
+  for (int i = 0; i < 2; i++) {
+    const double err = _desPos[i] - _comPos[i];
+    if (err > _positionClamp) _desPos[i] = _comPos[i] + _positionClamp;
+    if (err < -_positionClamp) _desPos[i] = _comPos[i] - _positionClamp;
+  }
+}
+
+bool MdlTrot::_solveMPC(double elapsed) {
+  const MdlConvexMPC::params_t& mp = _mpc->getParams();
+  const double dtm = mp.dt;
+  const Eigen::Vector3d& rcom = mp.com_offset_body;
+
+  MdlConvexMPC::input_t in;
+  in.current.rpy = Eigen::Vector3d(_rpy.x(), _rpy.y(), _yawUnwrapped);
+  in.current.com_position_world = _comPos;
+  in.current.angular_velocity_world = _omegaWorld;
+  in.current.com_velocity_world = _comVel;
+
+  double yaw = _desYaw;
+  Eigen::Vector3d p = _desPos;
+
+  for (int k = 0; k < MdlConvexMPC::HORIZON; k++) {
+    // contact[k] and moment_arm_world[k] describe the interval that *starts* at
+    // now + k*dt, while reference[k] is the state at its end: the condensed
+    // state vector stacks x_1 ... x_N and never contains x_0. The two indexings
+    // are offset by one step by construction.
+    const double tk = elapsed + k * dtm;
+    const Eigen::Matrix3d Rz = _rotZ(yaw);
+
+    for (int leg = 0; leg < NUM_LEGS; leg++) {
+      in.contact[k][leg] = _gait.inStance(leg, tk);
+
+      // TrotGait::sample() returns a delta from the nominal footprint and knows
+      // nothing about where that footprint is; the composition with
+      // _originFoot() is the same one the actual foot command uses. The stride
+      // ramp is deliberately not applied to the future steps -- it scales a
+      // couple of centimetres of moment arm against a hip offset of twenty.
+      Eigen::Vector3d dp, dv;
+      _gait.sample(leg, tk, _stanceVelocity(leg), dp, dv);
+      in.moment_arm_world[k].col(leg) = Rz * (_originFoot(leg) + dp - rcom);
+    }
+
+    yaw += _yawRate * dtm;
+    const Eigen::Vector3d v = _rotZ(yaw) * Eigen::Vector3d(_vcmd.x(), _vcmd.y(), 0.0);
+    p.x() += v.x() * dtm;
+    p.y() += v.y() * dtm;
+
+    in.reference[k].rpy = Eigen::Vector3d(0.0, 0.0, yaw);
+    // Height is the COM height captured at TROT entry, which is whatever the
+    // nominal footprint left the robot at after PREP. Deriving it instead would
+    // mean duplicating the foot radius and ground height assumptions that
+    // already live in the estimator.
+    in.reference[k].com_position_world = Eigen::Vector3d(p.x(), p.y(), _desPos.z());
+    in.reference[k].angular_velocity_world = Eigen::Vector3d(0.0, 0.0, _yawRate);
+    in.reference[k].com_velocity_world = v;
+  }
+
+  // Paper Section IV-C: the first dynamics matrix has to describe where the
+  // feet actually are. A tracking error or a disturbance moves a planted foot
+  // away from the schedule, and a moment arm taken from the schedule then
+  // attributes the resulting moment to the wrong place for the one interval
+  // whose force is actually applied.
+  for (int leg = 0; leg < NUM_LEGS; leg++) {
+    if (!in.contact[0][leg]) continue;
+    Eigen::Vector3d pfoot;
+    if (!_legs[leg]->getFootPosition(pfoot) || !pfoot.allFinite()) continue;
+    in.moment_arm_world[0].col(leg) = _Rbw * (pfoot - rcom);
+  }
+
+  MdlConvexMPC::output_t out;
+  if (_mpc->solve(in, out)) {
+    _mpcOut = out;
+    _mpcHave = true;
+    _mpcFailures = 0;
+    return true;
+  }
+
+  // Hold the last valid force for a small number of solves and no more. There
+  // is no position-controlled stance to fall back to any more, and pretending
+  // otherwise would put the robot on a controller nobody chose.
+  _mpcFailures++;
+  return _mpcHave && _mpcFailures <= _mpcFailureLimit;
+}
+
+// ---------------------------------------------------------------------------
+//  Pose-holding states
+// ---------------------------------------------------------------------------
+
 void MdlTrot::_sendTarget() {
   const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
 
   for (int i = 0; i < NUM_LEGS; i++) {
-    // Stiff while supporting the body, soft while swinging. The soft swing also
-    // keeps swing joint torques well clear of the estimator's contact detection
-    // threshold, which reads ground reaction force through the leg Jacobian.
-    const Eigen::Vector3d& kp = _stance[i] ? _stance_kp : _swing_kp;
-    const Eigen::Vector3d& kd = _stance[i] ? _stance_kd : _swing_kd;
-
-    if (_legs[i]->setFootCommand(_footpos[i], _footvel[i], kp, kd, zero)) {
-      _ikFailures[i] = 0;
+    // Only WAIT, PREP and CENTERING reach here, and all three keep four feet
+    // planted, so there is one pair of joint gains rather than a stance/swing
+    // split. TROT has its own dispatch and does not use this path at all.
+    if (_legs[i]->setFootCommand(_footpos[i], _footvel[i], _prep_kp, _prep_kd, zero)) {
+      _cmdFailures[i] = 0;
       continue;
     }
 
     // A rejected command leaves the previous one latched in MotorHW, so a
     // single miss is survivable. A run of them means the trajectory has left
     // the workspace and the gait is no longer being executed at all.
-    if (++_ikFailures[i] >= _ikFailureLimit) {
+    if (++_cmdFailures[i] >= _cmdFailureLimit) {
       _mgr->warning(TROTMODULE_NAME,
                     "Leg %d command rejected %d cycles running, target=[%.4f %.4f %.4f]",
-                    i, _ikFailures[i], _footpos[i][0], _footpos[i][1], _footpos[i][2]);
+                    i, _cmdFailures[i], _footpos[i][0], _footpos[i][1], _footpos[i][2]);
       _status = ERROR;
     }
   }
@@ -409,33 +568,71 @@ void MdlTrot::_prepDuring() {
   _sendTarget();
 }
 
+// ---------------------------------------------------------------------------
+//  TROT
+// ---------------------------------------------------------------------------
+
 void MdlTrot::_trotEntry() {
   _mark = _mgr->readTime();
   _trot_mark = _mark;
+  _mpcMark = _mark;
 
-  // Seed the filter at the command so the first strides start from the open
-  // loop behaviour and the feedback eases in, rather than the stride jumping
-  // on the first cycle from whatever the robot happened to be doing in PREP.
-  _vfilt = _vcmd;
-  _vfbActive = false;
+  _mpcOut = MdlConvexMPC::output_t();
+  _mpcHave = false;
+  _mpcFailures = 0;
+  _vfiltValid = false;
+  _haveYaw = false;
+
+  // Torque-controlled stance with no state estimate is a robot falling over in
+  // a controlled fashion, so this is where the behavior refuses rather than
+  // where it improvises.
+  if (!_readBodyState()) {
+    _mgr->warning(TROTMODULE_NAME,
+                  "State estimate not available; refusing to start MPC stance");
+    _status = ERROR;
+    return;
+  }
+
+  // The reference starts wherever PREP left the robot, which is the height the
+  // nominal footprint produces, and on the heading it is already facing.
+  _desPos = _comPos;
+  _desYaw = _yawUnwrapped;
+
+  for (int i = 0; i < NUM_LEGS; i++) {
+    _stance[i] = _gait.inStance(i, 0.0);
+    _mpcMask[i] = _stance[i];
+  }
+
+  if (!_solveMPC(0.0)) {
+    _mgr->warning(TROTMODULE_NAME, "First MPC solve failed (status %d); not trotting",
+                  _mpcOut.solver_status);
+    _status = ERROR;
+  }
 }
 
 void MdlTrot::_trotDuring() {
-  const double elapsed = _mgr->readTime() - _trot_mark;
+  const double t = _mgr->readTime();
+  const double elapsed = t - _trot_mark;
 
   // Once per cycle, before any leg is sampled, so all four are swept against
-  // the same velocity.
-  _updateVelocityFeedback();
+  // the same velocity and the MPC sees one consistent body state.
+  if (!_readBodyState()) {
+    _mgr->warning(TROTMODULE_NAME, "State estimate lost at t=%.3f", t);
+    _status = ERROR;
+    return;
+  }
 
   // Stride grows from zero, so the robot steps in place before it accelerates.
   double ramp, ramp_dot;
   TrajectoryUtils::sampleQuintic(elapsed / _rampup_duration, _rampup_duration, ramp,
                                  ramp_dot);
 
+  bool maskChanged = false;
   for (int i = 0; i < NUM_LEGS; i++) {
     Eigen::Vector3d dp, dv;
     _gait.sample(i, elapsed, _stanceVelocity(i), dp, dv);
     _stance[i] = _gait.inStance(i, elapsed);
+    if (_stance[i] != _mpcMask[i]) maskChanged = true;
 
     // Product rule: the ramp is a function of time as well, and dropping its
     // term would leave the commanded velocity inconsistent with the commanded
@@ -443,18 +640,95 @@ void MdlTrot::_trotDuring() {
     _footpos[i] = _originFoot(i) + ramp * dp;
     _footvel[i] = ramp * dv + ramp_dot * dp;
   }
-  _sendTarget();
+
+  _integrateBodyReference();
+
+  // At the configured cadence, and immediately on a contact change. The second
+  // trigger is what stops a leg that has just landed from waiting up to a full
+  // MPC interval for a force, which is what happens whenever the gait period
+  // and mpc.dt are not commensurate.
+  if (maskChanged || (t - _mpcMark) >= _mpc->getParams().dt) {
+    _mpcMark = t;
+    for (int i = 0; i < NUM_LEGS; i++) _mpcMask[i] = _stance[i];
+
+    if (!_solveMPC(elapsed)) {
+      _mgr->warning(TROTMODULE_NAME, "MPC failed %d solves running (status %d) at t=%.3f",
+                    _mpcFailures, _mpcOut.solver_status, t);
+      _status = ERROR;
+      return;
+    }
+  }
+
+  const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
+  for (int i = 0; i < NUM_LEGS; i++) {
+    bool ok;
+
+    if (!_stance[i]) {
+      // Swing: Cartesian impedance about the gait's foot reference, no
+      // feedforward force. Equation (1) of the paper with tau_ff = 0; the
+      // inverse-dynamics term of equation (2) needs a full multibody model and
+      // is out of scope here.
+      ok = _legs[i]->setCartesianForceCommand(_footpos[i], _footvel[i], _swing_kp,
+                                              _swing_kd, zero, _jointDamping);
+    } else {
+      // TODO(ege): implement
+      //
+      // - Transform the MPC's world-frame ground reaction force for this leg
+      //   into the force the actuators apply at the foot:
+      //   f_foot_B = -R_BW^T * f_grf_W, with _Rbw the body-to-world rotation.
+      // - Issue it through the same Cartesian force command as swing, but with
+      //   zero Cartesian kp and kd -- a planted foot must not be tracking a
+      //   position -- and the same joint damping.
+      // - Gotchas: verify the sign with the static MuJoCo test before trusting
+      //   it (a flipped sign pulls the body down and looks like a tuning
+      //   problem); and use _mpcOut.force_world[i], which may be a retained
+      //   result from an earlier solve, rather than re-solving here.
+
+      const Eigen::Vector3d f_foot_B = -(_Rbw.transpose() * _mpcOut.force_world[i]);
+      ok = _legs[i]->setCartesianForceCommand(_footpos[i], _footvel[i], zero, zero, f_foot_B,
+                                              _jointDamping);
+    }
+
+    if (ok) {
+      _cmdFailures[i] = 0;
+      continue;
+    }
+
+    // In TROT there is no IK to fail: a rejection means the motors are not
+    // ready or the computed torque is not finite. Either way the leg is not
+    // executing what the controller asked for.
+    if (++_cmdFailures[i] >= _cmdFailureLimit) {
+      _mgr->warning(TROTMODULE_NAME, "Leg %d force command rejected %d cycles running", i,
+                    _cmdFailures[i]);
+      _status = ERROR;
+    }
+  }
 }
+
+// ---------------------------------------------------------------------------
+//  CENTERING
+// ---------------------------------------------------------------------------
 
 void MdlTrot::_centeringEntry() {
   _mark = _mgr->readTime();
 
-  // Capture where the reference trajectory is right now, velocity included.
-  // That is what we decelerate out of, so the stop has no velocity kink.
   for (int i = 0; i < NUM_LEGS; i++) {
-    _center_pos0[i] = _footpos[i];
+    // Start the blend from where the foot actually is, not from where the
+    // trajectory reference says it should be. Under force control a stance leg
+    // does not track a position at all, so the reference can be centimetres
+    // away and the first centering command would be a step.
+    Eigen::Vector3d measured;
+    if (_legs[i]->getFootPosition(measured) && measured.allFinite())
+      _center_pos0[i] = measured;
+    else
+      _center_pos0[i] = _footpos[i];
+
+    // Velocity still comes from the reference: there is no measured foot
+    // velocity available here, and decelerating out of the commanded one is
+    // what keeps the stop free of a velocity kink.
     _center_vel0[i] = _footvel[i];
     _center_pos1[i] = _originFoot(i);
+    _footpos[i] = _center_pos0[i];
     // Coming to rest on all four feet, so every leg gets support gains.
     _stance[i] = true;
   }
@@ -535,7 +809,13 @@ void MdlTrot::update() {
       break;
   }
 
-  if (_status == ACTIVE && _state != _state_t::WAIT && !_checkTrackingError()) {
+  // Joint tracking error only means something where a joint is being asked to
+  // reach a position. In TROT the joint kp is zero by construction and the
+  // measured position is fed back as the command, so the error is identically
+  // zero and the check would be vacuous; the motor-ready, finite-torque and
+  // solver checks above cover that state instead.
+  if (_status == ACTIVE && _state != _state_t::WAIT && _state != _state_t::TROT &&
+      !_checkTrackingError()) {
     _mgr->warning(TROTMODULE_NAME, "Tracking error exceeded at t=%.3f", t);
     _status = ERROR;
   }

@@ -23,6 +23,18 @@ add_executable(test_trot_gait test_trot_gait.cc)
 target_link_libraries(test_trot_gait quadruped rtcore rtclient)
 add_test(NAME test_trot_gait COMMAND test_trot_gait)
 
+# Same reason as test_state_estimator: pulls in MdlConvexMPC.o, which carries
+# the rtcore Module base class alongside the QP being tested.
+add_executable(test_convex_mpc test_convex_mpc.cc)
+target_link_libraries(test_convex_mpc quadruped rtcore rtclient)
+add_test(NAME test_convex_mpc COMMAND test_convex_mpc)
+
+# Same reason as test_state_estimator: pulls in MdlLegControl.o, which carries
+# the rtcore Module base class alongside the Cartesian force law being tested.
+add_executable(test_leg_cartesian_force test_leg_cartesian_force.cc)
+target_link_libraries(test_leg_cartesian_force quadruped rtcore rtclient)
+add_test(NAME test_leg_cartesian_force COMMAND test_leg_cartesian_force)
+
 add_executable(test_config_layering test_config_layering.cc)
 target_link_libraries(test_config_layering rtcore rtclient)
 foreach(chain robotv1 sim go1)

@@ -1,0 +1,704 @@
+<title>Trust Before Touchdown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground:   #f3f5f8;
+    --surface:  #ffffff;
+    --sunk:     #e9edf2;
+    --ink:      #151b23;
+    --muted:    #5f6b79;
+    --faint:    #8b95a1;
+    --rule:     #d9e0e8;
+    --rule-firm:#b6c1cd;
+    --accent:   #1f4e79;
+    --accent-sw:#dbe6f1;
+    --warn:     #ab3f1c;
+    --warn-sw:  #f7e2d8;
+    --good:     #1c6a4f;
+    --good-sw:  #d8ebe3;
+    --shadow:   0 1px 2px rgba(21,27,35,.06), 0 6px 20px rgba(21,27,35,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0f141a;
+      --surface:  #171e26;
+      --sunk:     #1e2731;
+      --ink:      #e4e9ef;
+      --muted:    #9aa6b4;
+      --faint:    #6d7a88;
+      --rule:     #2a343f;
+      --rule-firm:#3d4956;
+      --accent:   #78aada;
+      --accent-sw:#1c2c3d;
+      --warn:     #e08765;
+      --warn-sw:  #38251d;
+      --good:     #5dbf98;
+      --good-sw:  #17302a;
+      --shadow:   0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0f141a;
+    --surface:  #171e26;
+    --sunk:     #1e2731;
+    --ink:      #e4e9ef;
+    --muted:    #9aa6b4;
+    --faint:    #6d7a88;
+    --rule:     #2a343f;
+    --rule-firm:#3d4956;
+    --accent:   #78aada;
+    --accent-sw:#1c2c3d;
+    --warn:     #e08765;
+    --warn-sw:  #38251d;
+    --good:     #5dbf98;
+    --good-sw:  #17302a;
+    --shadow:   0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.28);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 24px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1060px; margin: 0 auto; }
+  .col  { max-width: 680px; }
+
+  /* ---- type ---- */
+  h1, h2, h3, .label, .eyebrow, th, .fig-cap b {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+  }
+  h1 {
+    font-size: clamp(2.1rem, 5vw, 3.05rem);
+    line-height: 1.04;
+    font-weight: 700;
+    letter-spacing: -0.022em;
+    margin: 0 0 .5rem;
+    text-wrap: balance;
+  }
+  h2 {
+    font-size: 1.34rem; font-weight: 600; letter-spacing: -0.012em;
+    margin: 0; text-wrap: balance;
+  }
+  h3 {
+    font-size: .96rem; font-weight: 600; letter-spacing: .01em;
+    margin: 0 0 .5rem; color: var(--ink);
+  }
+  p { margin: 0 0 1.05rem; }
+  p:last-child { margin-bottom: 0; }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px;
+  }
+  strong { font-weight: 600; }
+  code, .mono, .num {
+    font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  code {
+    font-size: .845em; background: var(--sunk); color: var(--ink);
+    padding: .1em .34em; border-radius: 3px;
+  }
+  .eyebrow {
+    font-size: .705rem; font-weight: 600; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--faint);
+  }
+
+  /* ---- masthead ---- */
+  header.masthead {
+    padding: 68px 0 34px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 42px;
+  }
+  .sub {
+    font-size: 1.16rem; color: var(--muted); max-width: 640px;
+    margin: .9rem 0 0; line-height: 1.5;
+  }
+  .runline {
+    margin-top: 26px; display: flex; flex-wrap: wrap; gap: 6px 22px;
+    font-family: "IBM Plex Mono", monospace; font-size: .765rem;
+    color: var(--faint); font-variant-numeric: tabular-nums;
+  }
+  .runline span b { color: var(--muted); font-weight: 500; }
+
+  /* ---- verdict ---- */
+  .verdict {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--warn);
+    border-radius: 3px; padding: 26px 30px; box-shadow: var(--shadow);
+    margin-bottom: 52px;
+  }
+  .verdict p { font-size: 1.06rem; }
+  .verdict p:first-of-type { margin-top: .55rem; }
+
+  /* ---- chain sections ---- */
+  .chain { display: flex; flex-direction: column; gap: 54px; }
+  section.step { display: block; }
+  .step-head {
+    display: grid; grid-template-columns: 3.1rem 1fr; gap: 0 18px;
+    align-items: baseline; margin-bottom: 18px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--rule);
+  }
+  .step-n {
+    font-family: "IBM Plex Mono", monospace; font-size: .78rem; font-weight: 600;
+    color: var(--accent); letter-spacing: .06em; padding-top: .18em;
+  }
+  .step-head .because {
+    grid-column: 2; font-size: .78rem; color: var(--faint);
+    font-family: Archivo, sans-serif; letter-spacing: .02em; margin-top: 4px;
+  }
+  .step-body { padding-left: calc(3.1rem + 18px); }
+  @media (max-width: 640px) {
+    .step-head { grid-template-columns: 1fr; gap: 4px; }
+    .step-head .because { grid-column: 1; }
+    .step-body { padding-left: 0; }
+  }
+
+  /* ---- data blocks ---- */
+  .scroller { overflow-x: auto; margin: 22px 0; }
+  table {
+    border-collapse: collapse; width: 100%; min-width: 480px;
+    font-family: "IBM Plex Mono", monospace; font-size: .8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  caption {
+    text-align: left; font-family: Archivo, sans-serif; font-size: .74rem;
+    font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--faint); padding-bottom: 9px;
+  }
+  th {
+    font-size: .705rem; font-weight: 600; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--muted); text-align: right;
+    padding: 0 12px 7px 0; border-bottom: 1px solid var(--rule-firm);
+    white-space: nowrap;
+  }
+  th:first-child, td:first-child { text-align: left; padding-left: 0; }
+  th:first-child { padding-right: 20px; }
+  td {
+    text-align: right; padding: 6px 12px 6px 0;
+    border-bottom: 1px solid var(--rule); white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  td.name { font-family: Archivo, sans-serif; font-size: .81rem; color: var(--ink); }
+  tr.hi td { background: var(--warn-sw); }
+  tr.hi td.name { font-weight: 600; }
+  tr.ok td { background: var(--good-sw); }
+  .bad  { color: var(--warn); font-weight: 600; }
+  .fine { color: var(--good); font-weight: 500; }
+  .dim  { color: var(--faint); }
+
+  .fig-cap {
+    font-size: .85rem; color: var(--muted); line-height: 1.5;
+    max-width: 640px; margin: 10px 0 0;
+  }
+  .fig-cap b { font-weight: 600; color: var(--ink); font-size: .8rem; }
+
+  /* ---- figure ---- */
+  figure.strip {
+    margin: 26px 0 0; background: var(--surface);
+    border: 1px solid var(--rule); border-radius: 3px;
+    padding: 26px 26px 20px; box-shadow: var(--shadow);
+  }
+  .strip svg { display: block; width: 100%; height: auto; }
+  .s-axis   { stroke: var(--rule-firm); stroke-width: 1; }
+  .s-grid   { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 2 4; }
+  .s-tick   { fill: var(--faint); font-family: "IBM Plex Mono", monospace; font-size: 11px; }
+  .s-lab    { fill: var(--muted); font-family: Archivo, sans-serif; font-size: 12px; font-weight: 600; }
+  .s-note   { fill: var(--faint); font-family: Archivo, sans-serif; font-size: 11px; }
+  .s-noteb  { fill: var(--warn); font-family: Archivo, sans-serif; font-size: 11px; font-weight: 600; }
+  .s-sched  { fill: var(--accent-sw); stroke: var(--accent); stroke-width: 1; }
+  .s-air    { fill: var(--warn-sw); stroke: var(--warn); stroke-width: 1; }
+  .s-ring   { fill: none; stroke: var(--warn); stroke-width: 1; stroke-dasharray: 3 3; }
+  .s-plant  { fill: var(--good-sw); stroke: var(--good); stroke-width: 1; }
+  .s-trust  { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+  .s-danger { fill: var(--warn); opacity: .11; }
+  .s-dangerline { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 4 3; }
+
+  /* ---- callout ---- */
+  .callout {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px; padding: 20px 24px; margin: 26px 0;
+  }
+  .callout .eyebrow { display: block; margin-bottom: .5rem; }
+  .callout p { font-size: .96rem; }
+
+  /* ---- actions ---- */
+  .actions { display: flex; flex-direction: column; gap: 2px; margin: 24px 0 0; }
+  .act {
+    display: grid; grid-template-columns: 4.6rem 1fr; gap: 0 18px;
+    padding: 17px 0; border-top: 1px solid var(--rule); align-items: start;
+  }
+  .act:last-child { border-bottom: 1px solid var(--rule); }
+  .act-rank {
+    font-family: "IBM Plex Mono", monospace; font-size: .68rem; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; padding-top: .28em;
+  }
+  .act-rank.now  { color: var(--warn); }
+  .act-rank.root { color: var(--accent); }
+  .act-rank.also { color: var(--faint); }
+  .act p { font-size: .96rem; margin: 0; }
+  .act p + p { margin-top: .45rem; color: var(--muted); font-size: .89rem; }
+  @media (max-width: 640px) {
+    .act { grid-template-columns: 1fr; gap: 5px; }
+  }
+
+  footer.foot {
+    margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--rule);
+    font-size: .82rem; color: var(--faint); line-height: 1.55;
+  }
+  footer.foot code { font-size: .8em; }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">quadcontrol &middot; state estimator assessment</div>
+  <h1>Trust Before Touchdown</h1>
+  <p class="sub">The position/velocity filter is sound. What it is being told about
+  contact is not: it grants full trust to feet that are still 15&ndash;30&nbsp;mm in the
+  air and falling at up to 1&nbsp;m/s.</p>
+  <div class="runline">
+    <span><b>source</b> bin/estimation_imu_attitude.mat, 30&nbsp;s Go2 trot</span>
+    <span><b>attitude</b> imu passthrough</span>
+    <span><b>v<sub>cmd</sub></b> 0.15 m/s</span>
+    <span><b>gait</b> 0.5 s, duty 0.5</span>
+    <span><b>confirmed on</b> 2 fresh 26 s runs</span>
+  </div>
+</header>
+
+<div class="col">
+  <div class="verdict">
+    <div class="eyebrow">Verdict</div>
+    <p>With <code>attitude_source = "imu"</code> the attitude error is
+    <span class="mono">0.42 / 0.22 / 0.04&nbsp;mrad</span> RMS &mdash; exact, by construction.
+    Every remaining error is the eighteen-state Kalman filter, and essentially all of
+    it enters through one channel: the velocity measurement rows, whose error is
+    exactly <span class="mono">&minus;v<sub>foot</sub><sup>world</sup></span>.</p>
+    <p>Averaged over the trot with the weights the filter actually applied, that
+    channel injects a standing velocity bias of
+    <span class="mono bad">[+31, &minus;20, +25]&nbsp;mm/s</span>. Better than
+    <span class="mono">90%</span> of it is produced in the first quarter of
+    <em>scheduled</em> stance, before the foot has reached the ground.</p>
+  </div>
+</div>
+
+<div class="chain">
+
+<!-- ============================================================= 1 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">01</div>
+    <h2>The velocity error is locked to contact trust</h2>
+    <div class="because">Not to time, not to the accelerometer, not to attitude.</div>
+  </div>
+  <div class="step-body">
+    <div class="col">
+      <p>Binning the velocity error by gait phase separates the cycle cleanly. When
+      the trust ramp is closed the vertical error sits near
+      <span class="mono">&minus;15&nbsp;mm/s</span>. When it opens to
+      <span class="mono">1.00</span>, the error deepens to
+      <span class="mono">&minus;65</span> and <span class="mono">&minus;83&nbsp;mm/s</span>.
+      The measurement the filter believes most is the one making it worst.</p>
+    </div>
+    <div class="scroller">
+      <table>
+        <caption>Velocity error by gait phase &mdash; 46 cycles, t &gt; 8&nbsp;s</caption>
+        <thead>
+          <tr><th>gait phase</th><th>err v<sub>x</sub></th><th>err v<sub>y</sub></th>
+              <th>err v<sub>z</sub></th><th>FL</th><th>FR</th><th>RL</th><th>RR</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">0.00 <span class="dim">touchdown</span></td><td>&minus;0.002</td><td>+0.002</td><td>&minus;0.014</td><td class="dim">0.25</td><td class="dim">0.00</td><td class="dim">0.00</td><td class="dim">0.25</td></tr>
+          <tr><td class="name">0.05</td><td>+0.003</td><td>&minus;0.001</td><td>&minus;0.013</td><td class="dim">0.75</td><td class="dim">0.00</td><td class="dim">0.00</td><td class="dim">0.75</td></tr>
+          <tr class="hi"><td class="name">0.10</td><td>+0.017</td><td class="bad">&minus;0.061</td><td>+0.015</td><td>1.00</td><td class="dim">0.00</td><td class="dim">0.00</td><td>1.00</td></tr>
+          <tr class="hi"><td class="name">0.15</td><td>+0.017</td><td class="bad">&minus;0.055</td><td class="bad">&minus;0.041</td><td>1.00</td><td class="dim">0.00</td><td class="dim">0.00</td><td>1.00</td></tr>
+          <tr class="hi"><td class="name">0.20</td><td>+0.011</td><td>&minus;0.037</td><td class="bad">&minus;0.065</td><td>1.00</td><td class="dim">0.00</td><td class="dim">0.00</td><td>1.00</td></tr>
+          <tr><td class="name">0.30</td><td>&minus;0.000</td><td>&minus;0.016</td><td>&minus;0.037</td><td>1.00</td><td class="dim">0.00</td><td class="dim">0.00</td><td>1.00</td></tr>
+          <tr><td class="name">0.40</td><td>&minus;0.004</td><td>&minus;0.008</td><td>&minus;0.020</td><td class="dim">0.74</td><td class="dim">0.00</td><td class="dim">0.00</td><td class="dim">0.74</td></tr>
+          <tr><td class="name">0.50 <span class="dim">swap</span></td><td>&minus;0.001</td><td>&minus;0.008</td><td>&minus;0.015</td><td class="dim">0.00</td><td class="dim">0.25</td><td class="dim">0.25</td><td class="dim">0.00</td></tr>
+          <tr class="hi"><td class="name">0.60</td><td>+0.022</td><td>+0.006</td><td class="bad">&minus;0.041</td><td class="dim">0.00</td><td>1.00</td><td>1.00</td><td class="dim">0.00</td></tr>
+          <tr class="hi"><td class="name">0.65</td><td>+0.019</td><td>+0.005</td><td class="bad">&minus;0.083</td><td class="dim">0.00</td><td>1.00</td><td>1.00</td><td class="dim">0.00</td></tr>
+          <tr class="hi"><td class="name">0.70</td><td>+0.010</td><td>+0.003</td><td class="bad">&minus;0.081</td><td class="dim">0.00</td><td>1.00</td><td>1.00</td><td class="dim">0.00</td></tr>
+          <tr><td class="name">0.80</td><td>&minus;0.001</td><td>+0.000</td><td>&minus;0.038</td><td class="dim">0.00</td><td>1.00</td><td>1.00</td><td class="dim">0.00</td></tr>
+          <tr><td class="name">0.90</td><td>&minus;0.004</td><td>&minus;0.001</td><td>&minus;0.020</td><td class="dim">0.00</td><td class="dim">0.74</td><td class="dim">0.74</td><td class="dim">0.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fig-cap"><b>Read it as</b> error in m/s, then the trust each leg was
+    weighted by. Highlighted rows are where a fully trusted foot is producing the
+    worst error in the run. Conditioning the same data on total available trust says
+    it again: err&nbsp;v<sub>z</sub> is <span class="mono">&minus;17&nbsp;mm/s</span>
+    when the legs sum to less than 0.5 of trust, and
+    <span class="mono">&minus;41&nbsp;mm/s</span> when they sum to more than 1.5.</p>
+  </div>
+</section>
+
+<!-- ============================================================= 2 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">02</div>
+    <h2>Because the feet are still in the air</h2>
+    <div class="because">The gait schedule and the ground disagree by 5&ndash;16% of stance.</div>
+  </div>
+  <div class="step-body">
+    <div class="col">
+      <p>A stance foot should sit at <span class="mono">21.8&nbsp;mm</span> and not
+      move. Resolving the logged true foot positions over each leg's own
+      <em>scheduled</em> stance shows that the second half of stance is exactly that
+      &mdash; flat height, velocity under <span class="mono">1&nbsp;cm/s</span> in every
+      axis, right up to liftoff. Liftoff is on schedule. Touchdown is not.</p>
+    </div>
+
+    <figure class="strip">
+      <svg viewBox="0 0 940 268" role="img"
+           aria-label="Timeline of one scheduled stance showing that the trust ramp reaches full value while the foot is still falling and ringing.">
+        <!-- danger band: 0 to 0.35 of stance -->
+        <rect class="s-danger" x="70" y="26" width="266" height="176"/>
+        <line class="s-dangerline" x1="336" y1="26" x2="336" y2="212"/>
+
+        <!-- grid + axis -->
+        <g>
+          <line class="s-axis" x1="70" y1="212" x2="830" y2="212"/>
+          <line class="s-grid" x1="70"  y1="26" x2="70"  y2="212"/>
+          <line class="s-grid" x1="222" y1="26" x2="222" y2="212"/>
+          <line class="s-grid" x1="374" y1="26" x2="374" y2="212"/>
+          <line class="s-grid" x1="526" y1="26" x2="526" y2="212"/>
+          <line class="s-grid" x1="678" y1="26" x2="678" y2="212"/>
+          <line class="s-grid" x1="830" y1="26" x2="830" y2="212"/>
+          <text class="s-tick" x="70"  y="230" text-anchor="middle">0.0</text>
+          <text class="s-tick" x="222" y="230" text-anchor="middle">0.2</text>
+          <text class="s-tick" x="374" y="230" text-anchor="middle">0.4</text>
+          <text class="s-tick" x="526" y="230" text-anchor="middle">0.6</text>
+          <text class="s-tick" x="678" y="230" text-anchor="middle">0.8</text>
+          <text class="s-tick" x="830" y="230" text-anchor="middle">1.0</text>
+          <text class="s-tick" x="450" y="252" text-anchor="middle">scheduled stance phase</text>
+        </g>
+
+        <!-- row 1: what the schedule says -->
+        <text class="s-lab" x="62" y="47" text-anchor="end">schedule</text>
+        <rect class="s-sched" x="70" y="34" width="760" height="20" rx="2"/>
+        <text class="s-note" x="450" y="48" text-anchor="middle">STANCE &mdash; foot assumed planted for the whole bar</text>
+
+        <!-- row 2: what the foot does -->
+        <text class="s-lab" x="62" y="85" text-anchor="end">actual</text>
+        <rect class="s-air" x="70" y="72" width="60" height="20" rx="2"/>
+        <text class="s-noteb" x="100" y="86" text-anchor="middle">falling</text>
+        <rect class="s-ring" x="130" y="72" width="206" height="20" rx="2"/>
+        <text class="s-noteb" x="233" y="86" text-anchor="middle">impact &amp; ringing</text>
+        <rect class="s-plant" x="336" y="72" width="494" height="20" rx="2"/>
+        <text class="s-note" x="583" y="86" text-anchor="middle">planted &mdash; height flat, |v| &lt; 10 mm/s</text>
+
+        <!-- row 3: trust ramp -->
+        <text class="s-lab" x="62" y="152" text-anchor="end">trust</text>
+        <text class="s-tick" x="62" y="196" text-anchor="end">0</text>
+        <text class="s-tick" x="62" y="118" text-anchor="end">1</text>
+        <line class="s-grid" x1="70" y1="190" x2="830" y2="190"/>
+        <line class="s-grid" x1="70" y1="114" x2="830" y2="114"/>
+        <polyline class="s-trust" points="70,190 222,114 678,114 830,190"/>
+        <circle cx="222" cy="114" r="3.4" fill="var(--warn)"/>
+        <text class="s-noteb" x="230" y="107">full trust at 0.20 &mdash; mid-impact</text>
+
+        <!-- touchdown markers -->
+        <g>
+          <line class="s-dangerline" x1="109" y1="96" x2="109" y2="112"/>
+          <text class="s-noteb" x="109" y="182" text-anchor="middle">FR</text>
+          <text class="s-noteb" x="119" y="182" text-anchor="middle">FL</text>
+          <text class="s-noteb" x="154" y="182" text-anchor="middle">RL</text>
+          <text class="s-noteb" x="192" y="182" text-anchor="middle">RR</text>
+          <text class="s-note" x="150" y="166" text-anchor="middle">ground reached</text>
+        </g>
+
+        <!-- legend -->
+        <text class="s-note" x="850" y="47">schedule</text>
+        <text class="s-noteb" x="850" y="86">reality</text>
+        <text class="s-note" x="850" y="152">filter weight</text>
+      </svg>
+    </figure>
+    <p class="fig-cap"><b>One scheduled stance interval, 250&nbsp;ms.</b> The trust ramp
+    is anchored to the schedule, so it reaches <span class="mono">1.00</span> at phase
+    <span class="mono">0.20</span> &mdash; after the foot has landed, but squarely inside
+    the impact transient, which does not settle until roughly
+    <span class="mono">0.35</span>. Everything the filter learns in that band is wrong.</p>
+
+    <div class="scroller">
+      <table>
+        <caption>Touchdown, per leg &mdash; 44 stance intervals each</caption>
+        <thead>
+          <tr><th>leg</th><th>foot z at scheduled stance start</th>
+              <th>delay to ground</th><th>sd</th>
+              <th>corr(delay, height)</th><th>peak |v| while trusted</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">FR</td><td>35.7 mm</td><td>5.1%</td><td class="dim">2.4</td><td class="fine">+0.971</td><td>0.84 m/s</td></tr>
+          <tr><td class="name">FL</td><td>38.5 mm</td><td>6.5%</td><td class="dim">3.2</td><td class="fine">+0.969</td><td>0.87 m/s</td></tr>
+          <tr><td class="name">RL</td><td>44.6 mm</td><td>11.0%</td><td class="dim">4.1</td><td class="fine">+0.968</td><td>0.67 m/s</td></tr>
+          <tr class="hi"><td class="name">RR</td><td class="bad">53.0 mm</td><td class="bad">16.1%</td><td class="dim">4.3</td><td class="fine">+0.946</td><td class="bad">1.00 m/s</td></tr>
+          <tr><td class="name dim">target</td><td class="dim">~24 mm commanded, 21.8 mm settled</td><td class="dim">0%</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td><td class="dim">0 m/s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fig-cap"><b>The correlation is the point.</b> How late a foot lands is
+    predicted almost perfectly by how high it was when the schedule declared stance
+    &mdash; <span class="mono">+0.95</span> to <span class="mono">+0.97</span> across all
+    four legs, over 44 events each. This is not contact noise; it is a deterministic
+    geometric shortfall.</p>
+
+    <div class="col">
+      <p>RR is the worst case and worth stating plainly: at scheduled stance phase
+      <span class="mono">0.15</span>, with the filter weighting it at
+      <span class="mono">0.76</span>, the RR foot is <span class="mono">28&nbsp;mm</span>
+      above the ground travelling at
+      <span class="mono bad">(&minus;0.19, +0.79, &minus;1.00)&nbsp;m/s</span>. That single
+      leg contributes a <span class="mono">+127&nbsp;mm/s</span> lateral term to the
+      filter's velocity measurement, and it is where the run's <span class="mono">y</span>
+      drift comes from.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= 3 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">03</div>
+    <h2>Because the swing leg cannot follow its own trajectory</h2>
+    <div class="because">Commanded apex 49 mm; achieved 23 mm, a fifth of a cycle late.</div>
+  </div>
+  <div class="step-body">
+    <div class="col">
+      <p>The swing reference is a raised cosine that returns to the stance plane with
+      zero height <em>and</em> zero vertical velocity at the end of swing. On paper the
+      foot arrives on time and softly. Measured against the same reference, the leg
+      reaches less than half the commanded height and peaks at
+      <span class="mono">u = 0.71</span> instead of <span class="mono">0.50</span>
+      &mdash; the signature of a second-order lag driven well above its bandwidth.</p>
+    </div>
+    <div class="scroller">
+      <table>
+        <caption>Swing height above the stance plane, mm &mdash; front pair / rear pair</caption>
+        <thead>
+          <tr><th>swing phase u</th><th>0.12</th><th>0.29</th><th>0.46</th><th>0.62</th><th>0.79</th><th>0.96</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">commanded</td><td>7.3</td><td>31.5</td><td>49.1</td><td>42.7</td><td>18.5</td><td>0.9</td></tr>
+          <tr><td class="name">actual, FL/FR</td><td>2.7</td><td>8.7</td><td>16.4</td><td>22.6</td><td>22.4</td><td class="bad">15.8</td></tr>
+          <tr><td class="name">actual, RL/RR</td><td>2.8</td><td>8.8</td><td>20.1</td><td>29.1</td><td>30.7</td><td class="bad">27.6</td></tr>
+          <tr><td class="name dim">error</td><td class="dim">&minus;4.6</td><td class="dim">&minus;22.8</td><td class="dim">&minus;30.9</td><td class="dim">&minus;16.9</td><td class="dim">+8.0</td><td class="bad">+14.9 / +26.8</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fig-cap"><b>The last column is the defect.</b> At the instant swing ends
+    the command is back at the ground and the foot is still
+    <span class="mono">16&ndash;27&nbsp;mm</span> above it. That is precisely the
+    <span class="mono">36&ndash;53&nbsp;mm</span> world height in step&nbsp;02, and the
+    rear legs' larger lag is why RL and RR land latest.</p>
+
+    <div class="callout">
+      <span class="eyebrow">Compounding, at the same instant</span>
+      <p>At the schedule's swing&rarr;stance boundary <code>MdlTrot::update()</code>
+      switches the leg from <code>setCartesianForceCommand(&hellip;, _swing_kp, _swing_kd, 0)</code>
+      to <code>(&hellip;, zero, zero, f_foot_B)</code>. The Cartesian gains go to
+      <em>zero</em> while the foot still has 16&ndash;27&nbsp;mm to descend: the leg stops
+      tracking exactly when tracking still matters, and is handed an MPC ground reaction
+      force it cannot produce because there is no ground. Applied at the foot that force
+      points down, so it accelerates the leg into the floor &mdash; which is why impact
+      velocities reach <span class="mono">1.0&nbsp;m/s</span>, above free fall from the
+      same height.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= 4 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">04</div>
+    <h2>What the trust profile is worth</h2>
+    <div class="because">Predicted offline from the logged truth, then confirmed in the sim.</div>
+  </div>
+  <div class="step-body">
+    <div class="col">
+      <p>The filter's velocity rows assert
+      <span class="mono">v<sub>body</sub> = &minus;R<sub>bw</sub>(&omega;&times;p + J&thinsp;q̇)</span>,
+      which is exact when the foot is world-stationary. Its error is therefore exactly
+      <span class="mono">&minus;v<sub>foot</sub><sup>world</sup></span>. Re-weighting the
+      logged true foot velocities under different trust profiles predicts the injected
+      bias without touching the code.</p>
+    </div>
+    <div class="scroller">
+      <table>
+        <caption>Injected velocity-measurement bias, mm/s &mdash; trust-weighted over the trot</caption>
+        <thead>
+          <tr><th>trust profile</th><th>x</th><th>y</th><th>z</th><th>|horizontal|</th><th>duty used</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">no ramp at all (window 0)</td><td>+54.7</td><td>&minus;20.0</td><td class="bad">+85.5</td><td class="bad">58.3</td><td class="dim">0.50</td></tr>
+          <tr class="hi"><td class="name">window 0.2 &mdash; current</td><td>+30.8</td><td>&minus;19.5</td><td class="bad">+24.5</td><td class="bad">36.4</td><td class="dim">0.40</td></tr>
+          <tr><td class="name">window 0.4</td><td>+18.3</td><td>&minus;14.3</td><td class="fine">+0.5</td><td>23.2</td><td class="dim">0.30</td></tr>
+          <tr><td class="name">delayed onset 0.3, ramp 0.1</td><td>&minus;9.8</td><td>&minus;1.2</td><td>&minus;22.2</td><td class="fine">9.9</td><td class="dim">0.27</td></tr>
+          <tr class="ok"><td class="name">delayed onset 0.4, ramp 0.1</td><td>&minus;10.8</td><td>&minus;0.9</td><td class="fine">&minus;5.3</td><td class="fine">10.8</td><td class="dim">0.22</td></tr>
+          <tr><td class="name dim">oracle: true contact, foot at rest</td><td class="dim">&minus;9.6</td><td class="dim">&minus;1.2</td><td class="dim">+1.6</td><td class="dim">9.7</td><td class="dim">0.26</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fig-cap"><b>An asymmetric ramp reaches the oracle.</b> Delaying trust onset
+    to 40% of stance lands within <span class="mono">1&nbsp;mm/s</span> of what perfect
+    contact knowledge could achieve. The symmetric <code>trust_window</code> cannot: it
+    widens both ends, and the liftoff end was never the problem &mdash; it throws away
+    good late-stance data to buy less at the touchdown end.</p>
+
+    <div class="scroller">
+      <table>
+        <caption>Confirmation &mdash; two fresh 26 s trots, identical but for <code>trust_window</code></caption>
+        <thead>
+          <tr><th>run</th><th>DC err v<sub>x</sub></th><th>DC err v<sub>y</sub></th>
+              <th>DC err v<sub>z</sub></th><th>RMS v<sub>x</sub></th><th>RMS v<sub>y</sub></th>
+              <th>RMS v<sub>z</sub></th><th>final pos err</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">window 0.2</td><td>+4.8</td><td>+0.8</td><td class="bad">&minus;42.6</td><td>10.9</td><td>10.2</td><td class="bad">51.5</td><td class="fine">0.044 m</td></tr>
+          <tr class="ok"><td class="name">window 0.4</td><td>&minus;4.2</td><td>+3.0</td><td class="fine">&minus;14.5</td><td class="fine">7.0</td><td class="fine">3.7</td><td class="fine">18.3</td><td class="bad">0.283 m</td></tr>
+          <tr><td class="name">window 0.0</td><td colspan="6" class="dim" style="text-align:left">robot fell at t = 9.1 s &mdash; RMS v<sub>x</sub> 202 mm/s, drift 146%</td><td class="bad">fell</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fig-cap">All values mm/s. Widening the window cuts velocity RMS by
+    <span class="mono">2.6&times;</span> in x&thinsp;/&thinsp;y and
+    <span class="mono">2.8&times;</span> in z, exactly as the offline table predicted.
+    And removing the ramp entirely brings the robot down inside two seconds of trotting
+    &mdash; the ramp is load-bearing, it is simply the wrong shape.</p>
+
+    <div class="callout" style="border-left-color: var(--warn);">
+      <span class="eyebrow">The metric trap in that last column</span>
+      <p>Velocity got better in every axis and the position error got
+      <span class="mono">6&times;</span> worse. Both are true. The default configuration
+      contains two independent x biases that happen to cancel: the touchdown transient
+      pushes v<sub>x</sub> <em>up</em> by about <span class="mono">+5&nbsp;mm/s</span>,
+      while a genuinely planted foot creeps <em>forward</em> at
+      <span class="mono">+10&nbsp;mm/s</span> through late stance, which pushes the
+      estimate down by the same amount. Remove the first and the second is exposed:
+      the x bias flips sign from <span class="mono">+4.8</span> to
+      <span class="mono">&minus;4.2&nbsp;mm/s</span>.</p>
+      <p>This is the same &ldquo;one error hiding another&rdquo; pattern
+      <code>stateestimator.toml</code> already documents for <code>mahony_ki</code> and
+      for <code>simnoise</code>. It applies to <code>trust_window</code> too. Tune on
+      velocity RMS; position drift will lie to you.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= 5 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">05</div>
+    <h2>Two smaller things, and one floor</h2>
+    <div class="because">Worth fixing; will not by themselves explain the drift.</div>
+  </div>
+  <div class="step-body">
+    <div class="scroller">
+      <table>
+        <caption>Secondary findings</caption>
+        <thead><tr><th>finding</th><th>configured</th><th>measured</th><th>consequence</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="name"><code>foot_ground_height</code></td>
+            <td>0.0220 m</td><td>0.0199&ndash;0.0209 m</td>
+            <td style="text-align:left">Height rows 24&ndash;27 assert a datum ~2 mm high. Height is observable here, so this is a permanent, continuously maintained bias in reported body height &mdash; exactly as the config comment warns.</td>
+          </tr>
+          <tr>
+            <td class="name">stance slip</td>
+            <td>foot world-stationary</td><td>+10 mm/s forward</td>
+            <td style="text-align:left">A settled, fully planted foot still creeps forward at 10 mm/s &mdash; 7.5% of the 0.13 m/s body speed. No filter tuning removes this; it is the gait. It is the ~10 mm/s floor under every row of the oracle table.</td>
+          </tr>
+          <tr>
+            <td class="name">MPC contact schedule</td>
+            <td><code>_gait.inStance()</code></td><td>5&ndash;16% early</td>
+            <td style="text-align:left"><code>in.contact[k][leg]</code> allocates ground reaction force to a foot demonstrably in the air. Since the ground-truth estimator run is stable despite this, it is real but second-order &mdash; note it, do not chase it first.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= 6 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">06</div>
+    <h2>Where to spend the effort</h2>
+    <div class="because">Ordered by measured effect, not by ease.</div>
+  </div>
+  <div class="step-body">
+    <div class="actions">
+      <div class="act">
+        <div class="act-rank root">root cause</div>
+        <div>
+          <p>Land the foot on time. The swing leg reaches half its commanded height and
+          arrives a fifth of a cycle late; <code>swing_kp_cartesian = 500</code> with
+          <code>swing_kd_cartesian = 8</code> is a badly underdamped loop driven at
+          4&nbsp;Hz. Raising the gains, and not zeroing them at the schedule boundary
+          until contact is actually made, fixes the estimator and the MPC's contact
+          schedule at once.</p>
+          <p>Everything else on this list is a way of tolerating this defect rather than
+          removing it.</p>
+        </div>
+      </div>
+      <div class="act">
+        <div class="act-rank now">do first</div>
+        <div>
+          <p>Split the trust ramp in two. The physics is asymmetric &mdash; liftoff is
+          on schedule, touchdown is not &mdash; so a single symmetric window is the wrong
+          shape. A separate ramp-in delay and width takes the injected bias from
+          36 to 11 mm/s, within 1 mm/s of a perfect-contact oracle. Small change,
+          largest measured return.</p>
+        </div>
+      </div>
+      <div class="act">
+        <div class="act-rank also">reconsider</div>
+        <div>
+          <p>The comments in <code>MdlPosVelEstimator.cc</code> and
+          <code>stateestimator.toml</code> argue that an open-loop gait's schedule
+          &ldquo;is not an estimate of where a foot is in stance, it is the
+          definition,&rdquo; and that a contact detector can therefore add nothing.
+          That premise is now measurably false on this robot: schedule and ground differ
+          by 5&ndash;16% of stance, deterministically and reproducibly. The MIT argument
+          holds only when the swing controller lands on time. Either make that true, or
+          the detector earns its place after all.</p>
+        </div>
+      </div>
+      <div class="act">
+        <div class="act-rank also">cheap</div>
+        <div>
+          <p>Set <code>foot_ground_height</code> to the measured 0.0203 m, and re-tune
+          on velocity RMS rather than position drift for the reason in step 04.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<footer class="foot">
+  <p>Primary log <code>bin/estimation_imu_attitude.mat</code> &mdash; 30 s Go2 trot,
+  <code>attitude_source = "imu"</code>, <code>simnoise.enable = true</code>,
+  v<sub>cmd</sub> 0.15 m/s, gait period 0.5 s, duty 0.5. Confirmation runs
+  <code>bin/tw02.mat</code>, <code>bin/tw04.mat</code>, <code>bin/tw00.mat</code>
+  &mdash; headless, 26 s of trot each, identical configuration but for
+  <code>posvelestimator.trust_window</code>. Foot truth from
+  <code>simGetFootPositions()</code>; body truth from <code>simGetGroundTruth()</code>.
+  Foot world velocities are central differences of the logged truth at 1 kHz.
+  Per-leg stance intervals are recovered from the logged contact trust, so the phase
+  axis throughout is the gait schedule's own.</p>
+</footer>
+
+</div>

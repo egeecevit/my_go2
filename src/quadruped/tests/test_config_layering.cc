@@ -50,6 +50,34 @@ int main(int argc, char **argv) {
   T_CHECK(mm.appendConfigFile("robotlist.toml"));
   T_CHECK(mm.finalizeConfig());
 
+  // [mpc] has to reach every chain. MdlConvexMPC treats a missing or malformed
+  // entry as a fatal initialization error rather than defaulting, on the
+  // grounds that a wrong mass or inertia does not fail loudly -- it just
+  // produces confidently wrong forces -- so a chain that drops the table
+  // cannot start the supervisor at all. Checked here because it arrives
+  // through list.toml and is therefore exactly the kind of thing a same-named
+  // file in a version or robot directory could shadow away.
+  ConfigTable mpc;
+  T_CHECK(mm.getConfigTable("mpc", mpc));
+  T_CHECK(mpc.getDouble("dt", -1.0) > 0.0);
+  T_CHECK(mpc.getDouble("mass", -1.0) > 0.0);
+  T_CHECK(mpc.getDouble("gravity", -1.0) > 0.0);
+  T_CHECK(mpc.getDouble("friction", -1.0) > 0.0);
+  T_CHECK(mpc.getDouble("force_weight", -1.0) > 0.0);
+  T_CHECK(mpc.getDouble("force_max", -1.0) > mpc.getDouble("force_min", -1.0));
+
+  ConfigArray com;
+  T_CHECK(mpc.getArray("com_offset_body", com));
+  T_CHECK(com.size() == 3);
+
+  ConfigArray inertia;
+  T_CHECK(mpc.getArray("inertia_body", inertia));
+  T_CHECK(inertia.size() == 9);
+
+  ConfigArray weights;
+  T_CHECK(mpc.getArray("state_weights", weights));
+  T_CHECK(weights.size() == 12);
+
   ConfigTable threads;
   bool hasThreads = mm.getConfigTable("threads", threads);
 

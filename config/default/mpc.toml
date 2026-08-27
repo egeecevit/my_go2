@@ -1,0 +1,117 @@
+# --- mpc.toml ---
+#
+# Configuration for MdlConvexMPC, the convex model-predictive ground reaction
+# force solver of Di Carlo et al., "Dynamic Locomotion in the MIT Cheetah 3
+# through Convex Model-Predictive Control" (IROS 2018).
+#
+# Every key here either describes the robot or changes the mathematical problem,
+# which is why the module treats a missing or malformed one as a fatal
+# initialization error rather than defaulting quietly. A wrong mass or inertia
+# does not fail: it produces confidently wrong forces, and the robot walks badly
+# for reasons nothing in the log points at.
+#
+# The inertial values below are the Go2's. A go1 or robotv1 chain that ever
+# wants this controller needs its own mpc.toml in its version directory, not a
+# rescaling of these.
+
+[mpc]
+
+# ---- HORIZON
+#
+# 10 prediction steps at 0.04 s is a 0.4 s horizon, a little under one gait
+# cycle at the default 0.5 s period, which is the paper's Section V-A setting.
+# The step count is a compile-time constant (MdlConvexMPC::HORIZON) because the
+# QP is a fixed size; only the interval is tunable here.
+#
+# This doubles as the nominal solve rate: MdlTrot solves every dt, and also
+# immediately whenever the four-leg contact mask changes, so a leg that lands
+# off the dt grid does not wait a full interval for a force.
+dt = 0.01                 # [s]
+
+# ---- RIGID BODY
+#
+# Composed from the thirteen <inertial> elements of models/unitree_go2/go2.xml
+# -- trunk, and hip/thigh/calf for each of the four legs -- at the nominal
+# standing configuration, that is with each foot at trot.origin under its hip.
+# The legs are a little over half the total mass, so their configuration
+# genuinely matters: they move the COM about 2 cm below the body frame origin
+# and roughly triple the roll inertia the trunk alone would have.
+#
+# The single-rigid-body model treats the legs as massless, which is what makes
+# the problem convex. That approximation is in the model, not in these numbers:
+# the right thing to hand it is the aggregate, at the configuration the robot
+# actually holds.
+
+mass = 15.2064            # [kg], 6.921 trunk + 4 x 2.0714 leg
+
+# Whole-robot COM relative to the body frame origin. The rigid body state and
+# every moment arm are taken about this point, and inertia_body below is defined
+# about it too; using the body origin instead would put a fixed lever arm error
+# into every predicted moment.
+com_offset_body = [-0.00172, 0.0, -0.02227]   # [m]
+
+# Inertia about that COM, body axes, row major. Nearly diagonal: the xz term is
+# the trunk's mass sitting forward of and above the leg mass, and the tiny xy
+# and yz terms are the left/right asymmetry of the hip and calf inertials in
+# go2.xml, which is real but negligible.
+inertia_body = [ 0.177718,  0.000122, -0.016809,
+                 0.000122,  0.488065, -0.000031,
+                -0.016809, -0.000031,  0.535074]   # [kg m^2]
+
+gravity = 9.81            # [m/s^2], magnitude; the state carries -gravity
+
+# ---- CONTACT
+#
+# Coulomb friction for the square pyramid |fx| <= mu*fz, |fy| <= mu*fz. The Go2
+# foot geoms in go2.xml declare 0.8 against a floor of 1.0, so 0.6 leaves margin
+# for the slip the model does not represent. Raise it only if stance feet are
+# visibly refusing to push and the ground is genuinely grippy: a friction
+# coefficient the surface cannot deliver produces forces that slide.
+friction = 0.6
+
+# Normal force bounds on a stance foot. force_min = 0 admits a foot that is in
+# contact but carrying nothing, which is exactly what a foot at the very start
+# or end of stance is doing.
+#
+# force_max is set against the Go2's actuators rather than copied from the
+# paper. At the nominal stance an entirely vertical foot force costs 0.100 Nm/N
+# at the abduction joint and 0.160 Nm/N at the knee; against the go2.xml
+# ctrlrange of 23.7 Nm and 45.43 Nm those cap it at 237 N and 284 N. 200 N
+# leaves room for the horizontal components, which draw on the same abduction
+# torque, and is still comfortably above what the gait needs: the robot weighs
+# 149 N, so a trot diagonal carries about 75 N per foot in steady state.
+force_min = 0.0           # [N]
+force_max = 200.0         # [N]
+
+# ---- COST
+#
+# The paper's Table I baseline, in this implementation's state order:
+#
+#   roll pitch yaw   x y z   wx wy wz   vx vy vz
+#
+# Note what is and is not tracked. Horizontal position carries zero weight,
+# because a trot's job is to make a velocity good rather than to hold a point,
+# and a position term would fight the stride. Height carries 50 because it is
+# the one translational quantity that has to be held. Roll and pitch rate carry
+# zero and yaw rate carries one: the trunk really does roll and pitch through a
+# stride, and penalising that would spend force arguing with the gait.
+state_weights = [1, 1, 1, 0, 0, 50, 0, 0, 1, 1, 1, 1]
+
+# alpha in the paper's cost, the penalty on the force itself. Must be strictly
+# positive: when a foot is airborne for the whole horizon its columns of B_qp
+# are zero, and this term is the only thing left making the condensed Hessian
+# positive definite. Small enough that it barely biases the solution when the
+# feet are down.
+force_weight = 1.0e-6
+
+# qpOASES working set recalculations allowed per solve, and the budget before
+# the solve is declared failed rather than a target.
+#
+# The floor is set by how many decision variables change bound status between
+# two consecutive solves, because a swing foot is pinned with lb = ub = 0 and
+# unpinning it is itself a working set change. A trot schedule shifts by one
+# step per solve, so only the steps where the schedule transitions differ and 71
+# is enough; the pathological case is every one of the 40 foot-steps flipping at
+# once, which is 120 variables and measured at 125. 250 covers both with margin
+# and still leaves the solve an order of magnitude inside dt.
+max_working_set = 250
