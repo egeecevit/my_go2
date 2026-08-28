@@ -642,6 +642,16 @@ void MdlSimDriver::_createSimulation() {
     _cam.lookat[1] = 0;
     _cam.lookat[2] = 0.2;
 
+    // Follow the floating robot base while keeping azimuth, elevation, and
+    // distance under the existing mouse controls.
+    for (int joint = 0; joint < _model->njnt; joint++) {
+      if (_model->jnt_type[joint] == mjJNT_FREE) {
+        _cam.type = mjCAMERA_TRACKING;
+        _cam.trackbodyid = _model->jnt_bodyid[joint];
+        break;
+      }
+    }
+
     // Set the user pointer for the window to this instance
     glfwSetWindowUserPointer(_window, this);
 
