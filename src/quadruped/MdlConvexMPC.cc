@@ -37,6 +37,10 @@ MdlConvexMPC::~MdlConvexMPC() {
   DBGPRINT("MdlConvexMPC::~MdlConvexMPC\n");
   delete _qp;
   _qp = nullptr;
+  if (_dumpFile) {
+    std::fclose(_dumpFile);
+    _dumpFile = nullptr;
+  }
 }
 
 namespace {
@@ -87,6 +91,11 @@ void MdlConvexMPC::uninit() {
   delete _qp;
   _qp = nullptr;
   _ready = false;
+
+  if (_dumpFile) {
+    std::fclose(_dumpFile);
+    _dumpFile = nullptr;
+  }
 }
 
 void MdlConvexMPC::activate() {
@@ -122,13 +131,20 @@ void MdlConvexMPC::_readConfig() {
 
   params_t p;
   p.dt = config.getDouble("dt", -1.0);
+  // Zero is the documented "follow dt", so it cannot use the -1 sentinel that
+  // marks a key with no defensible fallback. reset() resolves it.
+  p.solve_period = config.getDouble("solve_period", 0.0);
+  p.horizon = (int)config.getInt("horizon", p.horizon);
   p.mass = config.getDouble("mass", -1.0);
   p.gravity = config.getDouble("gravity", p.gravity);
   p.friction = config.getDouble("friction", -1.0);
   p.force_min = config.getDouble("force_min", -1.0);
   p.force_max = config.getDouble("force_max", -1.0);
   p.force_weight = config.getDouble("force_weight", -1.0);
+  p.terminal_weight_scale =
+      config.getDouble("terminal_weight_scale", p.terminal_weight_scale);
   p.max_working_set = (int)config.getInt("max_working_set", p.max_working_set);
+  p.dump_path = config.getString("dump_path", "");
 
   ConfigArray com;
   if (config.getArray("com_offset_body", com) && com.size() == 3) {
@@ -174,6 +190,24 @@ bool MdlConvexMPC::reset() {
   // Validation, in the order a mistake is likely to be made. Written so that
   // NaN fails every test rather than sliding through a > comparison.
   if (!(_params.dt > 0.0) || !std::isfinite(_params.dt)) return false;
+  // A horizon past MAX_HORIZON would run off the end of the input arrays and of
+  // _Ad/_Bd, so it is a refusal rather than a clamp: silently solving a shorter
+  // problem than the caller asked for is worse than not starting.
+  if (_params.horizon < 1 || _params.horizon > MAX_HORIZON) return false;
+  // Resolved here rather than at the call site so getParams() always reports the
+  // period actually in force, and so a config that never mentions it behaves
+  // exactly as it did when the horizon step was also the solve interval.
+  if (!(_params.solve_period > 0.0) || !std::isfinite(_params.solve_period))
+    _params.solve_period = _params.dt;
+  // Accepted with a warning rather than refused: u_0 is planned as the force
+  // for exactly one dt, so holding it for n dt multiplies the intended impulse
+  // by n. Measured to break the gait, and expectedly so, but a deliberate
+  // experiment is allowed to do it on purpose.
+  if (_params.solve_period > _params.dt && _mgr)
+    _mgr->warning(MPCMODULE_NAME,
+                  "solve_period %.4f > dt %.4f: u_0 will be held past the "
+                  "interval the model planned it for",
+                  _params.solve_period, _params.dt);
   if (!(_params.mass > 0.0) || !std::isfinite(_params.mass)) return false;
   if (!_params.com_offset_body.allFinite()) return false;
   if (!_params.inertia_body.allFinite()) return false;
@@ -186,6 +220,9 @@ bool MdlConvexMPC::reset() {
   // positive definite once a foot is airborne for the whole horizon, which
   // zeroes its columns of B_qp.
   if (!(_params.force_weight > 0.0) || !std::isfinite(_params.force_weight)) return false;
+  if (!(_params.terminal_weight_scale > 0.0) ||
+      !std::isfinite(_params.terminal_weight_scale))
+    return false;
   if (_params.max_working_set < 1) return false;
   for (int i = 0; i < NUM_STATES - 1; i++)
     if (!(_params.state_weights[i] >= 0.0) || !std::isfinite(_params.state_weights[i]))
@@ -201,30 +238,42 @@ bool MdlConvexMPC::reset() {
   if (llt.info() != Eigen::Success) return false;
 
   const int NS = NUM_STATES;
-  const int NX = HORIZON * NS;
+  const int H = _params.horizon;
+  const int NX = H * NS;
+  const int nv = H * NUM_INPUTS;
+  const int nc = H * NUM_LEGS * 4;
 
   _Aqp.setZero(NX, NS);
-  _Bqp.setZero(NX, NUM_VARS);
-  _H.setZero(NUM_VARS, NUM_VARS);
-  _g.setZero(NUM_VARS);
-  _Acon.setZero(NUM_CONSTRAINTS, NUM_VARS);
-  _lbA.setZero(NUM_CONSTRAINTS);
-  _ubA.setZero(NUM_CONSTRAINTS);
-  _lb.setZero(NUM_VARS);
-  _ub.setZero(NUM_VARS);
-  _solution.setZero(NUM_VARS);
+  _Bqp.setZero(NX, nv);
+  _H.setZero(nv, nv);
+  _g.setZero(nv);
+  _Acon.setZero(nc, nv);
+  _lbA.setZero(nc);
+  _ubA.setZero(nc);
+  _lb.setZero(nv);
+  _ub.setZero(nv);
+  _solution.setZero(nv);
   _L.setZero(NX);
   _xref.setZero(NX);
   _x0.setZero(NS);
-  _LB.setZero(NX, NUM_VARS);
+  _LB.setZero(NX, nv);
   _e.setZero(NX);
   _We.setZero(NX);
+  _Xpred.setZero(NX);
 
-  // State cost, repeated over the horizon. The gravity state gets weight zero:
-  // it is a constant carried along to make the model affine, not something to
-  // track.
-  for (int k = 0; k < HORIZON; k++) {
-    for (int i = 0; i < NS - 1; i++) _L[k * NS + i] = _params.state_weights[i];
+  // A dump left open across a reset would change record size mid-file whenever
+  // the horizon moved; close it and let the next solve reopen fresh.
+  if (_dumpFile) {
+    std::fclose(_dumpFile);
+    _dumpFile = nullptr;
+  }
+
+  // State cost, repeated over the horizon, with the last step scaled by the
+  // terminal multiplier. The gravity state gets weight zero: it is a constant
+  // carried along to make the model affine, not something to track.
+  for (int k = 0; k < H; k++) {
+    const double s = (k == H - 1) ? _params.terminal_weight_scale : 1.0;
+    for (int i = 0; i < NS - 1; i++) _L[k * NS + i] = s * _params.state_weights[i];
     _L[k * NS + NS - 1] = 0.0;
   }
 
@@ -238,7 +287,7 @@ bool MdlConvexMPC::reset() {
   const double mu = _params.friction;
   const double INF = qpOASES::INFTY;
   int row = 0;
-  for (int k = 0; k < HORIZON; k++) {
+  for (int k = 0; k < H; k++) {
     for (int leg = 0; leg < NUM_LEGS; leg++) {
       const int col = k * NUM_INPUTS + 3 * leg;
 
@@ -268,8 +317,14 @@ bool MdlConvexMPC::reset() {
     }
   }
 
-  if (!_qp) {
-    _qp = new qpOASES::SQProblem(NUM_VARS, NUM_CONSTRAINTS);
+  // qpOASES fixes its dimensions at construction, so a changed horizon means a
+  // new object rather than a resize. Rebuilt only when the size actually moves,
+  // so a reset() that changes nothing else keeps the solver it already had.
+  if (!_qp || _qpVars != nv || _qpCons != nc) {
+    delete _qp;
+    _qp = new qpOASES::SQProblem(nv, nc);
+    _qpVars = nv;
+    _qpCons = nc;
     qpOASES::Options options;
     // The solver's own preset for exactly this use: a sequence of closely
     // related QPs solved to a modest tolerance under a hard time budget.
@@ -345,17 +400,18 @@ bool MdlConvexMPC::_discretizeDynamics(double yaw,
 
 void MdlConvexMPC::_buildCondensedDynamics() {
   const int NS = NUM_STATES;
+  const int H = _params.horizon;
 
   // X = [x_1 ... x_N] with x_{k+1} = Ad[k] x_k + Bd[k] u_k, so block row i of
   // A_qp is Ad[i]...Ad[0] and block (i,j) of B_qp is Ad[i]...Ad[j+1] Bd[j].
   // Both follow from the previous row by one multiplication.
   _Aqp.block(0, 0, NS, NS) = _Ad[0];
-  for (int i = 1; i < HORIZON; i++)
+  for (int i = 1; i < H; i++)
     _Aqp.block(i * NS, 0, NS, NS).noalias() =
         _Ad[i] * _Aqp.block((i - 1) * NS, 0, NS, NS);
 
   _Bqp.setZero();
-  for (int i = 0; i < HORIZON; i++) {
+  for (int i = 0; i < H; i++) {
     for (int j = 0; j < i; j++)
       _Bqp.block(i * NS, j * NUM_INPUTS, NS, NUM_INPUTS).noalias() =
           _Ad[i] * _Bqp.block((i - 1) * NS, j * NUM_INPUTS, NS, NUM_INPUTS);
@@ -375,7 +431,8 @@ void MdlConvexMPC::_buildCost() {
   // in the last few digits shows up as a Cholesky factorization that fails on
   // one solve out of many, which is a miserable thing to debug. Done in place
   // rather than through 0.5*(H + H^T) so nothing allocates here.
-  for (int i = 0; i < NUM_VARS; i++) {
+  const int nv = (int)_H.rows();
+  for (int i = 0; i < nv; i++) {
     for (int j = 0; j < i; j++) {
       const double s = 0.5 * (_H(i, j) + _H(j, i));
       _H(i, j) = s;
@@ -396,7 +453,7 @@ void MdlConvexMPC::_buildBounds(const input_t& input) {
   // which mu*force_max is by construction.
   const double flim = _params.friction * _params.force_max;
 
-  for (int k = 0; k < HORIZON; k++) {
+  for (int k = 0; k < _params.horizon; k++) {
     for (int leg = 0; leg < NUM_LEGS; leg++) {
       const int col = k * NUM_INPUTS + 3 * leg;
       if (input.contact[k][leg]) {
@@ -449,8 +506,10 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
 
   if (!_ready) return false;
 
+  const int H = _params.horizon;
+
   if (!_stateFinite(input.current)) return false;
-  for (int k = 0; k < HORIZON; k++) {
+  for (int k = 0; k < H; k++) {
     if (!_stateFinite(input.reference[k])) return false;
     if (!input.moment_arm_world[k].allFinite()) return false;
   }
@@ -458,10 +517,10 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
   // One A_c for the whole horizon, evaluated at the mean reference yaw, as in
   // paper Section IV-C. B_c is rebuilt per step because the feet move.
   double yawMean = 0.0;
-  for (int k = 0; k < HORIZON; k++) yawMean += input.reference[k].rpy.z();
-  yawMean /= HORIZON;
+  for (int k = 0; k < H; k++) yawMean += input.reference[k].rpy.z();
+  yawMean /= H;
 
-  for (int k = 0; k < HORIZON; k++) {
+  for (int k = 0; k < H; k++) {
     if (!_discretizeDynamics(yawMean, input.moment_arm_world[k], _Ad[k], _Bd[k]))
       return false;
     if (!_Ad[k].allFinite() || !_Bd[k].allFinite()) return false;
@@ -470,7 +529,7 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
   _buildCondensedDynamics();
 
   _packState(input.current, _x0);
-  for (int k = 0; k < HORIZON; k++)
+  for (int k = 0; k < H; k++)
     _packState(input.reference[k], _xref.segment(k * NUM_STATES, NUM_STATES));
 
   _buildCost();
@@ -519,6 +578,56 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
 
   _last = output;
   for (int i = 0; i < NUM_INPUTS; i++) _logForces[i] = _solution[i];
+
+  if (!_params.dump_path.empty()) _dumpSolve(input);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+//  Prediction audit
+// ---------------------------------------------------------------------------
+
+void MdlConvexMPC::_dumpSolve(const input_t& input) {
+  const int H = _params.horizon;
+
+  if (!_dumpFile) {
+    _dumpFile = std::fopen(_params.dump_path.c_str(), "wb");
+    if (!_dumpFile) {
+      if (_mgr)
+        _mgr->warning(MPCMODULE_NAME, "Cannot open dump file %s; disabling dump",
+                      _params.dump_path.c_str());
+      _params.dump_path.clear();
+      return;
+    }
+    const double header[8] = {20260828.0,          1.0,
+                              (double)H,           _params.dt,
+                              (double)NUM_STATES,  (double)NUM_INPUTS,
+                              (double)NUM_LEGS,    _params.solve_period};
+    std::fwrite(header, sizeof(double), 8, _dumpFile);
+  }
+
+  // The QP's own view of the future. _e already holds Aqp*x0 - xref from
+  // _buildCost(), so the reference cancels back out and only the input response
+  // costs a fresh product.
+  _Xpred = _e + _xref;
+  _Xpred.noalias() += _Bqp * _solution;
+
+  const double t = _mgr ? _mgr->readTime() : 0.0;
+  std::fwrite(&t, sizeof(double), 1, _dumpFile);
+  std::fwrite(_x0.data(), sizeof(double), NUM_STATES, _dumpFile);
+  std::fwrite(_xref.data(), sizeof(double), H * NUM_STATES, _dumpFile);
+  std::fwrite(_solution.data(), sizeof(double), H * NUM_INPUTS, _dumpFile);
+  std::fwrite(_Xpred.data(), sizeof(double), H * NUM_STATES, _dumpFile);
+
+  double mask[MAX_HORIZON * NUM_LEGS];
+  for (int k = 0; k < H; k++)
+    for (int leg = 0; leg < NUM_LEGS; leg++)
+      mask[k * NUM_LEGS + leg] = input.contact[k][leg] ? 1.0 : 0.0;
+  std::fwrite(mask, sizeof(double), H * NUM_LEGS, _dumpFile);
+
+  // A fall ends the behavior, not the process; without a flush the tail of the
+  // record stream -- the part that describes the fall -- sits in a stdio buffer
+  // until exit_time, and a killed run loses exactly the data it was run for.
+  std::fflush(_dumpFile);
 }
 

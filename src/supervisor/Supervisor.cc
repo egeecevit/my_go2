@@ -255,7 +255,7 @@ void Supervisor::uninit() {
 
 void Supervisor::activate() {
   _state = S_IDLE;
-  printf("\n  [S]tand  [W]alk(draw)  [T]rot  [D]own(sit)  [Q]uit\n\n");
+  printf("\n  [S]tand  [W]alk(draw)  [T]rot  [R]un-stop  [D]own(sit)  [Q]uit\n\n");
 }
 
 void Supervisor::deactivate() {
@@ -384,25 +384,50 @@ void Supervisor::update() {
     break;
 
   case S_TROT:
-    // MdlTrot runs indefinitely; press D to ask it to stop and recenter.
+    // MdlTrot runs indefinitely. R stops and stands back up, D stops and sits
+    // down; either way MdlTrot ramps the gait down first, so the key only picks
+    // the destination.
     if (_trot->getStatus() == MdlTrot::ERROR) {
       _mgr->message("Supervisor: ERROR during trot, sitting down");
       _mgr->releaseModule(_trot, this);
       _mgr->grabModule(_sit, this);
       _state = S_SIT;
-    } else if (key == 'd' || key == 'D') {
-      _mgr->message("Supervisor: -> S_TROT_STOPPING");
+    } else if (key == 'r' || key == 'R' || key == 'd' || key == 'D') {
+      _trotStopToStand = (key == 'r' || key == 'R');
+      _mgr->message("Supervisor: -> S_TROT_STOPPING (to %s)",
+                    _trotStopToStand ? "stand" : "sit");
       _trot->stopTrotting();
       _state = S_TROT_STOPPING;
     }
     break;
 
   case S_TROT_STOPPING:
-    if (_trot->isStopped() || _trot->getStatus() == MdlTrot::ERROR) {
-      _mgr->message("Supervisor: -> S_SIT (from trot)");
+    // An error on the way down is not a state to stand up out of, so it always
+    // sits regardless of which key started the stop.
+    if (_trot->getStatus() == MdlTrot::ERROR) {
+      _mgr->message("Supervisor: ERROR during trot stop, sitting down");
       _mgr->releaseModule(_trot, this);
       _mgr->grabModule(_sit, this);
       _state = S_SIT;
+    } else if (_trot->isStopped()) {
+      _mgr->releaseModule(_trot, this);
+      if (_trotStopToStand) {
+        // Zero delta, not _standHeight. setTargetHeight() takes an offset from
+        // the pose the module is activated in, and MdlTrot has just centered the
+        // robot at its trot height; asking for another _standHeight on top of
+        // that puts the target outside the leg's workspace and MdlStand errors
+        // out. The stand-up delta belongs on the edge out of a sit, which is the
+        // only place the robot is actually low.
+        _mgr->message("Supervisor: -> S_STAND (from trot)");
+        _mgr->grabModule(_stand, this);
+        _stand->setTargetHeight(0.0);
+        _standSettled = false;
+        _state = S_STAND;
+      } else {
+        _mgr->message("Supervisor: -> S_SIT (from trot)");
+        _mgr->grabModule(_sit, this);
+        _state = S_SIT;
+      }
     }
     break;
 

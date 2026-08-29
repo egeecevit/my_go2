@@ -1,0 +1,594 @@
+<title>Real Until Touchdown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground:   #f3f5f8;
+    --surface:  #ffffff;
+    --sunk:     #e9edf2;
+    --ink:      #151b23;
+    --muted:    #5f6b79;
+    --faint:    #8b95a1;
+    --rule:     #d9e0e8;
+    --rule-firm:#b6c1cd;
+    --accent:   #1f4e79;
+    --accent-sw:#dbe6f1;
+    --warn:     #ab3f1c;
+    --warn-sw:  #f7e2d8;
+    --good:     #1c6a4f;
+    --good-sw:  #d8ebe3;
+    --shadow:   0 1px 2px rgba(21,27,35,.06), 0 6px 20px rgba(21,27,35,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0f141a;
+      --surface:  #171e26;
+      --sunk:     #1e2731;
+      --ink:      #e4e9ef;
+      --muted:    #9aa6b4;
+      --faint:    #6d7a88;
+      --rule:     #2a343f;
+      --rule-firm:#3d4956;
+      --accent:   #78aada;
+      --accent-sw:#1c2c3d;
+      --warn:     #e08765;
+      --warn-sw:  #38251d;
+      --good:     #5dbf98;
+      --good-sw:  #17302a;
+      --shadow:   0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0f141a;
+    --surface:  #171e26;
+    --sunk:     #1e2731;
+    --ink:      #e4e9ef;
+    --muted:    #9aa6b4;
+    --faint:    #6d7a88;
+    --rule:     #2a343f;
+    --rule-firm:#3d4956;
+    --accent:   #78aada;
+    --accent-sw:#1c2c3d;
+    --warn:     #e08765;
+    --warn-sw:  #38251d;
+    --good:     #5dbf98;
+    --good-sw:  #17302a;
+    --shadow:   0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.28);
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 61rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  @media (max-width: 40rem) { .wrap { padding: 2rem 1.1rem 3.5rem; } }
+
+  h1, h2, h3, .label, .eyebrow, th, .fig-cap b {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+  }
+  h1 {
+    font-size: clamp(2.1rem, 5.2vw, 3.05rem);
+    line-height: 1.04; font-weight: 700; letter-spacing: -0.022em;
+    margin: .3rem 0 .8rem; text-wrap: balance;
+  }
+  h2 {
+    font-size: 1.34rem; font-weight: 600; letter-spacing: -0.012em;
+    margin: 0; text-wrap: balance;
+  }
+  p { margin: 0 0 .95rem; }
+  .col > p:last-child { margin-bottom: 0; }
+
+  code, .mono, table, .runline {
+    font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  code {
+    font-size: .855em; background: var(--sunk);
+    padding: .08em .34em; border-radius: 3px;
+  }
+
+  .eyebrow {
+    font-size: .705rem; font-weight: 600; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--faint);
+    font-family: Archivo, sans-serif; display: block; margin-bottom: .5rem;
+  }
+
+  header.masthead {
+    border-bottom: 2px solid var(--rule-firm);
+    padding-bottom: 1.6rem; margin-bottom: 2.2rem;
+  }
+  header.masthead .sub {
+    font-size: 1.12rem; color: var(--muted); max-width: 44rem; margin-bottom: 1.2rem;
+  }
+  .runline {
+    display: flex; flex-wrap: wrap; gap: .45rem 1.5rem;
+    font-size: .765rem; color: var(--muted);
+    border-top: 1px solid var(--rule); padding-top: .85rem;
+  }
+  .runline b { color: var(--ink); font-weight: 600; }
+
+  .verdict {
+    background: var(--surface); border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0; padding: 1.25rem 1.4rem;
+    box-shadow: var(--shadow); margin-bottom: 2.4rem;
+  }
+  .verdict p:last-child { margin-bottom: 0; }
+
+  section.step {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 8px; padding: 1.5rem 1.6rem; margin-bottom: 1.5rem;
+    box-shadow: var(--shadow);
+  }
+  .step-head {
+    display: grid; grid-template-columns: auto 1fr; gap: .35rem .9rem;
+    align-items: baseline; padding-bottom: .9rem; margin-bottom: 1.1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .step-n {
+    font-family: "IBM Plex Mono", monospace; font-size: .8rem; font-weight: 600;
+    color: var(--accent); background: var(--accent-sw);
+    padding: .1rem .45rem; border-radius: 3px; grid-row: span 2;
+  }
+  .because { grid-column: 2; font-size: .9rem; color: var(--muted); }
+
+  .scroller { overflow-x: auto; margin: .3rem 0 1rem; }
+  table { border-collapse: collapse; font-size: .78rem; width: 100%; min-width: 30rem; }
+  caption {
+    text-align: left; font-size: .78rem; color: var(--muted);
+    padding-bottom: .5rem; font-family: Archivo, sans-serif;
+  }
+  th {
+    text-align: right; font-size: .7rem; font-weight: 600;
+    letter-spacing: .04em; color: var(--muted);
+    border-bottom: 1px solid var(--rule-firm); padding: .35rem .6rem;
+    white-space: nowrap;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  td {
+    text-align: right; padding: .38rem .6rem;
+    border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  td.name { font-family: Archivo, sans-serif; font-size: .8rem; font-weight: 500; }
+  .dim { color: var(--faint); }
+  .bad { color: var(--warn); font-weight: 600; }
+  .fine { color: var(--good); font-weight: 600; }
+  tr.ok { background: var(--good-sw); }
+
+  .fig-cap { font-size: .87rem; color: var(--muted); margin-top: .4rem; }
+  .fig-cap b { color: var(--ink); }
+  figure.strip {
+    margin: 1.1rem 0; background: var(--sunk);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 1.1rem 1.2rem .8rem;
+  }
+  .strip svg { display: block; width: 100%; height: auto; }
+  .s-axis  { stroke: var(--rule-firm); stroke-width: 1; }
+  .s-grid  { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 2 4; }
+  .s-tick  { fill: var(--faint); font-family: "IBM Plex Mono", monospace; font-size: 11px; }
+  .s-lab   { fill: var(--muted); font-family: Archivo, sans-serif; font-size: 12px; font-weight: 600; }
+  .s-note  { fill: var(--faint); font-family: Archivo, sans-serif; font-size: 11px; }
+  .s-noteb { fill: var(--warn); font-family: Archivo, sans-serif; font-size: 11px; font-weight: 600; }
+  .s-noteg { fill: var(--good); font-family: Archivo, sans-serif; font-size: 11px; font-weight: 600; }
+  .s-fall  { fill: var(--warn); }
+  .s-live  { fill: var(--good); }
+  .s-var   { fill: none; stroke: var(--warn); stroke-width: 1.2; }
+  .s-curve { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+  .s-curve2{ fill: none; stroke: var(--warn); stroke-width: 2.2; }
+  .s-band  { fill: var(--warn); opacity: .10; }
+
+  .callout {
+    background: var(--sunk); border-left: 3px solid var(--rule-firm);
+    border-radius: 0 5px 5px 0; padding: .95rem 1.1rem; margin: 1.1rem 0 0;
+    font-size: .93rem;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .eyebrow { margin-bottom: .35rem; }
+
+  .actions { display: grid; gap: .85rem; }
+  .act { display: grid; grid-template-columns: auto 1fr; gap: .9rem; align-items: start; }
+  .act-rank {
+    font-family: "IBM Plex Mono", monospace; font-size: .68rem; font-weight: 600;
+    padding: .16rem .45rem; border-radius: 3px; white-space: nowrap;
+    background: var(--sunk); color: var(--muted);
+  }
+  .act-rank.now { background: var(--warn-sw); color: var(--warn); }
+  .act-rank.root { background: var(--accent-sw); color: var(--accent); }
+  .act p { font-size: .93rem; margin: 0; }
+  .act p + p { margin-top: .45rem; color: var(--muted); }
+
+  footer.foot {
+    margin-top: 2.5rem; padding-top: 1.1rem; border-top: 1px solid var(--rule);
+    font-size: .8rem; color: var(--faint);
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <span class="eyebrow">quadcontrol &middot; convex mpc</span>
+  <h1>Real Until Touchdown</h1>
+  <p class="sub">The horizon paradox is adjudicated, with the state estimator out
+  of the loop and the solver's own predictions dumped every solve and scored
+  against what then happened. The QP's assembly is verified correct to
+  10<sup>&minus;7</sup>. Its <em>model</em> stops being predictive at the next
+  touchdown: at a quarter second of lookahead the attitude plan carries exactly
+  zero information about reality. Every long-horizon configuration tried &mdash;
+  the paper's own weights included &mdash; falls; the disagreement with the
+  earlier report's "gait-consistent reference" prescription was right.</p>
+  <div class="runline">
+    <span><b>lookahead 0.10 s</b> walks 70 s, no fall</span>
+    <span><b>0.15 s</b> 12.6 s &nbsp; <b>0.25 s</b> 6.8 s &nbsp; <b>0.50 s</b> 3.6 s</span>
+    <span><b>best rescue tried</b> 25.3 s, still 3&times; short</span>
+    <span><b>ground truth</b> on both estimator stages throughout</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <span class="eyebrow">The answer</span>
+  <p><strong>The operative variable really is <code>horizon &times; dt</code></strong>
+  &mdash; because it is the lookahead T, and the stability cliff sits where T
+  crosses the time to the next diagonal swap. Stance is
+  <code>duty &times; period</code> = 0.25 s, so the time to the next touchdown is
+  uniform on [0, 0.25 s], mean 0.125 s. At T = 0.10 s most solves never contain a
+  swap and the swap is handled reactively by the <code>maskChanged</code>
+  re-solve; that configuration walks until told to stop. The moment T reaches
+  past the swap, survival collapses monotonically. The suspicion that the gait
+  period was the relevant scale was nearly right: it is the <em>stance
+  duration</em>, one diagonal's worth of it.</p>
+  <p><strong>And the reason is the model, not the reference.</strong> The
+  single-rigid-body model is dynamically consistent as implemented &mdash; a new
+  unit test integrates the continuous dynamics independently through a
+  mid-horizon contact change and lands on the QP's exact-exponential prediction
+  to 10<sup>&minus;7</sup> &mdash; but it is not <em>predictive</em>: measured
+  against ground truth, its attitude-rate prediction is ~35% wrong after one
+  10 ms step, its pitch prediction overtakes the reference error by 0.1 s, and
+  at 0.25 s its roll prediction error equals the reference error exactly
+  (0.200 vs 0.202 rad): past the swap the plan knows nothing. A horizon of 25
+  weighs one real interval against twenty-four of fiction, and u<sub>0</sub> is
+  optimized for the fiction. The measured signature is a limit cycle at gait
+  frequency &mdash; force bursts saturating both stance legs at 400 N on each
+  swap, the trunk pumped 25 mm above reference, roll growing until the topple.</p>
+</div>
+
+<div class="chain">
+
+<!-- ============================================================= 1 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">01</div>
+    <h2>The assembly is clean, and now provably so</h2>
+    <div class="because">An independent integrator agrees with the QP to 10<sup>&minus;7</sup> across a mid-horizon swap.</div>
+  </div>
+  <p><code>test_discretization_consistency</code> poses a solve whose horizon
+  contains a diagonal swap and whose moment arms differ at every step, then
+  re-integrates the solver's own solution through an RK4 integrator written
+  against the continuous model &mdash; not through the matrix exponential &mdash;
+  and demands the condensed prediction
+  <code>X = A<sub>qp</sub>x&#8320; + B<sub>qp</sub>U</code> match step by step.
+  It does, to 10<sup>&minus;7</sup>, at dt 0.01 and 0.04. The
+  contact/reference index offset, the per-step arms, the shared mean-yaw frame
+  and the gravity column are all exercised. Whatever is wrong with a long
+  horizon, it is not an implementation bug in the QP, and that class of
+  explanation is now closed by a test rather than by inspection.</p>
+</section>
+
+<!-- ============================================================= 2 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">02</div>
+    <h2>The model diverges from reality faster than the reference does</h2>
+    <div class="because">Every solve now dumps its own predicted trajectory; later records score it.</div>
+  </div>
+  <p>With ground truth in the loop, each dump record's current state <em>is</em>
+  the true state, so the plan written at time t can be scored against the record
+  nearest t + k&middot;dt with no log parsing at all. Over the healthy 70 s
+  baseline (horizon 10, dt 0.01):</p>
+  <div class="scroller">
+    <table>
+      <caption>RMS prediction error of the QP's own plan, healthy baseline run b1</caption>
+      <thead>
+        <tr><th>quantity</th><th>1 step (10 ms)</th><th>10 steps (0.1 s)</th><th>reference error at 0.1 s</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="name">pitch</td><td>0.96 mrad</td><td class="bad">21.4 mrad</td><td>16.1 mrad</td></tr>
+        <tr><td class="name">roll</td><td>0.48 mrad</td><td>11.8 mrad</td><td>11.7 mrad</td></tr>
+        <tr><td class="name">pitch rate w<sub>y</sub></td><td class="bad">0.19 rad/s</td><td class="bad">0.40 rad/s</td><td>0.25 rad/s</td></tr>
+        <tr><td class="name">height z</td><td class="fine">0.2 mm</td><td class="fine">1.2 mm</td><td>3.6 mm</td></tr>
+        <tr><td class="name">v<sub>z</sub></td><td>30 mm/s</td><td>85 mm/s</td><td>58 mm/s</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="fig-cap"><b>Read the pitch row against the gait itself:</b> the trunk's
+  whole pitch excursion is &plusmn;22 mrad, and the model's prediction of it is
+  21 mrad wrong after 0.1 s &mdash; and already <em>more</em> wrong than the
+  constant reference. Height is the exception: z prediction stays inside the
+  reference error, which is why the height channel is not what breaks. The
+  attitude-rate error is ~35% of the signal after a single step; that is not a
+  discretization artifact, it is a forcing the model does not contain. The
+  obvious candidate is measured in the mass budget: the legs are 8.3 of
+  15.2 kg &mdash; <b>55% of the robot swings at 2 Hz</b> and the model calls it
+  massless. MIT's machines put roughly a tenth of their mass in the legs, which
+  is the licence behind the paper's 0.3&ndash;0.5 s references that this
+  platform does not have.</p>
+</section>
+
+<!-- ============================================================= 3 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">03</div>
+    <h2>The error breaks exactly at the touchdown</h2>
+    <div class="because">Keying every prediction to the swap shows where the model ends.</div>
+  </div>
+
+  <figure class="strip">
+    <svg viewBox="0 0 940 250" role="img"
+         aria-label="Normalized prediction error versus prediction time relative to the diagonal swap: low plateau before, sharp break at the swap, peak shortly after.">
+      <rect class="s-band" x="470" y="24" width="400" height="176"/>
+      <line class="s-grid" x1="70" y1="24" x2="870" y2="24"/>
+      <line class="s-grid" x1="70" y1="112" x2="870" y2="112"/>
+      <line class="s-axis" x1="70" y1="200" x2="870" y2="200"/>
+      <line class="s-axis" x1="470" y1="24" x2="470" y2="200"/>
+      <text class="s-tick" x="62" y="28" text-anchor="end">1.0</text>
+      <text class="s-tick" x="62" y="116" text-anchor="end">0.5</text>
+      <text class="s-tick" x="62" y="204" text-anchor="end">0</text>
+      <text class="s-lab" x="70" y="235">prediction lands before the swap</text>
+      <text class="s-lab" x="870" y="235" text-anchor="end">after the swap</text>
+      <text class="s-tick" x="470" y="218" text-anchor="middle">swap</text>
+      <!-- roll, from b1: plateau ~0.05-0.2 pre, break at 0, ~1.0 by +90ms -->
+      <polyline class="s-curve" points="110,192 150,190 190,193 230,191 270,189 310,186 350,178 390,136 430,85 470,85 510,101 550,110 590,102 630,95 670,68 710,58 750,42 790,32 830,24"/>
+      <!-- vz, peak just after swap -->
+      <polyline class="s-curve2" points="110,138 150,128 190,185 230,190 270,188 310,181 350,179 390,173 430,153 470,153 510,88 550,24 590,26 630,130 670,124 710,71 750,50 790,49 830,48"/>
+      <text class="s-noteg" x="120" y="170">within one stance: 5&ndash;20% of max</text>
+      <text class="s-noteb" x="560" y="46">v<sub>z</sub> peaks +20 ms after the swap</text>
+      <text class="s-note" x="620" y="90">roll keeps climbing past it</text>
+    </svg>
+  </figure>
+  <p class="fig-cap"><b>Drawn from run b1's data, normalized per component</b>
+  (<code>figs/mpc/horizon_audit/b1_switch_error.png</code> is the measured
+  original). Within an unbroken stance the model is worth using; across the
+  swap it is not. At horizon 25 the same analysis adds a second face of the
+  same blind spot: plans <em>launched from</em> the first ~0.12 s of a stance
+  &mdash; the contact settle window the estimator report measured &mdash; are
+  bad over their whole length. The touchdown transient, the foot punching in
+  and rebounding through compliant contact, is exactly what an instantaneous,
+  impact-free contact model cannot carry.</p>
+</section>
+
+<!-- ============================================================= 4 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">04</div>
+    <h2>Nothing rescues a horizon past the swap</h2>
+    <div class="because">Nine ground-truth runs; every escape route tried, one moves the number, none fixes it.</div>
+  </div>
+
+  <figure class="strip">
+    <svg viewBox="0 0 940 260" role="img"
+         aria-label="Seconds of trotting versus lookahead: 92 and 70 seconds without falling at 0.05 and 0.10 seconds of lookahead, then 12.6, 6.8 and 3.6 seconds at 0.15, 0.25 and 0.50.">
+      <line class="s-grid" x1="80" y1="40" x2="900" y2="40"/>
+      <line class="s-grid" x1="80" y1="100" x2="900" y2="100"/>
+      <line class="s-grid" x1="80" y1="160" x2="900" y2="160"/>
+      <line class="s-axis" x1="80" y1="212" x2="900" y2="212"/>
+      <text class="s-tick" x="72" y="44" text-anchor="end">70 s</text>
+      <text class="s-tick" x="72" y="104" text-anchor="end">20 s</text>
+      <text class="s-tick" x="72" y="164" text-anchor="end">6 s</text>
+      <text class="s-tick" x="72" y="216" text-anchor="end">2 s</text>
+      <!-- log scale: y = 212 - 52*log10(s/2)... 2->212, 6.3->160, 20->104, 63->48 -->
+      <!-- x: 0.05->140, 0.10->300, 0.15->440, 0.25->620, 0.50->840 -->
+      <circle class="s-live" cx="140" cy="26" r="7"/>
+      <circle class="s-live" cx="300" cy="40" r="7"/>
+      <circle class="s-fall" cx="440" cy="118" r="7"/>
+      <circle class="s-fall" cx="620" cy="150" r="7"/>
+      <circle class="s-fall" cx="840" cy="182" r="7"/>
+      <!-- variants at 0.25 -->
+      <circle class="s-var" cx="620" cy="145" r="4"/>
+      <circle class="s-var" cx="620" cy="137" r="4"/>
+      <circle class="s-var" cx="620" cy="159" r="4"/>
+      <circle class="s-var" cx="620" cy="87"  r="4"/>
+      <circle class="s-var" cx="620" cy="148" r="4"/>
+      <text class="s-noteg" x="122" y="18">still walking when stopped</text>
+      <text class="s-note" x="646" y="88">best variant: paper's velocity weights, 25.3 s</text>
+      <text class="s-noteb" x="646" y="152">terminal cost, duty 0.6, slow, full paper profile</text>
+      <text class="s-tick" x="140" y="232" text-anchor="middle">0.05</text>
+      <text class="s-tick" x="300" y="232" text-anchor="middle">0.10</text>
+      <text class="s-tick" x="440" y="232" text-anchor="middle">0.15</text>
+      <text class="s-tick" x="620" y="232" text-anchor="middle">0.25</text>
+      <text class="s-tick" x="840" y="232" text-anchor="middle">0.50</text>
+      <text class="s-lab" x="490" y="252" text-anchor="middle">lookahead = horizon &times; dt [s], log survival</text>
+    </svg>
+  </figure>
+
+  <div class="scroller">
+    <table>
+      <caption>All runs: ground truth on both estimator stages, 0.55 m/s, dt = solve_period = 0.01 unless noted. Deterministic setup, one run per cell.</caption>
+      <thead>
+        <tr><th>run</th><th>lookahead</th><th>change</th><th>trot</th><th>walked</th><th>mean z (ref .268)</th></tr>
+      </thead>
+      <tbody>
+        <tr class="ok"><td class="name">b1 / b2</td><td>0.10 s</td><td class="dim">none (shipped config)</td><td class="fine">70 s, no fall</td><td>35.2 / 34.9 m</td><td>0.273</td></tr>
+        <tr><td class="name">e9</td><td>0.05 s</td><td class="dim">dt = solve = 0.005</td><td class="fine">92 s, no fall</td><td>42.5 m</td><td class="dim">0.262, visibly rough</td></tr>
+        <tr><td class="name">e6</td><td>0.15 s</td><td class="dim">horizon 15</td><td class="bad">12.6 s</td><td>5.5 m</td><td>0.276</td></tr>
+        <tr><td class="name">e1</td><td>0.25 s</td><td class="dim">horizon 25</td><td class="bad">6.8 s</td><td>2.4 m</td><td class="bad">0.293, fz to 400 N</td></tr>
+        <tr><td class="name">e3</td><td>0.25 s</td><td class="dim">+ terminal weight &times;25</td><td class="bad">7.6 s</td><td>3.0 m</td><td>0.276</td></tr>
+        <tr><td class="name">e4</td><td>0.25 s</td><td class="dim">+ duty 0.6</td><td class="bad">9.0 s</td><td>3.4 m</td><td>0.279</td></tr>
+        <tr><td class="name">e5</td><td>0.25 s</td><td class="dim">+ 0.15 m/s command</td><td class="bad">5.6 s</td><td>0.5 m</td><td>0.282</td></tr>
+        <tr><td class="name">e8</td><td>0.25 s</td><td class="dim">+ full Cheetah-Software profile</td><td class="bad">7.1 s</td><td>2.9 m</td><td>0.269</td></tr>
+        <tr><td class="name">e2</td><td>0.25 s</td><td class="dim">+ its velocity/rate weights only</td><td class="bad">25.3 s</td><td>10.5 m</td><td>0.276</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Each row kills a hypothesis. <strong>Terminal cost (e3):</strong> &times;25
+  on the last step's weights changes the fall time by under a second &mdash; the
+  earlier report's step-03 hypothesis is dead. <strong>Support polygon
+  (e4):</strong> duty 0.6 buys two seconds. <strong>Speed (e5):</strong> at
+  0.15 m/s it falls <em>faster</em> &mdash; the instability cannot even trot in
+  place, so it owes nothing to stride demand or friction. <strong>The paper's
+  full weight profile (e8):</strong> roll/pitch at 0.25 and yaw at 10 falls like
+  the original &mdash; the lighter attitude weights surrender the roll authority
+  that was containing the limit cycle. <strong>Only e2 moves:</strong> cutting
+  the velocity and rate weights to the public Cheetah numbers
+  (w<sub>z</sub> 0.3, v 0.2/0.2/0.1) while keeping roll/pitch at 1 stretches
+  survival 4&times; &mdash; those channels carry the gait-frequency content the
+  fiction is worst at, and weighting them less couples less fiction into
+  u<sub>0</sub>. It is a real lever and it is still 3&times; short of the
+  0.10 s configuration, with a cost measured separately: at horizon 10 the same
+  velocity weights track 0.23 m/s of a commanded 0.55, because this config's
+  speed tracking lives entirely in the v<sub>x</sub> weight.</p>
+
+  <div class="callout">
+    <span class="eyebrow">The short end, and what the estimator changes</span>
+    <p>Lookahead 0.05 s (e9) survives 92 s on ground truth &mdash; the earlier
+    sweep's 4&ndash;5 s failures at dt 0.005 were estimator-in-loop. But it runs
+    visibly rough (trunk 6 mm low, attitude jitter several times the baseline's):
+    a short horizon is a high-gain controller, stable on clean state and
+    amplifying estimator noise into a fall. The U-shape is therefore: twitchy at
+    0.05 s, clean at 0.10 s, fictional past 0.15 s. The shipped 0.10 s is not a
+    compromise that better tuning will someday escape; it is the measured
+    validity limit of this model on this robot.</p>
+  </div>
+</section>
+
+<!-- ============================================================= 5 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">05</div>
+    <h2>The estimator-in-loop fall: a different verdict than proposed</h2>
+    <div class="because">Foot-z deterioration is a late symptom. The growing error is a frame, not a foot.</div>
+  </div>
+  <p>One instrumented run with the estimator back in the loop (0.55 m/s, horizon
+  10): trot from t = 18.6 s, visible degradation from ~38 s, collapse at 48.5 s
+  &mdash; the familiar ~30 s lifetime against 70+ s on ground truth. Ordered by
+  onset:</p>
+  <div class="scroller">
+    <table>
+      <caption>What degrades when, run s3 (figs/mpc/horizon_audit/s3_anatomy.png)</caption>
+      <thead>
+        <tr><th>signal</th><th>behaviour</th><th>onset</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="name">yaw drift &delta;&psi;</td><td>grows 1.90 mrad/s from trot start</td><td class="bad">t = 19 s, immediately</td></tr>
+        <tr><td class="name">lateral velocity error</td><td>mean +35.7 mm/s vs v<sub>x</sub>&middot;&delta;&psi; = +38.3 predicted</td><td class="bad">grows with &delta;&psi;</td></tr>
+        <tr><td class="name">vertical velocity bias</td><td>&minus;53.9 mm/s, constant (touchdown rebound, known)</td><td>constant</td></tr>
+        <tr><td class="name">gait degradation</td><td>z declining, right-side swing clearance collapsing</td><td>~38 s</td></tr>
+        <tr><td class="name">foothold z estimate error</td><td>within &plusmn;10 mm until degradation; &minus;50 mm excursions only after</td><td class="dim">~42 s, after clearance loss</td></tr>
+        <tr><td class="name">specific-force spikes</td><td>the impacts of the collapse itself</td><td class="dim">48 s, at the fall</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>So the proposed chain &mdash; foot-z estimate deteriorates, foot
+  believed below ground, phantom contact force &mdash; runs backwards:</strong>
+  the foothold estimates stay clean until the gait is already failing, and the
+  acceleration spikes date the collapse, not its cause. What <em>is</em> growing
+  from the first stride is a frame error. The MPC's velocity reference is built
+  in the <code>_desYaw</code> world; the measured velocity lives in the
+  estimator's world, rotated by the accepted, unobservable yaw drift. The
+  difference is a phantom lateral velocity v<sub>x</sub>&middot;&delta;&psi;
+  on a channel weighted 1, and the controller obligingly leans on it. The
+  integral seals it: over 28 s of trot the gap between estimated and true
+  lateral displacement is &minus;1.12 m, and
+  &minus;&int;v<sub>x</sub>&delta;&psi;&thinsp;dt predicts &minus;1.01 m &mdash;
+  <b>90%</b>. The robot genuinely walked 0.49 m to the right of where it
+  believes it went.</p>
+  <div class="callout">
+    <span class="eyebrow">The fix this points at &mdash; proposed, not landed</span>
+    <p>Build the velocity reference in the heading frame: rotate the commanded
+    twist by the <em>measured</em> yaw (<code>_yawUnwrapped</code>) instead of
+    <code>_desYaw</code> where <code>_solveMPC()</code> and
+    <code>_integrateBodyReference()</code> construct v, keeping
+    <code>_desYaw</code> only as the yaw channel's own reference. Heading hold
+    is untouched; the accepted yaw drift simply stops leaking into a weighted
+    translational channel. This is not the previously declined yaw-bias
+    calibration &mdash; the drift stays; it just stops steering.</p>
+  </div>
+</section>
+
+<!-- ============================================================= 6 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">06</div>
+    <h2>What to do</h2>
+    <div class="because">Ordered by measured payoff.</div>
+  </div>
+  <div class="actions">
+    <div class="act">
+      <div class="act-rank root">settled</div>
+      <div>
+        <p>Keep <code>horizon = 10</code>, <code>dt = 0.01</code>,
+        <code>solve_period = 0.01</code>, and stop treating the short horizon as
+        a deficiency. Reactive handling of the swap plus a horizon inside the
+        model's validity window is the correct operating point for a
+        heavy-legged robot on this model class. A gait-consistent
+        <code>reference[k]</code> would decorate a plan whose dynamics are
+        fiction past the swap; the disagreement with that prescription is
+        upheld by e3 and e8.</p>
+      </div>
+    </div>
+    <div class="act">
+      <div class="act-rank now">next change</div>
+      <div>
+        <p>The heading-frame velocity reference above. It is a few lines in
+        <code>MdlTrot</code>, it addresses the one estimator error that
+        <em>grows</em>, and with it the full-estimator lifetime has room to
+        approach the ground-truth 70 s. Verify against lateral drift and
+        lifetime, not against velocity RMS.</p>
+      </div>
+    </div>
+    <div class="act">
+      <div class="act-rank now">second lever</div>
+      <div>
+        <p>The &minus;54 mm/s vertical velocity bias, unchanged since the
+        estimator report: <code>high_suspect_number</code> is still the lever
+        that moves bias and blind time the same direction. It is the remaining
+        constant in-loop error once the frame leak is closed.</p>
+      </div>
+    </div>
+    <div class="act">
+      <div class="act-rank">if lookahead is ever needed</div>
+      <div>
+        <p>It is model work, not tuning: the two measured gaps are the
+        swing-leg reaction wrench (55% of mass) and the touchdown transient.
+        A leg-momentum feedforward in the omega rows, or a contact model with
+        the 0.12 s settle in it, would be the honest prerequisites. Weights
+        cannot buy it &mdash; e2 is the best weights can do.</p>
+      </div>
+    </div>
+    <div class="act">
+      <div class="act-rank">tooling kept</div>
+      <div>
+        <p><code>mpc.dump_path</code> (per-solve prediction audit),
+        <code>mpc.terminal_weight_scale</code> (default 1, today's cost),
+        a <code>reset()</code> warning when <code>solve_period &gt; dt</code>
+        &mdash; the u<sub>0</sub>-held-too-long impulse error, confirmed as
+        suspected &mdash; and <code>test_discretization_consistency</code>.
+        All default-off or behavior-preserving; 12/12 tests pass.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<footer class="foot">
+  <p>Eleven headless runs, MuJoCo Go2, driven through a pty; ground-truth runs
+  are noise-free in the loop, and the repeated baseline reproduced fall/no-fall,
+  distance (35.2 vs 34.9 m) and height, though fine attitude RMS scatters with
+  keypress timing (roll 8 vs 37 mrad between identical baselines) &mdash; gross
+  outcomes are the trusted metric here. Audit records carry
+  <code>[t, x&#8320;, X<sub>ref</sub>, U, X<sub>pred</sub>, contact]</code> per
+  solve; analysis scripts and dumps live in the session scratchpad, measured
+  figures in <code>figs/mpc/horizon_audit/</code>. Weight profiles labelled
+  "Cheetah-Software" are the public MIT trot values. Note for the log
+  directory: <code>supervisor.log.file_name</code> defaults to
+  <code>deneme.mat</code>, and these runs overwrote it; the estimator-in-loop
+  run logged to <code>stage3.mat</code> instead.</p>
+</footer>
+
+</div>

@@ -263,33 +263,62 @@
 <div class="wrap">
 
 <header class="masthead">
-  <div class="eyebrow">quadcontrol &middot; state estimator assessment</div>
+  <div class="eyebrow">quadcontrol &middot; state estimator</div>
   <h1>Trust Before Touchdown</h1>
-  <p class="sub">The position/velocity filter is sound. What it is being told about
-  contact is not: it grants full trust to feet that are still 15&ndash;30&nbsp;mm in the
-  air and falling at up to 1&nbsp;m/s.</p>
+  <p class="sub">The filter granted full weight to a foot punching into the ground
+  and springing back, saw only the rebound, and concluded the body was falling.
+  Holding the measurement back until contact settled removed 43&nbsp;mm/s of that
+  error &mdash; and cost so much information elsewhere that the robot fell over.
+  The change was reverted. The diagnosis behind it still stands.</p>
   <div class="runline">
-    <span><b>source</b> bin/estimation_imu_attitude.mat, 30&nbsp;s Go2 trot</span>
-    <span><b>attitude</b> imu passthrough</span>
-    <span><b>v<sub>cmd</sub></b> 0.15 m/s</span>
-    <span><b>gait</b> 0.5 s, duty 0.5</span>
-    <span><b>confirmed on</b> 2 fresh 26 s runs</span>
+    <span><b>status</b> <b style="color:var(--warn)">reverted</b> &mdash; do not set this</span>
+    <span><b>change</b> posvelestimator.trust_settle_time = 0.12</span>
+    <span><b>bought</b> vz bias &minus;43.1 &rarr; +3.2 mm/s</span>
+    <span><b>cost</b> blind time 26.9% &rarr; 74.9% of the gait cycle</span>
   </div>
 </header>
 
 <div class="col">
+  <div class="verdict" style="border-left-color: var(--warn);">
+    <div class="eyebrow" style="color:var(--warn)">Outcome first: this was shipped, it made the robot fall, and it is reverted</div>
+    <p>Everything below about <em>why</em> the vertical bias exists is still good.
+    The fix built on top of it was not. Setting the trust onset to 0.48 of stance
+    while leaving <code>trust_window</code> at 0.2 collapsed the fully trusted
+    plateau from 60% of stance to 12%, and the fraction of the gait cycle with
+    <em>no</em> foot contributing a usable measurement went from
+    <span class="mono">26.9%</span> to <span class="mono">74.9%</span>, longest
+    blind gap <span class="mono">67&nbsp;ms &rarr; 187&nbsp;ms</span>. With duty
+    0.5 there is no double support to cover that gap: it is dead reckoning on the
+    accelerometer, four times per cycle.</p>
+    <p><strong>The verification is the part worth keeping.</strong> I judged the
+    change on velocity bias and RMS over two headless runs. Neither number can see
+    a blind window &mdash; the filter's error stays small right up until the moment
+    it has nothing to correct against &mdash; so a change that halved one metric
+    and quadrupled an unmeasured one read as a clean win. A stability-relevant
+    change needs a stability-relevant measurement.</p>
+    <p><strong>And a fixed onset is the wrong shape regardless</strong>, which is
+    the more durable finding. Contact settle time measures
+    <span class="mono">0.121&nbsp;s</span> in the bad-landing regime but
+    <span class="mono">0.000&nbsp;s</span> once the gait converges. A constant
+    onset pays a permanent information cost for a transient problem &mdash; it is
+    at its most expensive exactly when it is least needed.</p>
+  </div>
+
   <div class="verdict">
-    <div class="eyebrow">Verdict</div>
-    <p>With <code>attitude_source = "imu"</code> the attitude error is
-    <span class="mono">0.42 / 0.22 / 0.04&nbsp;mrad</span> RMS &mdash; exact, by construction.
-    Every remaining error is the eighteen-state Kalman filter, and essentially all of
-    it enters through one channel: the velocity measurement rows, whose error is
-    exactly <span class="mono">&minus;v<sub>foot</sub><sup>world</sup></span>.</p>
-    <p>Averaged over the trot with the weights the filter actually applied, that
-    channel injects a standing velocity bias of
-    <span class="mono bad">[+31, &minus;20, +25]&nbsp;mm/s</span>. Better than
-    <span class="mono">90%</span> of it is produced in the first quarter of
-    <em>scheduled</em> stance, before the foot has reached the ground.</p>
+    <div class="eyebrow">What still stands</div>
+    <p>The velocity rows assert that a stance foot is a fixed point in the world.
+    For the first ~120&nbsp;ms after touchdown that is false in a way that does not
+    average out. That is measured, and it is the real source of the vertical bias.</p>
+    <p><strong>I also had the causality backwards in the first version of this
+    report.</strong> I blamed the late, hard landings for the estimator error. It
+    was the other way round: a filter reporting a phantom 45&nbsp;mm/s descent had the
+    MPC pushing up against a fall that was not happening, and the trunk bounced
+    the feet off their own touchdown. Correcting the estimator took foot height at
+    scheduled stance from <span class="mono">32&ndash;53&nbsp;mm</span> to
+    <span class="mono">22&nbsp;mm</span> and impact speed from
+    <span class="mono">1.5&nbsp;m/s</span> to <span class="mono">0.02&nbsp;m/s</span>
+    <em>with no gait change at all</em>. That result is real; it is the reason the
+    diagnosis survives the revert.</p>
   </div>
 </div>
 
@@ -299,48 +328,29 @@
 <section class="step">
   <div class="step-head">
     <div class="step-n">01</div>
-    <h2>The velocity error is locked to contact trust</h2>
-    <div class="because">Not to time, not to the accelerometer, not to attitude.</div>
+    <h2>The trust ramp is not a ramp</h2>
+    <div class="because">It is a gate, and <code>trust_window</code> only decides when it opens.</div>
   </div>
   <div class="step-body">
     <div class="col">
-      <p>Binning the velocity error by gait phase separates the cycle cleanly. When
-      the trust ramp is closed the vertical error sits near
-      <span class="mono">&minus;15&nbsp;mm/s</span>. When it opens to
-      <span class="mono">1.00</span>, the error deepens to
-      <span class="mono">&minus;65</span> and <span class="mono">&minus;83&nbsp;mm/s</span>.
-      The measurement the filter believes most is the one making it worst.</p>
+      <p>A partly trusted foot has its measurement noise inflated by
+      <code>1 + (1&minus;trust)&middot;high_suspect_number</code>, and its measurement
+      faded toward the current estimate. The weight it actually carries is the
+      product, <span class="mono">trust/(1+(1&minus;trust)&middot;100)</span>:</p>
     </div>
     <div class="scroller">
       <table>
-        <caption>Velocity error by gait phase &mdash; 46 cycles, t &gt; 8&nbsp;s</caption>
-        <thead>
-          <tr><th>gait phase</th><th>err v<sub>x</sub></th><th>err v<sub>y</sub></th>
-              <th>err v<sub>z</sub></th><th>FL</th><th>FR</th><th>RL</th><th>RR</th></tr>
-        </thead>
+        <caption>Effective weight of one foot's velocity measurement</caption>
+        <thead><tr><th>trust</th><th>1.00</th><th>0.95</th><th>0.90</th><th>0.76</th><th>0.50</th><th>0.25</th></tr></thead>
         <tbody>
-          <tr><td class="name">0.00 <span class="dim">touchdown</span></td><td>&minus;0.002</td><td>+0.002</td><td>&minus;0.014</td><td class="dim">0.25</td><td class="dim">0.00</td><td class="dim">0.00</td><td class="dim">0.25</td></tr>
-          <tr><td class="name">0.05</td><td>+0.003</td><td>&minus;0.001</td><td>&minus;0.013</td><td class="dim">0.75</td><td class="dim">0.00</td><td class="dim">0.00</td><td class="dim">0.75</td></tr>
-          <tr class="hi"><td class="name">0.10</td><td>+0.017</td><td class="bad">&minus;0.061</td><td>+0.015</td><td>1.00</td><td class="dim">0.00</td><td class="dim">0.00</td><td>1.00</td></tr>
-          <tr class="hi"><td class="name">0.15</td><td>+0.017</td><td class="bad">&minus;0.055</td><td class="bad">&minus;0.041</td><td>1.00</td><td class="dim">0.00</td><td class="dim">0.00</td><td>1.00</td></tr>
-          <tr class="hi"><td class="name">0.20</td><td>+0.011</td><td>&minus;0.037</td><td class="bad">&minus;0.065</td><td>1.00</td><td class="dim">0.00</td><td class="dim">0.00</td><td>1.00</td></tr>
-          <tr><td class="name">0.30</td><td>&minus;0.000</td><td>&minus;0.016</td><td>&minus;0.037</td><td>1.00</td><td class="dim">0.00</td><td class="dim">0.00</td><td>1.00</td></tr>
-          <tr><td class="name">0.40</td><td>&minus;0.004</td><td>&minus;0.008</td><td>&minus;0.020</td><td class="dim">0.74</td><td class="dim">0.00</td><td class="dim">0.00</td><td class="dim">0.74</td></tr>
-          <tr><td class="name">0.50 <span class="dim">swap</span></td><td>&minus;0.001</td><td>&minus;0.008</td><td>&minus;0.015</td><td class="dim">0.00</td><td class="dim">0.25</td><td class="dim">0.25</td><td class="dim">0.00</td></tr>
-          <tr class="hi"><td class="name">0.60</td><td>+0.022</td><td>+0.006</td><td class="bad">&minus;0.041</td><td class="dim">0.00</td><td>1.00</td><td>1.00</td><td class="dim">0.00</td></tr>
-          <tr class="hi"><td class="name">0.65</td><td>+0.019</td><td>+0.005</td><td class="bad">&minus;0.083</td><td class="dim">0.00</td><td>1.00</td><td>1.00</td><td class="dim">0.00</td></tr>
-          <tr class="hi"><td class="name">0.70</td><td>+0.010</td><td>+0.003</td><td class="bad">&minus;0.081</td><td class="dim">0.00</td><td>1.00</td><td>1.00</td><td class="dim">0.00</td></tr>
-          <tr><td class="name">0.80</td><td>&minus;0.001</td><td>+0.000</td><td>&minus;0.038</td><td class="dim">0.00</td><td>1.00</td><td>1.00</td><td class="dim">0.00</td></tr>
-          <tr><td class="name">0.90</td><td>&minus;0.004</td><td>&minus;0.001</td><td>&minus;0.020</td><td class="dim">0.00</td><td class="dim">0.74</td><td class="dim">0.74</td><td class="dim">0.00</td></tr>
+          <tr><td class="name">weight</td><td class="fine">1.000</td><td>0.158</td><td>0.082</td><td>0.030</td><td>0.010</td><td class="dim">0.003</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="fig-cap"><b>Read it as</b> error in m/s, then the trust each leg was
-    weighted by. Highlighted rows are where a fully trusted foot is producing the
-    worst error in the run. Conditioning the same data on total available trust says
-    it again: err&nbsp;v<sub>z</sub> is <span class="mono">&minus;17&nbsp;mm/s</span>
-    when the legs sum to less than 0.5 of trust, and
-    <span class="mono">&minus;41&nbsp;mm/s</span> when they sum to more than 1.5.</p>
+    <p class="fig-cap">A foot at trust 0.90 contributes <b>8%</b>, not 90%. So the
+    ramp never blends anything &mdash; widening or narrowing <code>trust_window</code>
+    just moves the instant the gate opens. That is the knob that matters, and it
+    was pointing at the wrong moment.</p>
   </div>
 </section>
 
@@ -348,122 +358,64 @@
 <section class="step">
   <div class="step-head">
     <div class="step-n">02</div>
-    <h2>Because the feet are still in the air</h2>
-    <div class="because">The gait schedule and the ground disagree by 5&ndash;16% of stance.</div>
+    <h2>The gate opened onto the rebound</h2>
+    <div class="because">A symmetric event, half of it rejected and half believed.</div>
   </div>
   <div class="step-body">
     <div class="col">
-      <p>A stance foot should sit at <span class="mono">21.8&nbsp;mm</span> and not
-      move. Resolving the logged true foot positions over each leg's own
-      <em>scheduled</em> stance shows that the second half of stance is exactly that
-      &mdash; flat height, velocity under <span class="mono">1&nbsp;cm/s</span> in every
-      axis, right up to liftoff. Liftoff is on schedule. Touchdown is not.</p>
+      <p>The foot does not stop when it lands. It punches about 9&nbsp;mm into the
+      compliant ground &mdash; height drops from 21.7 to 12.5&nbsp;mm &mdash; and springs
+      back out over the next tenth of a second. The sink happens while the gate is
+      shut. The rebound happens while it is wide open. The filter therefore sees a
+      foot that only ever rises, and a rising foot under a stationary-foot
+      measurement model means a descending body.</p>
     </div>
 
     <figure class="strip">
       <svg viewBox="0 0 940 268" role="img"
-           aria-label="Timeline of one scheduled stance showing that the trust ramp reaches full value while the foot is still falling and ringing.">
-        <!-- danger band: 0 to 0.35 of stance -->
-        <rect class="s-danger" x="70" y="26" width="266" height="176"/>
-        <line class="s-dangerline" x1="336" y1="26" x2="336" y2="212"/>
+           aria-label="Foot height over one stance interval, with the old trust gate opening during the rebound and the new one opening after it.">
+        <rect class="s-danger" x="184" y="26" width="228" height="196"/>
 
-        <!-- grid + axis -->
-        <g>
-          <line class="s-axis" x1="70" y1="212" x2="830" y2="212"/>
-          <line class="s-grid" x1="70"  y1="26" x2="70"  y2="212"/>
-          <line class="s-grid" x1="222" y1="26" x2="222" y2="212"/>
-          <line class="s-grid" x1="374" y1="26" x2="374" y2="212"/>
-          <line class="s-grid" x1="526" y1="26" x2="526" y2="212"/>
-          <line class="s-grid" x1="678" y1="26" x2="678" y2="212"/>
-          <line class="s-grid" x1="830" y1="26" x2="830" y2="212"/>
-          <text class="s-tick" x="70"  y="230" text-anchor="middle">0.0</text>
-          <text class="s-tick" x="222" y="230" text-anchor="middle">0.2</text>
-          <text class="s-tick" x="374" y="230" text-anchor="middle">0.4</text>
-          <text class="s-tick" x="526" y="230" text-anchor="middle">0.6</text>
-          <text class="s-tick" x="678" y="230" text-anchor="middle">0.8</text>
-          <text class="s-tick" x="830" y="230" text-anchor="middle">1.0</text>
-          <text class="s-tick" x="450" y="252" text-anchor="middle">scheduled stance phase</text>
-        </g>
+        <line class="s-grid" x1="70"  y1="26" x2="70"  y2="222"/>
+        <line class="s-grid" x1="222" y1="26" x2="222" y2="222"/>
+        <line class="s-grid" x1="374" y1="26" x2="374" y2="222"/>
+        <line class="s-grid" x1="526" y1="26" x2="526" y2="222"/>
+        <line class="s-grid" x1="678" y1="26" x2="678" y2="222"/>
+        <line class="s-grid" x1="830" y1="26" x2="830" y2="222"/>
 
-        <!-- row 1: what the schedule says -->
-        <text class="s-lab" x="62" y="47" text-anchor="end">schedule</text>
-        <rect class="s-sched" x="70" y="34" width="760" height="20" rx="2"/>
-        <text class="s-note" x="450" y="48" text-anchor="middle">STANCE &mdash; foot assumed planted for the whole bar</text>
+        <text class="s-lab" x="62" y="50" text-anchor="end">foot z</text>
+        <text class="s-tick" x="62" y="70" text-anchor="end">22 mm</text>
+        <text class="s-tick" x="62" y="113" text-anchor="end">12 mm</text>
+        <line class="s-grid" x1="70" y1="67" x2="830" y2="67"/>
+        <polyline class="s-trust" style="stroke:var(--warn)" points="70,66 108,69 146,94 184,110 222,103 260,92 298,83 336,75 374,70 412,68 450,67 830,67"/>
+        <text class="s-noteb" x="196" y="128">9 mm of penetration, then rebound</text>
 
-        <!-- row 2: what the foot does -->
-        <text class="s-lab" x="62" y="85" text-anchor="end">actual</text>
-        <rect class="s-air" x="70" y="72" width="60" height="20" rx="2"/>
-        <text class="s-noteb" x="100" y="86" text-anchor="middle">falling</text>
-        <rect class="s-ring" x="130" y="72" width="206" height="20" rx="2"/>
-        <text class="s-noteb" x="233" y="86" text-anchor="middle">impact &amp; ringing</text>
-        <rect class="s-plant" x="336" y="72" width="494" height="20" rx="2"/>
-        <text class="s-note" x="583" y="86" text-anchor="middle">planted &mdash; height flat, |v| &lt; 10 mm/s</text>
+        <text class="s-lab" x="62" y="172" text-anchor="end">trust</text>
+        <text class="s-tick" x="62" y="169" text-anchor="end">1</text>
+        <text class="s-tick" x="62" y="219" text-anchor="end">0</text>
+        <line class="s-grid" x1="70" y1="165" x2="830" y2="165"/>
+        <line class="s-grid" x1="70" y1="215" x2="830" y2="215"/>
+        <polyline class="s-ring" style="stroke:var(--warn);stroke-width:2" points="70,215 222,165 678,165 830,215"/>
+        <polyline class="s-trust" style="stroke:var(--good)" points="70,215 435,215 587,165 678,165 830,215"/>
+        <text class="s-noteb" x="228" y="158">was: open at 0.20</text>
+        <text class="s-note" x="441" y="208" style="fill:var(--good);font-weight:600">now: opens at 0.48, after the foot has settled</text>
 
-        <!-- row 3: trust ramp -->
-        <text class="s-lab" x="62" y="152" text-anchor="end">trust</text>
-        <text class="s-tick" x="62" y="196" text-anchor="end">0</text>
-        <text class="s-tick" x="62" y="118" text-anchor="end">1</text>
-        <line class="s-grid" x1="70" y1="190" x2="830" y2="190"/>
-        <line class="s-grid" x1="70" y1="114" x2="830" y2="114"/>
-        <polyline class="s-trust" points="70,190 222,114 678,114 830,190"/>
-        <circle cx="222" cy="114" r="3.4" fill="var(--warn)"/>
-        <text class="s-noteb" x="230" y="107">full trust at 0.20 &mdash; mid-impact</text>
-
-        <!-- touchdown markers -->
-        <g>
-          <line class="s-dangerline" x1="109" y1="96" x2="109" y2="112"/>
-          <text class="s-noteb" x="109" y="182" text-anchor="middle">FR</text>
-          <text class="s-noteb" x="119" y="182" text-anchor="middle">FL</text>
-          <text class="s-noteb" x="154" y="182" text-anchor="middle">RL</text>
-          <text class="s-noteb" x="192" y="182" text-anchor="middle">RR</text>
-          <text class="s-note" x="150" y="166" text-anchor="middle">ground reached</text>
-        </g>
-
-        <!-- legend -->
-        <text class="s-note" x="850" y="47">schedule</text>
-        <text class="s-noteb" x="850" y="86">reality</text>
-        <text class="s-note" x="850" y="152">filter weight</text>
+        <line class="s-axis" x1="70" y1="222" x2="830" y2="222"/>
+        <text class="s-tick" x="70"  y="240" text-anchor="middle">0.0</text>
+        <text class="s-tick" x="222" y="240" text-anchor="middle">0.2</text>
+        <text class="s-tick" x="374" y="240" text-anchor="middle">0.4</text>
+        <text class="s-tick" x="526" y="240" text-anchor="middle">0.6</text>
+        <text class="s-tick" x="678" y="240" text-anchor="middle">0.8</text>
+        <text class="s-tick" x="830" y="240" text-anchor="middle">1.0</text>
+        <text class="s-tick" x="450" y="262" text-anchor="middle">stance phase</text>
       </svg>
     </figure>
-    <p class="fig-cap"><b>One scheduled stance interval, 250&nbsp;ms.</b> The trust ramp
-    is anchored to the schedule, so it reaches <span class="mono">1.00</span> at phase
-    <span class="mono">0.20</span> &mdash; after the foot has landed, but squarely inside
-    the impact transient, which does not settle until roughly
-    <span class="mono">0.35</span>. Everything the filter learns in that band is wrong.</p>
-
-    <div class="scroller">
-      <table>
-        <caption>Touchdown, per leg &mdash; 44 stance intervals each</caption>
-        <thead>
-          <tr><th>leg</th><th>foot z at scheduled stance start</th>
-              <th>delay to ground</th><th>sd</th>
-              <th>corr(delay, height)</th><th>peak |v| while trusted</th></tr>
-        </thead>
-        <tbody>
-          <tr><td class="name">FR</td><td>35.7 mm</td><td>5.1%</td><td class="dim">2.4</td><td class="fine">+0.971</td><td>0.84 m/s</td></tr>
-          <tr><td class="name">FL</td><td>38.5 mm</td><td>6.5%</td><td class="dim">3.2</td><td class="fine">+0.969</td><td>0.87 m/s</td></tr>
-          <tr><td class="name">RL</td><td>44.6 mm</td><td>11.0%</td><td class="dim">4.1</td><td class="fine">+0.968</td><td>0.67 m/s</td></tr>
-          <tr class="hi"><td class="name">RR</td><td class="bad">53.0 mm</td><td class="bad">16.1%</td><td class="dim">4.3</td><td class="fine">+0.946</td><td class="bad">1.00 m/s</td></tr>
-          <tr><td class="name dim">target</td><td class="dim">~24 mm commanded, 21.8 mm settled</td><td class="dim">0%</td><td class="dim">&mdash;</td><td class="dim">&mdash;</td><td class="dim">0 m/s</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="fig-cap"><b>The correlation is the point.</b> How late a foot lands is
-    predicted almost perfectly by how high it was when the schedule declared stance
-    &mdash; <span class="mono">+0.95</span> to <span class="mono">+0.97</span> across all
-    four legs, over 44 events each. This is not contact noise; it is a deterministic
-    geometric shortfall.</p>
-
-    <div class="col">
-      <p>RR is the worst case and worth stating plainly: at scheduled stance phase
-      <span class="mono">0.15</span>, with the filter weighting it at
-      <span class="mono">0.76</span>, the RR foot is <span class="mono">28&nbsp;mm</span>
-      above the ground travelling at
-      <span class="mono bad">(&minus;0.19, +0.79, &minus;1.00)&nbsp;m/s</span>. That single
-      leg contributes a <span class="mono">+127&nbsp;mm/s</span> lateral term to the
-      filter's velocity measurement, and it is where the run's <span class="mono">y</span>
-      drift comes from.</p>
-    </div>
+    <p class="fig-cap"><b>Shaded band:</b> where the old gate was fully open on a
+    foot that was still moving. Weighting the simulator's true foot velocities by
+    the real effective weight predicts <span class="mono">&minus;51.8</span> and
+    <span class="mono">&minus;56.7&nbsp;mm/s</span> for the two baseline logs, against
+    <span class="mono">&minus;42.0</span> and <span class="mono">&minus;45.5</span>
+    observed. The mechanism accounts for the whole bias.</p>
   </div>
 </section>
 
@@ -471,50 +423,36 @@
 <section class="step">
   <div class="step-head">
     <div class="step-n">03</div>
-    <h2>Because the swing leg cannot follow its own trajectory</h2>
-    <div class="because">Commanded apex 49 mm; achieved 23 mm, a fifth of a cycle late.</div>
+    <h2>Why 0.12 s is measured, not tuned</h2>
+    <div class="because">It is a property of the ground &mdash; and of one regime only, which is the catch.</div>
   </div>
   <div class="step-body">
-    <div class="col">
-      <p>The swing reference is a raised cosine that returns to the stance plane with
-      zero height <em>and</em> zero vertical velocity at the end of swing. On paper the
-      foot arrives on time and softly. Measured against the same reference, the leg
-      reaches less than half the commanded height and peaks at
-      <span class="mono">u = 0.71</span> instead of <span class="mono">0.50</span>
-      &mdash; the signature of a second-order lag driven well above its bandwidth.</p>
+    <div class="callout" style="border-left-color: var(--warn);">
+      <p>Read this as a measurement, not a recommendation. The number is honest:
+      the contact really does take 0.12 s to settle <em>in the bad-landing
+      regime</em>. It measures <span class="mono">0.000&nbsp;s</span> once the gait
+      converges, which is what makes a constant onset the wrong instrument &mdash;
+      see the outcome at the top.</p>
     </div>
     <div class="scroller">
       <table>
-        <caption>Swing height above the stance plane, mm &mdash; front pair / rear pair</caption>
-        <thead>
-          <tr><th>swing phase u</th><th>0.12</th><th>0.29</th><th>0.46</th><th>0.62</th><th>0.79</th><th>0.96</th></tr>
-        </thead>
+        <caption>Settle time after scheduled touchdown, across four gaits</caption>
+        <thead><tr><th>gait configuration</th><th>FL</th><th>FR</th><th>RL</th><th>RR</th><th>mean</th></tr></thead>
         <tbody>
-          <tr><td class="name">commanded</td><td>7.3</td><td>31.5</td><td>49.1</td><td>42.7</td><td>18.5</td><td>0.9</td></tr>
-          <tr><td class="name">actual, FL/FR</td><td>2.7</td><td>8.7</td><td>16.4</td><td>22.6</td><td>22.4</td><td class="bad">15.8</td></tr>
-          <tr><td class="name">actual, RL/RR</td><td>2.8</td><td>8.8</td><td>20.1</td><td>29.1</td><td>30.7</td><td class="bad">27.6</td></tr>
-          <tr><td class="name dim">error</td><td class="dim">&minus;4.6</td><td class="dim">&minus;22.8</td><td class="dim">&minus;30.9</td><td class="dim">&minus;16.9</td><td class="dim">+8.0</td><td class="bad">+14.9 / +26.8</td></tr>
+          <tr><td class="name">swing kp 800, kd 8, height 50 mm</td><td>0.111</td><td>0.113</td><td>0.133</td><td>0.131</td><td class="fine">0.122 s</td></tr>
+          <tr><td class="name">+ touchdown handoff</td><td>0.116</td><td>0.106</td><td>0.128</td><td>0.137</td><td class="fine">0.122 s</td></tr>
+          <tr><td class="name">swing kd 40</td><td>0.110</td><td>0.105</td><td>0.114</td><td>0.135</td><td class="fine">0.116 s</td></tr>
+          <tr><td class="name">swing height 25 mm</td><td>0.057</td><td>0.111</td><td>0.127</td><td>0.111</td><td class="fine">0.101 s</td></tr>
+          <tr><td class="name dim">MuJoCo default solref (0.02, 1), 5&ndash;6 time constants</td><td colspan="4" class="dim" style="text-align:left">critically damped contact</td><td class="dim">0.10&ndash;0.12 s</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="fig-cap"><b>The last column is the defect.</b> At the instant swing ends
-    the command is back at the ground and the foot is still
-    <span class="mono">16&ndash;27&nbsp;mm</span> above it. That is precisely the
-    <span class="mono">36&ndash;53&nbsp;mm</span> world height in step&nbsp;02, and the
-    rear legs' larger lag is why RL and RR land latest.</p>
-
-    <div class="callout">
-      <span class="eyebrow">Compounding, at the same instant</span>
-      <p>At the schedule's swing&rarr;stance boundary <code>MdlTrot::update()</code>
-      switches the leg from <code>setCartesianForceCommand(&hellip;, _swing_kp, _swing_kd, 0)</code>
-      to <code>(&hellip;, zero, zero, f_foot_B)</code>. The Cartesian gains go to
-      <em>zero</em> while the foot still has 16&ndash;27&nbsp;mm to descend: the leg stops
-      tracking exactly when tracking still matters, and is handed an MPC ground reaction
-      force it cannot produce because there is no ground. Applied at the foot that force
-      points down, so it accelerates the leg into the floor &mdash; which is why impact
-      velocities reach <span class="mono">1.0&nbsp;m/s</span>, above free fall from the
-      same height.</p>
-    </div>
+    <p class="fig-cap">Swing stiffness, swing damping and swing height all change
+    how the foot arrives, and the settle time barely notices &mdash; because it is set
+    by the contact, not the gait. <code>go2.xml</code> sets no <code>solref</code>,
+    so MuJoCo's default applies, and it predicts the same window without anything
+    being fitted. The parameter is therefore in <b>seconds</b>, not stance
+    fractions, so it survives a change of <code>period</code> or <code>duty</code>.</p>
   </div>
 </section>
 
@@ -522,76 +460,66 @@
 <section class="step">
   <div class="step-head">
     <div class="step-n">04</div>
-    <h2>What the trust profile is worth</h2>
-    <div class="because">Predicted offline from the logged truth, then confirmed in the sim.</div>
+    <h2>Result</h2>
+    <div class="because">Two 26 s trots, identical but for the one parameter &mdash; and both blind to what mattered.</div>
   </div>
   <div class="step-body">
-    <div class="col">
-      <p>The filter's velocity rows assert
-      <span class="mono">v<sub>body</sub> = &minus;R<sub>bw</sub>(&omega;&times;p + J&thinsp;q̇)</span>,
-      which is exact when the foot is world-stationary. Its error is therefore exactly
-      <span class="mono">&minus;v<sub>foot</sub><sup>world</sup></span>. Re-weighting the
-      logged true foot velocities under different trust profiles predicts the injected
-      bias without touching the code.</p>
-    </div>
     <div class="scroller">
       <table>
-        <caption>Injected velocity-measurement bias, mm/s &mdash; trust-weighted over the trot</caption>
+        <caption>Velocity error, mm/s, t &gt; 12 s &mdash; Mahony attitude, swing kp 800</caption>
         <thead>
-          <tr><th>trust profile</th><th>x</th><th>y</th><th>z</th><th>|horizontal|</th><th>duty used</th></tr>
+          <tr><th>run</th><th>DC x</th><th>DC y</th><th>DC z</th><th>RMS x</th><th>RMS y</th><th>RMS z</th><th>foot z at stance start</th><th>impact</th></tr>
         </thead>
         <tbody>
-          <tr><td class="name">no ramp at all (window 0)</td><td>+54.7</td><td>&minus;20.0</td><td class="bad">+85.5</td><td class="bad">58.3</td><td class="dim">0.50</td></tr>
-          <tr class="hi"><td class="name">window 0.2 &mdash; current</td><td>+30.8</td><td>&minus;19.5</td><td class="bad">+24.5</td><td class="bad">36.4</td><td class="dim">0.40</td></tr>
-          <tr><td class="name">window 0.4</td><td>+18.3</td><td>&minus;14.3</td><td class="fine">+0.5</td><td>23.2</td><td class="dim">0.30</td></tr>
-          <tr><td class="name">delayed onset 0.3, ramp 0.1</td><td>&minus;9.8</td><td>&minus;1.2</td><td>&minus;22.2</td><td class="fine">9.9</td><td class="dim">0.27</td></tr>
-          <tr class="ok"><td class="name">delayed onset 0.4, ramp 0.1</td><td>&minus;10.8</td><td>&minus;0.9</td><td class="fine">&minus;5.3</td><td class="fine">10.8</td><td class="dim">0.22</td></tr>
-          <tr><td class="name dim">oracle: true contact, foot at rest</td><td class="dim">&minus;9.6</td><td class="dim">&minus;1.2</td><td class="dim">+1.6</td><td class="dim">9.7</td><td class="dim">0.26</td></tr>
+          <tr><td class="name dim">baseline (deneme.mat)</td><td>+0.9</td><td>+7.5</td><td class="bad">&minus;45.4</td><td>9.9</td><td>12.3</td><td class="bad">53.6</td><td class="dim">34&ndash;52 mm</td><td class="dim">&minus;1.6 m/s</td></tr>
+          <tr><td class="name">settle_time = 0</td><td>+2.5</td><td>+5.0</td><td class="bad">&minus;43.1</td><td>12.2</td><td>10.6</td><td class="bad">53.1</td><td class="dim">32&ndash;53 mm</td><td class="dim">&minus;1.6 m/s</td></tr>
+          <tr class="ok"><td class="name">settle_time = 0.12</td><td class="bad">&minus;8.4</td><td>+4.5</td><td class="fine">+3.2</td><td>11.0</td><td class="fine">5.3</td><td class="fine">8.4</td><td class="fine">21.8&ndash;22.5 mm</td><td class="fine">&minus;0.02 m/s</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="fig-cap"><b>An asymmetric ramp reaches the oracle.</b> Delaying trust onset
-    to 40% of stance lands within <span class="mono">1&nbsp;mm/s</span> of what perfect
-    contact knowledge could achieve. The symmetric <code>trust_window</code> cannot: it
-    widens both ends, and the liftoff end was never the problem &mdash; it throws away
-    good late-stance data to buy less at the touchdown end.</p>
-
-    <div class="scroller">
-      <table>
-        <caption>Confirmation &mdash; two fresh 26 s trots, identical but for <code>trust_window</code></caption>
-        <thead>
-          <tr><th>run</th><th>DC err v<sub>x</sub></th><th>DC err v<sub>y</sub></th>
-              <th>DC err v<sub>z</sub></th><th>RMS v<sub>x</sub></th><th>RMS v<sub>y</sub></th>
-              <th>RMS v<sub>z</sub></th><th>final pos err</th></tr>
-        </thead>
-        <tbody>
-          <tr><td class="name">window 0.2</td><td>+4.8</td><td>+0.8</td><td class="bad">&minus;42.6</td><td>10.9</td><td>10.2</td><td class="bad">51.5</td><td class="fine">0.044 m</td></tr>
-          <tr class="ok"><td class="name">window 0.4</td><td>&minus;4.2</td><td>+3.0</td><td class="fine">&minus;14.5</td><td class="fine">7.0</td><td class="fine">3.7</td><td class="fine">18.3</td><td class="bad">0.283 m</td></tr>
-          <tr><td class="name">window 0.0</td><td colspan="6" class="dim" style="text-align:left">robot fell at t = 9.1 s &mdash; RMS v<sub>x</sub> 202 mm/s, drift 146%</td><td class="bad">fell</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="fig-cap">All values mm/s. Widening the window cuts velocity RMS by
-    <span class="mono">2.6&times;</span> in x&thinsp;/&thinsp;y and
-    <span class="mono">2.8&times;</span> in z, exactly as the offline table predicted.
-    And removing the ramp entirely brings the robot down inside two seconds of trotting
-    &mdash; the ramp is load-bearing, it is simply the wrong shape.</p>
+    <p class="fig-cap"><b>Vertical bias 13&times; smaller, vertical RMS 6.3&times;
+    smaller, lateral RMS halved.</b> Stance is flat: foot height holds 21.7 mm
+    from 5% to 95% of stance with vertical velocity inside &plusmn;10 mm/s, and there
+    is no impact transient left to reject.</p>
 
     <div class="callout" style="border-left-color: var(--warn);">
-      <span class="eyebrow">The metric trap in that last column</span>
-      <p>Velocity got better in every axis and the position error got
-      <span class="mono">6&times;</span> worse. Both are true. The default configuration
-      contains two independent x biases that happen to cancel: the touchdown transient
-      pushes v<sub>x</sub> <em>up</em> by about <span class="mono">+5&nbsp;mm/s</span>,
-      while a genuinely planted foot creeps <em>forward</em> at
-      <span class="mono">+10&nbsp;mm/s</span> through late stance, which pushes the
-      estimate down by the same amount. Remove the first and the second is exposed:
-      the x bias flips sign from <span class="mono">+4.8</span> to
-      <span class="mono">&minus;4.2&nbsp;mm/s</span>.</p>
-      <p>This is the same &ldquo;one error hiding another&rdquo; pattern
-      <code>stateestimator.toml</code> already documents for <code>mahony_ki</code> and
-      for <code>simnoise</code>. It applies to <code>trust_window</code> too. Tune on
-      velocity RMS; position drift will lie to you.</p>
+      <span class="eyebrow" style="color:var(--warn)">This table is why the regression got through</span>
+      <p>Every column here is an error statistic, and every one of them improved.
+      None of them is a measurement of how much information the filter still has.
+      The column that was missing is the one that decided the outcome:</p>
+      <div class="scroller">
+        <table>
+          <caption>Information available to the filter, same two runs</caption>
+          <thead>
+            <tr><th>run</th><th>cycle fraction with no trusted foot</th><th>longest blind gap</th><th>fully trusted plateau, per stance</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="name">settle_time = 0</td><td class="fine">26.9%</td><td class="fine">67 ms</td><td class="fine">60%</td></tr>
+            <tr><td class="name">settle_time = 0.12</td><td class="bad">74.9%</td><td class="bad">187 ms</td><td class="bad">12%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A 187 ms gap is dead reckoning on a biased accelerometer for well over a
+      third of a gait cycle, four times per second. It does not show up as bias
+      because the filter is not wrong while it is blind &mdash; it is merely
+      unconstrained, and the MPC is standing on whatever it says.</p>
+    </div>
+
+    <div class="callout" style="border-left-color: var(--warn);">
+      <span class="eyebrow">The x column got worse, and that is the honest result</span>
+      <p>Forward bias moved from <span class="mono">+2.5</span> to
+      <span class="mono">&minus;8.4&nbsp;mm/s</span>, and position drift grew with it.
+      Two independent errors were cancelling: the touchdown transient pushed
+      v<sub>x</sub> up, while a genuinely planted foot creeps <em>forward</em> at
+      <span class="mono">+9 to +10&nbsp;mm/s</span> through the whole of stance and
+      pushes it down. Removing the first exposes the second.</p>
+      <p>That creep is now the largest remaining error and it is real, not a
+      filter defect &mdash; a perfect-contact oracle bottoms out at the same
+      <span class="mono">&minus;8.9&nbsp;mm/s</span>. Likely cause: the foot geom is a
+      22 mm sphere with rolling friction 0.01, and leg kinematics report the
+      sphere's <em>centre</em> while the stationary point is the contact patch a
+      radius below. A rolling sphere translates its centre while its contact
+      point stays put. Worth checking before anything else.</p>
     </div>
   </div>
 </section>
@@ -600,32 +528,34 @@
 <section class="step">
   <div class="step-head">
     <div class="step-n">05</div>
-    <h2>Two smaller things, and one floor</h2>
-    <div class="because">Worth fixing; will not by themselves explain the drift.</div>
+    <h2>What I built and then removed</h2>
+    <div class="because">The touchdown handoff. It did not earn its place.</div>
   </div>
   <div class="step-body">
-    <div class="scroller">
-      <table>
-        <caption>Secondary findings</caption>
-        <thead><tr><th>finding</th><th>configured</th><th>measured</th><th>consequence</th></tr></thead>
-        <tbody>
-          <tr>
-            <td class="name"><code>foot_ground_height</code></td>
-            <td>0.0220 m</td><td>0.0199&ndash;0.0209 m</td>
-            <td style="text-align:left">Height rows 24&ndash;27 assert a datum ~2 mm high. Height is observable here, so this is a permanent, continuously maintained bias in reported body height &mdash; exactly as the config comment warns.</td>
-          </tr>
-          <tr>
-            <td class="name">stance slip</td>
-            <td>foot world-stationary</td><td>+10 mm/s forward</td>
-            <td style="text-align:left">A settled, fully planted foot still creeps forward at 10 mm/s &mdash; 7.5% of the 0.13 m/s body speed. No filter tuning removes this; it is the gait. It is the ~10 mm/s floor under every row of the oracle table.</td>
-          </tr>
-          <tr>
-            <td class="name">MPC contact schedule</td>
-            <td><code>_gait.inStance()</code></td><td>5&ndash;16% early</td>
-            <td style="text-align:left"><code>in.contact[k][leg]</code> allocates ground reaction force to a foot demonstrably in the air. Since the ground-truth estimator run is stable despite this, it is real but second-order &mdash; note it, do not chase it first.</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="col">
+      <p>I implemented the change we agreed: hold the swing Cartesian gains
+      through early stance, released by the leg's own FK once the foot reaches the
+      stance plane. It is reverted. Three reasons, in order of weight:</p>
+      <p><strong>It measured as nothing.</strong> With the estimator fixed, the run
+      with the handoff and the run with <code>handoff_limit = 0</code> differ by
+      under 1 mm/s on every axis &mdash; the feet now land <em>before</em> scheduled
+      stance, so the latch clears on its first cycle and the code never runs.</p>
+      <p><strong>Its premise was wrong.</strong> I assumed keeping the gains alive
+      would land the foot softly. During early stance the position reference is
+      the stance plane, which sits <em>below</em> an airborne foot &mdash; so tracking
+      it drives the foot down harder, on top of the MPC force. In the run where
+      feet still landed late, RR's impact went from &minus;0.79 to
+      &minus;1.08&nbsp;m/s. It made the thing it was meant to fix worse.</p>
+      <p><strong>The gait could not have fixed this anyway.</strong> Sweeping the
+      swing parameters, the best vertical bias reachable was
+      <span class="mono">&minus;27&nbsp;mm/s</span> (swing height 25 mm), against
+      <span class="mono">+3&nbsp;mm/s</span> from the estimator parameter. The swing
+      leg reaches ~33 mm of a commanded 49 mm apex and peaks a fifth of a cycle
+      late; that is an impedance bandwidth limit, and no gain reaches past it
+      without the feedforward term of paper equation (2).</p>
+      <p>Kept from that work: <code>MdlTrot::getStanceDuration()</code>, which the
+      estimator needs, and the deletion of a stale <code>TODO(ege)</code> block
+      describing code written directly beneath it.</p>
     </div>
   </div>
 </section>
@@ -634,52 +564,87 @@
 <section class="step">
   <div class="step-head">
     <div class="step-n">06</div>
-    <h2>Where to spend the effort</h2>
-    <div class="because">Ordered by measured effect, not by ease.</div>
+    <h2>Your yaw diagnosis, confirmed</h2>
+    <div class="because">Right about y. Not the reason x looked good.</div>
+  </div>
+  <div class="step-body">
+    <div class="col">
+      <p>Yaw error grows at <span class="mono">1.739&nbsp;mrad/s</span> against an
+      injected yaw gyro bias of <span class="mono">1.69&nbsp;mrad/s</span>, and the
+      bias estimate sits at exactly zero &mdash; <span class="mono">w_corr</span> is a
+      cross product with the vertical, so yaw gets no excitation. The heading leak
+      <span class="mono">&int;(R(&delta;&psi;)&minus;I)v&thinsp;dt</span> predicts
+      <span class="mono">+174.7&nbsp;mm</span> of the <span class="mono">+182.8&nbsp;mm</span>
+      of y error. <b>96%.</b> Exactly as you said.</p>
+      <p>It does not fix x, though. The leak is second order in
+      <span class="mono">&delta;&psi;</span> and contributes only
+      <span class="mono">&minus;8.8&nbsp;mm</span> there. What flattered x was the
+      cancellation in step 04, which has nothing to do with heading.</p>
+      <p>The Mahony filter itself is healthy: roll and pitch error 2.5 and
+      &minus;2.6&nbsp;mrad mean, 2.7&nbsp;mrad RMS, with both bias estimates converging to
+      within 0.6&nbsp;mrad/s of the injected value. Nothing to fix.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= 7 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">07</div>
+    <h2>Next</h2>
+    <div class="because">Ordered by measured size.</div>
   </div>
   <div class="step-body">
     <div class="actions">
       <div class="act">
-        <div class="act-rank root">root cause</div>
+        <div class="act-rank now">the lever to reach for</div>
         <div>
-          <p>Land the foot on time. The swing leg reaches half its commanded height and
-          arrives a fifth of a cycle late; <code>swing_kp_cartesian = 500</code> with
-          <code>swing_kd_cartesian = 8</code> is a badly underdamped loop driven at
-          4&nbsp;Hz. Raising the gains, and not zeroing them at the schedule boundary
-          until contact is actually made, fixes the estimator and the MPC's contact
-          schedule at once.</p>
-          <p>Everything else on this list is a way of tolerating this defect rather than
-          removing it.</p>
+          <p><code>high_suspect_number</code>, not a trust onset. It is what makes
+          the ramp a gate rather than a blend, and lowering it moves both metrics
+          the right way instead of trading one against the other: at no onset,
+          <span class="mono">100 &rarr; 3</span> takes the vertical bias from
+          <span class="mono">&minus;54.9</span> to
+          <span class="mono">&minus;18.2&nbsp;mm/s</span> <em>while</em> cutting
+          blind time from <span class="mono">26.9%</span> to
+          <span class="mono">3.0%</span> of the gait cycle. Untried on the robot;
+          verify it against blind time and a full-length trot, not against bias.</p>
         </div>
       </div>
       <div class="act">
-        <div class="act-rank now">do first</div>
+        <div class="act-rank root">largest remaining error</div>
         <div>
-          <p>Split the trust ramp in two. The physics is asymmetric &mdash; liftoff is
-          on schedule, touchdown is not &mdash; so a single symmetric window is the wrong
-          shape. A separate ramp-in delay and width takes the injected bias from
-          36 to 11 mm/s, within 1 mm/s of a perfect-contact oracle. Small change,
-          largest measured return.</p>
+          <p>The <span class="mono">+10&nbsp;mm/s</span> forward creep of a planted
+          foot &mdash; now the dominant error at <span class="mono">&minus;8.4&nbsp;mm/s</span>
+          of velocity bias. Check the sphere-centre versus contact-point hypothesis
+          in step 04 first; if it holds, the measurement model wants the contact
+          point, which is a change to the same rows <code>foot_ground_height</code>
+          already corrects for height.</p>
         </div>
       </div>
       <div class="act">
-        <div class="act-rank also">reconsider</div>
+        <div class="act-rank root">cheap, untested</div>
         <div>
-          <p>The comments in <code>MdlPosVelEstimator.cc</code> and
-          <code>stateestimator.toml</code> argue that an open-loop gait's schedule
-          &ldquo;is not an estimate of where a foot is in stance, it is the
-          definition,&rdquo; and that a contact detector can therefore add nothing.
-          That premise is now measurably false on this robot: schedule and ground differ
-          by 5&ndash;16% of stance, deterministically and reproducibly. The MIT argument
-          holds only when the swing controller lands on time. Either make that true, or
-          the detector earns its place after all.</p>
+          <p><code>mpc.dt = 0.01</code> gives a 10-step horizon of <b>0.1 s</b>
+          against a 0.5 s gait, so the MPC never sees the next contact change.
+          <code>MdlConvexMPC.hh</code> documents 0.04 as the paper's setting, and
+          <code>test_trot_gait.cc:520</code> hardcodes 0.04 and asserts a property
+          that does not hold at the configured value.</p>
         </div>
       </div>
       <div class="act">
-        <div class="act-rank also">cheap</div>
+        <div class="act-rank also">2 mm</div>
         <div>
-          <p>Set <code>foot_ground_height</code> to the measured 0.0203 m, and re-tune
-          on velocity RMS rather than position drift for the reason in step 04.</p>
+          <p><code>foot_ground_height = 0.022</code> against a measured settled
+          stance height of 0.0199&ndash;0.0209 m. Height is observable through rows
+          24&ndash;27, so this is a permanent bias in reported body height.</p>
+        </div>
+      </div>
+      <div class="act">
+        <div class="act-rank also">no change</div>
+        <div>
+          <p>Swing <code>kp</code>: 500 and 800 differ by about 1 mm/s with the
+          estimator fixed, and land the feet identically. Leave it at 800 or drop
+          it back &mdash; the measurement does not care.</p>
         </div>
       </div>
     </div>
@@ -689,16 +654,19 @@
 </div>
 
 <footer class="foot">
-  <p>Primary log <code>bin/estimation_imu_attitude.mat</code> &mdash; 30 s Go2 trot,
-  <code>attitude_source = "imu"</code>, <code>simnoise.enable = true</code>,
-  v<sub>cmd</sub> 0.15 m/s, gait period 0.5 s, duty 0.5. Confirmation runs
-  <code>bin/tw02.mat</code>, <code>bin/tw04.mat</code>, <code>bin/tw00.mat</code>
-  &mdash; headless, 26 s of trot each, identical configuration but for
-  <code>posvelestimator.trust_window</code>. Foot truth from
-  <code>simGetFootPositions()</code>; body truth from <code>simGetGroundTruth()</code>.
-  Foot world velocities are central differences of the logged truth at 1 kHz.
-  Per-leg stance intervals are recovered from the logged contact trust, so the phase
-  axis throughout is the gait schedule's own.</p>
+  <p>Change: <code>posvelestimator.trust_settle_time</code> in
+  <code>config/default/stateestimator.toml</code>, generalising
+  <code>MdlPosVelEstimator::trustFromPhase(phase, window, onset)</code> to
+  <code>min(clamp((phase&minus;onset)/window), clamp((1&minus;phase)/window))</code>, which
+  reduces to the MIT expression exactly at onset 0. The onset is forced to zero
+  for any behavior with no gait schedule, since the fallback there is
+  PLANTED_PHASE = 0.5 and a later onset would leave a standing robot with no
+  trusted foot. Asserted in <code>test_state_estimator.cc</code>; 12/12 tests
+  pass. Runs are 26 s of trot, headless, Go2, v<sub>cmd</sub> 0.15 m/s, gait 0.5 s
+  duty 0.5, <code>attitude_source = "filter"</code>, <code>simnoise</code> on.
+  Foot truth from <code>simGetFootPositions()</code>, body truth from
+  <code>simGetGroundTruth()</code>; foot world velocities are central differences
+  of the logged truth at 1 kHz.</p>
 </footer>
 
 </div>

@@ -386,8 +386,10 @@ void test_zero_command_steps_in_place() {
   std::cout << "test_zero_command_steps_in_place..." << std::endl;
 
   // With no commanded twist the gait must still lift and set down the feet
-  // without translating them. MdlTrot relies on this: its stride ramp starts at
-  // zero, and the PREP handoff assumes every leg's offset is zero at t = 0.
+  // without translating them. MdlTrot's PREP handoff rests on this directly:
+  // it ramps the commanded twist rather than the foot offsets, so the only
+  // thing making every leg's offset zero at the first TROT sample is that the
+  // sweep is built on a body still at rest.
   const TrotGait g = makeGait();
   const double T = g.getParams().period;
   const Eigen::Vector3d zero = Eigen::Vector3d::Zero();

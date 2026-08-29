@@ -44,7 +44,7 @@ zero_initial_yaw = false
 # the "cheater" estimator of the MIT sources. With a perfect attitude, whatever
 # error remains belongs to the position and velocity filter, which is the first
 # thing worth establishing when the estimate looks wrong.
-use_ground_truth = false
+use_ground_truth = true
 
 # ---- ATTITUDE SOURCE
 #
@@ -311,7 +311,7 @@ enable = true
 # Simulation only. Pair with orientationestimator.use_ground_truth to bisect a
 # problem: perfect attitude with the real filter tests the filter, and the
 # reverse tests everything downstream of it.
-use_ground_truth = false
+use_ground_truth = true
 
 # ---- KALMAN FILTER NOISE
 

@@ -19,6 +19,7 @@
 #include "quadruped/QuadrupedKinematics.hh"
 #include "quadruped/TrajectoryUtils.hh"
 #include "rtcore/ConfigTable.hh"
+#include "rtcore/LogServer.hh"
 #include "rtcore/ModuleManager.hh"
 
 using namespace rtcore;
@@ -161,6 +162,14 @@ void MdlTrot::init() {
   else
     _kinematics = new QuadrupedKinematics(createGo2Config());
 
+  // The two ramp scales. Nothing else in the log tells a command the robot
+  // failed to track apart from one that was never given, which is exactly the
+  // distinction the entry and exit transitions turn on.
+  _logserver = (LogServer*)_mgr->findModule(LOGSERVER_NAME, 0);
+  if (_logserver)
+    _logserver->registerVar(LOG_DOUBLE, 2, TROTMODULE_NAME, "scales",
+                            (unsigned char*)_logScales);
+
   _readConfig();
 }
 
@@ -202,12 +211,14 @@ void MdlTrot::_readConfig() {
   _wait_duration = config.getDouble("wait_duration", _wait_duration);
   _prep_duration = config.getDouble("prep_duration", _prep_duration);
   _rampup_duration = config.getDouble("rampup_duration", _rampup_duration);
+  _rampdown_duration = config.getDouble("rampdown_duration", _rampdown_duration);
   _centering_duration = config.getDouble("centering_duration", _centering_duration);
 
   // Zero or negative durations would divide by zero in the blend math
   if (!(_wait_duration >= 0.0)) _wait_duration = 0.0;
   if (!(_prep_duration > 0.0)) _prep_duration = 0.01;
   if (!(_rampup_duration > 0.0)) _rampup_duration = 0.01;
+  if (!(_rampdown_duration > 0.0)) _rampdown_duration = 0.01;
   if (!(_centering_duration > 0.0)) _centering_duration = 0.01;
 
   _prep_kp = Eigen::Vector3d::Constant(config.getDouble("prep_kp", _prep_kp.x()));
@@ -235,6 +246,12 @@ void MdlTrot::_readConfig() {
 
 void MdlTrot::uninit() {
   DBGPRINT("MdlTrot::uninit\n");
+
+  if (_logserver) {
+    _logserver->deleteVar(TROTMODULE_NAME, "scales");
+    _logserver = nullptr;
+  }
+
   delete _kinematics;
   _kinematics = nullptr;
 }
@@ -285,10 +302,13 @@ void MdlTrot::deactivate() {
 }
 
 bool MdlTrot::getStancePhase(double phase[NUM_LEGS]) const {
-  // Only the TROT state runs the schedule. Every other state holds all four
-  // feet down, which the caller represents itself; saying so here by returning
-  // false keeps this function honest about what it actually knows.
-  if (_state != _state_t::TROT) return false;
+  // TROT and STOPPING run the schedule; every other state holds all four feet
+  // down, which the caller represents itself, and saying so here by returning
+  // false keeps this function honest about what it actually knows. STOPPING has
+  // to be in the list: the feet are still swinging on a fading clearance for the
+  // whole ramp-down, and reporting four planted feet there would hand the
+  // estimator a measurement from an airborne foot on every stop.
+  if (_state != _state_t::TROT && _state != _state_t::STOPPING) return false;
 
   const double elapsed = _mgr->readTime() - _trot_mark;
   for (int i = 0; i < NUM_LEGS; i++) phase[i] = _gait.stanceProgress(i, elapsed);
@@ -326,7 +346,7 @@ Eigen::Vector3d MdlTrot::_stanceVelocity(int leg) const {
   // Velocity of a planted foot in the body frame is the negated body twist
   // evaluated at that foot. The cross product term is what swings the footprint
   // around for a turn; it vanishes when yaw_rate is zero.
-  const Eigen::Vector3d omega(0.0, 0.0, _yawRate);
+  const Eigen::Vector3d omega(0.0, 0.0, _yawRateCommand());
   return -(_sweepVelocity() + omega.cross(_originFoot(leg)));
 }
 
@@ -394,8 +414,9 @@ void MdlTrot::_integrateBodyReference() {
   // _vcmd is a body-frame twist, so it has to be rotated by the *desired*
   // heading before it can be integrated in the world. Using the measured
   // heading instead would let a heading error steer the reference.
-  _desYaw += _yawRate * dt;
-  const Eigen::Vector3d v = _rotZ(_desYaw) * Eigen::Vector3d(_vcmd.x(), _vcmd.y(), 0.0);
+  const Eigen::Vector3d vc = _twistCommand();
+  _desYaw += _yawRateCommand() * dt;
+  const Eigen::Vector3d v = _rotZ(_desYaw) * Eigen::Vector3d(vc.x(), vc.y(), 0.0);
   _desPos.x() += v.x() * dt;
   _desPos.y() += v.y() * dt;
 
@@ -424,7 +445,15 @@ bool MdlTrot::_solveMPC(double elapsed) {
   double yaw = _desYaw;
   Eigen::Vector3d p = _desPos;
 
-  for (int k = 0; k < MdlConvexMPC::HORIZON; k++) {
+  // One scale for the whole horizon rather than one per step. The horizon is a
+  // tenth of a second against a ramp measured in seconds, so anticipating the
+  // ramp would move the last reference by a few percent of one step and buy
+  // nothing; holding it fixed keeps the reference consistent with the body
+  // reference integrated at the behavior rate.
+  const Eigen::Vector3d vc = _twistCommand();
+  const double yawRate = _yawRateCommand();
+
+  for (int k = 0; k < mp.horizon; k++) {
     // contact[k] and moment_arm_world[k] describe the interval that *starts* at
     // now + k*dt, while reference[k] is the state at its end: the condensed
     // state vector stacks x_1 ... x_N and never contains x_0. The two indexings
@@ -445,8 +474,8 @@ bool MdlTrot::_solveMPC(double elapsed) {
       in.moment_arm_world[k].col(leg) = Rz * (_originFoot(leg) + dp - rcom);
     }
 
-    yaw += _yawRate * dtm;
-    const Eigen::Vector3d v = _rotZ(yaw) * Eigen::Vector3d(_vcmd.x(), _vcmd.y(), 0.0);
+    yaw += yawRate * dtm;
+    const Eigen::Vector3d v = _rotZ(yaw) * Eigen::Vector3d(vc.x(), vc.y(), 0.0);
     p.x() += v.x() * dtm;
     p.y() += v.y() * dtm;
 
@@ -456,7 +485,7 @@ bool MdlTrot::_solveMPC(double elapsed) {
     // mean duplicating the foot radius and ground height assumptions that
     // already live in the estimator.
     in.reference[k].com_position_world = Eigen::Vector3d(p.x(), p.y(), _desPos.z());
-    in.reference[k].angular_velocity_world = Eigen::Vector3d(0.0, 0.0, _yawRate);
+    in.reference[k].angular_velocity_world = Eigen::Vector3d(0.0, 0.0, yawRate);
     in.reference[k].com_velocity_world = v;
   }
 
@@ -543,10 +572,12 @@ void MdlTrot::_hold() {
 void MdlTrot::_prepEntry() {
   _mark = _mgr->readTime();
 
-  // The stride ramp starts at zero, so every leg's offset from the nominal
-  // footprint is zero at the first TROT sample whatever the duty factor is.
-  // Blending to the plain footprint therefore matches TROT in both position
-  // and velocity, and the handoff has no discontinuity.
+  // TrotGait::sample() returns a zero horizontal offset at zero stance velocity
+  // and zero clearance at a phase boundary, and TROT starts with the sweep built
+  // on a body at rest, so every leg's offset from the nominal footprint is zero
+  // at the first TROT sample. Blending to the plain footprint therefore matches
+  // TROT in both position and velocity, and the handoff has no discontinuity.
+  // test_zero_command_steps_in_place asserts the gait half of that.
   for (int i = 0; i < NUM_LEGS; i++) {
     _footpos_end[i] = _originFoot(i);
     _stance[i] = true;
@@ -583,6 +614,14 @@ void MdlTrot::_trotEntry() {
   _vfiltValid = false;
   _haveYaw = false;
 
+  // The command starts at zero, so the first solve is asked to stand still. That
+  // is the point: the alternative is a solver told to be at the full commanded
+  // speed on the cycle the gait starts, which it can only answer with ground
+  // reaction force at feet that have not begun to sweep.
+  _speedScale = 0.0;
+  _liftScale = 1.0;
+  _liftScaleDot = 0.0;
+
   // Torque-controlled stance with no state estimate is a robot falling over in
   // a controlled fashion, so this is where the behavior refuses rather than
   // where it improvises.
@@ -610,6 +649,35 @@ void MdlTrot::_trotEntry() {
   }
 }
 
+void MdlTrot::_updateGaitScales(double elapsed) {
+  if (_state == _state_t::STOPPING) {
+    // sigma runs 0 -> 1 over the ramp-down, so both scales are 1 - sigma. The
+    // speed starts from wherever the ramp-up had got to rather than from one,
+    // so a stop asked for mid-ramp decelerates instead of stepping up first.
+    double sigma, sigma_dot;
+    TrajectoryUtils::sampleQuintic((_mgr->readTime() - _stop_mark) / _rampdown_duration,
+                                   _rampdown_duration, sigma, sigma_dot);
+    _speedScale = _stopSpeedScale0 * (1.0 - sigma);
+    _liftScale = 1.0 - sigma;
+    _liftScaleDot = -sigma_dot;
+    return;
+  }
+
+  // Clearance stays at full through the ramp-up. The gait, the contact schedule
+  // and the MPC's contact mask are then all real from the first cycle, and the
+  // robot steps in place until the command has something to ask for.
+  double scale_dot;
+  TrajectoryUtils::sampleQuintic(elapsed / _rampup_duration, _rampup_duration, _speedScale,
+                                 scale_dot);
+  _liftScale = 1.0;
+  _liftScaleDot = 0.0;
+}
+
+void MdlTrot::_stoppingEntry() {
+  _stop_mark = _mgr->readTime();
+  _stopSpeedScale0 = _speedScale;
+}
+
 void MdlTrot::_trotDuring() {
   const double t = _mgr->readTime();
   const double elapsed = t - _trot_mark;
@@ -622,10 +690,7 @@ void MdlTrot::_trotDuring() {
     return;
   }
 
-  // Stride grows from zero, so the robot steps in place before it accelerates.
-  double ramp, ramp_dot;
-  TrajectoryUtils::sampleQuintic(elapsed / _rampup_duration, _rampup_duration, ramp,
-                                 ramp_dot);
+  _updateGaitScales(elapsed);
 
   bool maskChanged = false;
   for (int i = 0; i < NUM_LEGS; i++) {
@@ -634,20 +699,29 @@ void MdlTrot::_trotDuring() {
     _stance[i] = _gait.inStance(i, elapsed);
     if (_stance[i] != _mpcMask[i]) maskChanged = true;
 
-    // Product rule: the ramp is a function of time as well, and dropping its
-    // term would leave the commanded velocity inconsistent with the commanded
-    // position for the whole ramp.
-    _footpos[i] = _originFoot(i) + ramp * dp;
-    _footvel[i] = ramp * dv + ramp_dot * dp;
+    // The horizontal offset is left alone. It is built on the estimated body
+    // velocity, which is what makes a planted foot translate at -v_actual and
+    // not scrub, and it is already zero at zero speed -- so the PREP handoff is
+    // continuous without a factor in front of it. Only the clearance is scaled,
+    // and only on the way down. Product rule on the z velocity: the scale is a
+    // function of time too, and dropping its term would leave the commanded
+    // velocity inconsistent with the commanded position for the whole ramp.
+    const double lift = dp.z();
+    dp.z() = _liftScale * lift;
+    dv.z() = _liftScale * dv.z() + _liftScaleDot * lift;
+
+    _footpos[i] = _originFoot(i) + dp;
+    _footvel[i] = dv;
   }
 
   _integrateBodyReference();
 
   // At the configured cadence, and immediately on a contact change. The second
   // trigger is what stops a leg that has just landed from waiting up to a full
-  // MPC interval for a force, which is what happens whenever the gait period
-  // and mpc.dt are not commensurate.
-  if (maskChanged || (t - _mpcMark) >= _mpc->getParams().dt) {
+  // solve interval for a force, which is what happens whenever the gait period
+  // and the solve period are not commensurate. It matters more, not less, as the
+  // horizon step grows: mpc.solve_period is deliberately not mpc.dt.
+  if (maskChanged || (t - _mpcMark) >= _mpc->getParams().solve_period) {
     _mpcMark = t;
     for (int i = 0; i < NUM_LEGS; i++) _mpcMask[i] = _stance[i];
 
@@ -761,7 +835,20 @@ void MdlTrot::_centeringDuring() {
 
 void MdlTrot::stopTrotting() {
   // No-op if we are already stopping or stopped
-  if (_state == _state_t::CENTERING || _state == _state_t::DONE) return;
+  if (_state == _state_t::STOPPING || _state == _state_t::CENTERING ||
+      _state == _state_t::DONE)
+    return;
+
+  // A running gait is decelerated first, so the body is at rest and every foot
+  // is back on the nominal footprint before a pose controller takes over.
+  // WAIT and PREP have no gait to ramp and are already holding a pose, so they
+  // go straight to the centering blend as before.
+  if (_state == _state_t::TROT) {
+    _state = _state_t::STOPPING;
+    _stoppingEntry();
+    return;
+  }
+
   _state = _state_t::CENTERING;
   _centeringEntry();
 }
@@ -794,6 +881,19 @@ void MdlTrot::update() {
       _trotDuring();
       break;
 
+    case _state_t::STOPPING:
+      // Same controller as TROT, with the command ramping to zero underneath it.
+      // At the end the clearance is zero and the sweep has decayed with the body
+      // velocity, so every foot is on the nominal footprint and the centering
+      // blend has almost nothing left to do.
+      if (t - _stop_mark > _rampdown_duration) {
+        _state = _state_t::CENTERING;
+        _centeringEntry();
+        break;
+      }
+      _trotDuring();
+      break;
+
     case _state_t::CENTERING:
       if (t - _mark > _centering_duration) {
         _state = _state_t::DONE;
@@ -810,13 +910,16 @@ void MdlTrot::update() {
   }
 
   // Joint tracking error only means something where a joint is being asked to
-  // reach a position. In TROT the joint kp is zero by construction and the
-  // measured position is fed back as the command, so the error is identically
-  // zero and the check would be vacuous; the motor-ready, finite-torque and
-  // solver checks above cover that state instead.
+  // reach a position. In TROT and STOPPING the joint kp is zero by construction
+  // and the measured position is fed back as the command, so the error is
+  // identically zero and the check would be vacuous; the motor-ready,
+  // finite-torque and solver checks above cover those states instead.
   if (_status == ACTIVE && _state != _state_t::WAIT && _state != _state_t::TROT &&
-      !_checkTrackingError()) {
+      _state != _state_t::STOPPING && !_checkTrackingError()) {
     _mgr->warning(TROTMODULE_NAME, "Tracking error exceeded at t=%.3f", t);
     _status = ERROR;
   }
+
+  _logScales[0] = _speedScale;
+  _logScales[1] = _liftScale;
 }

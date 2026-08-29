@@ -68,6 +68,9 @@ private:
   MdlPosVelEstimator *_posvel = nullptr;
   void _setEstimation(bool on);
   bool _standSettled = false;
+  // Where the trot stop is headed: 'R' comes back to standing, 'D' sits down.
+  // Both ramp the gait down through MdlTrot first; only the destination differs.
+  bool _trotStopToStand = false;
   double _standHeight = 0.08;
   double _mark = 0;
   double _last_print = 0;

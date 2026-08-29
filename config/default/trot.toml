@@ -22,7 +22,7 @@
 # enough that the swing foot never leaves the leg's comfortable workspace.
 # Raise it and raise period or duty along with it.
 
-forward_velocity = 0.15   # v_x [m/s], positive is forward
+forward_velocity = 0.55   # v_x [m/s], positive is forward
 lateral_velocity = 0.0    # v_y [m/s], positive is left
 yaw_rate         = 0.0    # [rad/s], positive turns left
 
@@ -93,10 +93,31 @@ wait_duration      = 0.3   # [s]
 prep_duration      = 1.5   # [s]
 centering_duration = 1.5   # [s]
 
-# Stride grows from zero to full over this long once TROT starts, so the robot
-# steps in place before it accelerates. This is what removes the velocity step
-# at the PREP handoff, and it keeps the first strides gentle.
+# ---- ENTRY AND EXIT RAMPS
+#
+# The commanded twist above is scaled from zero to full over rampup_duration
+# once TROT starts, and back to zero over rampdown_duration when the behavior is
+# asked to stop. It is the *command* that is ramped, not the foot trajectory:
+# the stance sweep is built on the estimated body velocity so that a planted
+# foot translates at exactly -v_actual, and a factor in front of that is scrub,
+# injected over precisely the window where the robot is least stable.
+#
+# The feet therefore step in place at full clearance from the first cycle, and
+# the MPC is only asked for acceleration once the gait is actually running.
+# Without this the solver is told to be at forward_velocity on the cycle TROT
+# starts, while the feet are still standing still, and the only answer it has is
+# ground reaction force at a stationary contact -- which is a nose-down pitch.
+#
+# 2 s is four gait cycles: long enough that the acceleration demand stays well
+# inside what two feet can deliver at the friction cone.
 rampup_duration    = 2.0   # [s]
+
+# Coming down is quicker, and the swing clearance fades with the speed rather
+# than staying at full height, so both diagonal pairs finish on the nominal
+# footprint at rest. That is the state CENTERING wants to start from, which is
+# what keeps the handoff from a torque-controlled gait to a pose controller free
+# of a step. Two gait cycles, enough for the MPC to bring the body to rest.
+rampdown_duration  = 1.0   # [s]
 
 # ---- POSE-HOLDING GAINS
 #

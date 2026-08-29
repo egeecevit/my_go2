@@ -1,0 +1,552 @@
+<title>Shorter Than One Stance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground:   #f3f5f8;
+    --surface:  #ffffff;
+    --sunk:     #e9edf2;
+    --ink:      #151b23;
+    --muted:    #5f6b79;
+    --faint:    #8b95a1;
+    --rule:     #d9e0e8;
+    --rule-firm:#b6c1cd;
+    --accent:   #1f4e79;
+    --accent-sw:#dbe6f1;
+    --warn:     #ab3f1c;
+    --warn-sw:  #f7e2d8;
+    --good:     #1c6a4f;
+    --good-sw:  #d8ebe3;
+    --shadow:   0 1px 2px rgba(21,27,35,.06), 0 6px 20px rgba(21,27,35,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #0f141a;
+      --surface:  #171e26;
+      --sunk:     #1e2731;
+      --ink:      #e4e9ef;
+      --muted:    #9aa6b4;
+      --faint:    #6d7a88;
+      --rule:     #2a343f;
+      --rule-firm:#3d4956;
+      --accent:   #78aada;
+      --accent-sw:#1c2c3d;
+      --warn:     #e08765;
+      --warn-sw:  #38251d;
+      --good:     #5dbf98;
+      --good-sw:  #17302a;
+      --shadow:   0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:   #0f141a;
+    --surface:  #171e26;
+    --sunk:     #1e2731;
+    --ink:      #e4e9ef;
+    --muted:    #9aa6b4;
+    --faint:    #6d7a88;
+    --rule:     #2a343f;
+    --rule-firm:#3d4956;
+    --accent:   #78aada;
+    --accent-sw:#1c2c3d;
+    --warn:     #e08765;
+    --warn-sw:  #38251d;
+    --good:     #5dbf98;
+    --good-sw:  #17302a;
+    --shadow:   0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.28);
+  }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 61rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  @media (max-width: 40rem) { .wrap { padding: 2rem 1.1rem 3.5rem; } }
+
+  h1, h2, h3, .label, .eyebrow, th, .fig-cap b {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+  }
+  h1 {
+    font-size: clamp(2.1rem, 5.2vw, 3.05rem);
+    line-height: 1.04; font-weight: 700; letter-spacing: -0.022em;
+    margin: .3rem 0 .8rem; text-wrap: balance;
+  }
+  h2 {
+    font-size: 1.34rem; font-weight: 600; letter-spacing: -0.012em;
+    margin: 0; text-wrap: balance;
+  }
+  p { margin: 0 0 .95rem; }
+  .col > p:last-child { margin-bottom: 0; }
+
+  code, .mono, table, .runline {
+    font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  code {
+    font-size: .855em; background: var(--sunk);
+    padding: .08em .34em; border-radius: 3px;
+  }
+
+  .eyebrow {
+    font-size: .705rem; font-weight: 600; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--faint);
+    font-family: Archivo, sans-serif; display: block; margin-bottom: .5rem;
+  }
+
+  header.masthead {
+    border-bottom: 2px solid var(--rule-firm);
+    padding-bottom: 1.6rem; margin-bottom: 2.2rem;
+  }
+  header.masthead .sub {
+    font-size: 1.12rem; color: var(--muted); max-width: 44rem; margin-bottom: 1.2rem;
+  }
+  .runline {
+    display: flex; flex-wrap: wrap; gap: .45rem 1.5rem;
+    font-size: .765rem; color: var(--muted);
+    border-top: 1px solid var(--rule); padding-top: .85rem;
+  }
+  .runline b { color: var(--ink); font-weight: 600; }
+
+  .verdict {
+    background: var(--surface); border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0; padding: 1.25rem 1.4rem;
+    box-shadow: var(--shadow); margin-bottom: 2.4rem;
+  }
+  .verdict p:last-child { margin-bottom: 0; }
+
+  section.step {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 8px; padding: 1.5rem 1.6rem; margin-bottom: 1.5rem;
+    box-shadow: var(--shadow);
+  }
+  .step-head {
+    display: grid; grid-template-columns: auto 1fr; gap: .35rem .9rem;
+    align-items: baseline; padding-bottom: .9rem; margin-bottom: 1.1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .step-n {
+    font-family: "IBM Plex Mono", monospace; font-size: .8rem; font-weight: 600;
+    color: var(--accent); background: var(--accent-sw);
+    padding: .1rem .45rem; border-radius: 3px; grid-row: span 2;
+  }
+  .because { grid-column: 2; font-size: .9rem; color: var(--muted); }
+
+  .scroller { overflow-x: auto; margin: .3rem 0 1rem; }
+  table { border-collapse: collapse; font-size: .78rem; width: 100%; min-width: 30rem; }
+  caption {
+    text-align: left; font-size: .78rem; color: var(--muted);
+    padding-bottom: .5rem; font-family: Archivo, sans-serif;
+  }
+  th {
+    text-align: right; font-size: .7rem; font-weight: 600;
+    letter-spacing: .04em; color: var(--muted);
+    border-bottom: 1px solid var(--rule-firm); padding: .35rem .6rem;
+    white-space: nowrap;
+  }
+  th:first-child, td:first-child { text-align: left; }
+  td {
+    text-align: right; padding: .38rem .6rem;
+    border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  td.name { font-family: Archivo, sans-serif; font-size: .8rem; font-weight: 500; }
+  .dim { color: var(--faint); }
+  .bad { color: var(--warn); font-weight: 600; }
+  .fine { color: var(--good); font-weight: 600; }
+  tr.ok { background: var(--good-sw); }
+
+  .fig-cap { font-size: .87rem; color: var(--muted); margin-top: -.2rem; }
+  .fig-cap b { color: var(--ink); }
+
+  .callout {
+    background: var(--sunk); border-left: 3px solid var(--rule-firm);
+    border-radius: 0 5px 5px 0; padding: .95rem 1.1rem; margin: 1.1rem 0 0;
+    font-size: .93rem;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout .eyebrow { margin-bottom: .35rem; }
+
+  .peak {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: .6rem; margin: .4rem 0 1.1rem;
+  }
+  .peak div {
+    background: var(--sunk); border-radius: 6px; padding: .7rem .8rem;
+    border-top: 3px solid var(--rule-firm);
+  }
+  .peak div.win { border-top-color: var(--good); background: var(--good-sw); }
+  .peak .k {
+    font-family: "IBM Plex Mono", monospace; font-size: .72rem;
+    color: var(--muted); display: block;
+  }
+  .peak .v {
+    font-family: Archivo, sans-serif; font-size: 1.45rem; font-weight: 700;
+    letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+  }
+  .peak .u { font-size: .72rem; color: var(--muted); font-family: Archivo, sans-serif; }
+
+  .actions { display: grid; gap: .85rem; }
+  .act { display: grid; grid-template-columns: auto 1fr; gap: .9rem; align-items: start; }
+  .act-rank {
+    font-family: "IBM Plex Mono", monospace; font-size: .68rem; font-weight: 600;
+    padding: .16rem .45rem; border-radius: 3px; white-space: nowrap;
+    background: var(--sunk); color: var(--muted);
+  }
+  .act-rank.now { background: var(--warn-sw); color: var(--warn); }
+  .act-rank.root { background: var(--accent-sw); color: var(--accent); }
+  .act p { font-size: .93rem; margin: 0; }
+
+  footer.foot {
+    margin-top: 2.5rem; padding-top: 1.1rem; border-top: 1px solid var(--rule);
+    font-size: .8rem; color: var(--faint);
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <span class="eyebrow">quadcontrol &middot; convex mpc</span>
+  <h1>Shorter Than One Stance</h1>
+  <p class="sub">The MPC looks a tenth of a second ahead against a quarter-second
+  stance, so it never sees the next touchdown. Everything says that is too short.
+  With the step count made a run-time parameter, so lookahead could finally be
+  varied without also coarsening the contact grid, the honest answer is that
+  lengthening it makes this controller <em>five times</em> worse &mdash; and just
+  as much so on a perfect state estimate. The horizon is not the problem. The
+  reference it is asked to track across that horizon is.</p>
+  <div class="runline">
+    <span><b>best</b> 0.1 s lookahead, 24 s mean to a fall</span>
+    <span><b>0.25 s</b> 4.7 s &nbsp; <b>0.50 s</b> 3.7 s</span>
+    <span><b>ground truth</b> 67 s at 0.1 s, 3.6 s at 0.5 s</span>
+    <span><b>input cost</b> no regime that helps</span>
+  </div>
+</header>
+
+<div class="verdict">
+  <span class="eyebrow">The question, and a correction on the way to it</span>
+  <p>The robot falls out of a 0.55&nbsp;m/s trot after 20&ndash;35&nbsp;s, and the
+  leading structural suspect was the prediction horizon: ten steps at
+  <code>mpc.dt = 0.01</code> is 0.1&nbsp;s against a 0.25&nbsp;s stance, so a solve
+  never contains a contact change and the force redistribution across the diagonal
+  swap is never planned, only reacted to.</p>
+  <p><strong>I could not test that, and I reported the result as though I had.</strong>
+  The step count was <code>static constexpr int HORIZON = 10</code>, so the only
+  way to lengthen the lookahead was to raise <code>dt</code> &mdash; which is also
+  the grid the contact schedule is sampled on. <code>MdlTrot</code> builds it at
+  <code>tk = elapsed + k&middot;dt</code>, so at <code>dt = 0.04</code> a
+  250&nbsp;ms stance is six points and each touchdown is quantized to a
+  40&nbsp;ms cell. Every cell in the table below varies lookahead and
+  contact-timing resolution together. It cannot separate them.</p>
+  <p>What survives: <strong>0.01 is the best <code>dt</code> of those tried</strong>,
+  which is a real and useful result about resolution. What does not survive:
+  anything about whether a longer horizon helps. The reasoning that a trot
+  controller ought to see both diagonal stances &mdash; a 0.5&nbsp;s lookahead, or
+  50 steps at <code>dt = 0.01</code> &mdash; is sound, and the code simply could
+  not express it at any setting.</p>
+  <p><code>horizon</code> is now a run-time parameter alongside <code>dt</code>
+  and <code>solve_period</code>, and the question has been asked properly: hold
+  <code>dt</code> at 0.01, hold <code>solve_period</code> at 0.01, vary only the
+  step count. <strong>Lookahead really does hurt</strong> &mdash; but for a reason
+  that is about the cost, not about prediction.</p>
+</div>
+
+<div class="verdict" style="border-left-color: var(--good);">
+  <span class="eyebrow" style="color:var(--good)">The answer</span>
+  <div class="scroller">
+    <table>
+      <caption>Seconds of trotting before the robot went down. dt and solve_period pinned at 0.01; only the step count moves.</caption>
+      <thead>
+        <tr><th>horizon</th><th>lookahead</th><th>full estimator, 3 seeds</th><th>mean</th><th>ground truth</th></tr>
+      </thead>
+      <tbody>
+        <tr class="ok"><td class="name">10</td><td class="dim">0.10 s</td><td>20.8&nbsp; 19.3&nbsp; 32.8</td><td class="fine">24.3</td><td class="fine">survived 67 s</td></tr>
+        <tr><td class="name">25</td><td class="dim">0.25 s</td><td>3.3&nbsp; 6.3&nbsp; 4.4</td><td class="bad">4.7</td><td class="bad">5.9 s</td></tr>
+        <tr><td class="name">50</td><td class="dim">0.50 s</td><td>5.0&nbsp; 3.1&nbsp; 3.0</td><td class="bad">3.7</td><td class="bad">3.6 s</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>A trot cannot hold still, and the reference insists that it does.
+  <code>MdlTrot</code> fills <code>reference[k]</code> with roll = pitch = 0, a
+  constant height and a constant velocity at <em>every</em> horizon step, weighted
+  1 / 1 / 50 / 1. Measured on ground truth while walking cleanly, the trunk swings
+  roll <span class="mono">&plusmn;26&nbsp;mrad</span>, pitch
+  <span class="mono">&plusmn;22&nbsp;mrad</span> about a nose-up
+  <span class="mono">16.6&nbsp;mrad</span> mean, and vertical velocity
+  <span class="mono">&plusmn;100&nbsp;mm/s</span>, all at gait frequency.</p>
+  <p>At ten steps the solver sees a fifth of a gait cycle and is mostly making a
+  correction. At twenty-five it sees half a cycle of the gait's own motion laid out
+  in front of it and spends ground reaction force cancelling it, with twenty-four
+  unreachable future steps outvoting the one interval actually applied. Torque
+  climbing and the trunk sinking as the horizon grows is what that looks like from
+  outside.</p>
+  <p><strong>So the fix is a gait-consistent reference, not a longer horizon and
+  not a weight.</strong> Until <code>reference[k]</code> carries the body motion a
+  trot actually produces, extra lookahead is extra disagreement, and the shortest
+  horizon that still stabilises wins by default.</p>
+</div>
+
+<div class="chain">
+
+<!-- ============================================================= 1 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">01</div>
+    <h2>A sharp optimum in dt</h2>
+    <div class="because">Four values of dt, three seeds each &mdash; a resolution sweep, not a lookahead sweep.</div>
+  </div>
+
+  <div class="peak">
+    <div><span class="k">0.05 s</span><span class="v">4.1</span><span class="u">s to a fall</span></div>
+    <div class="win"><span class="k">0.10 s</span><span class="v">27.9</span><span class="u">s to a fall</span></div>
+    <div><span class="k">0.20 s</span><span class="v">6.2</span><span class="u">s to a fall</span></div>
+    <div><span class="k">0.40 s</span><span class="v">5.4</span><span class="u">s to a fall</span></div>
+  </div>
+  <p class="fig-cap">Mean survival at the best solve rate available for each
+  <code>dt</code>. Read the axis as resolution rather than lookahead: each column
+  changes both, and the two cannot be told apart from this data.</p>
+
+  <div class="scroller">
+    <table>
+      <caption>Seconds of trotting before the robot went down. Three noise seeds per cell.</caption>
+      <thead>
+        <tr><th>mpc.dt</th><th>horizon</th><th>solve = dt</th><th>solve = 0.01</th><th>ground truth</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="name">0.005</td><td class="dim">0.05 s</td><td class="dim">&mdash;</td><td class="bad">4.9&nbsp; 3.8&nbsp; 3.7</td><td class="dim">&mdash;</td></tr>
+        <tr class="ok"><td class="name">0.01</td><td class="dim">0.10 s</td><td class="fine">25.3&nbsp; 25.4&nbsp; 33.1</td><td class="dim">same setting</td><td class="fine">survived 67 s</td></tr>
+        <tr><td class="name">0.02</td><td class="dim">0.20 s</td><td class="bad">2.8&nbsp; 6.1&nbsp; 6.1</td><td class="bad">5.6&nbsp; 5.4&nbsp; 7.6</td><td class="bad">4.6 s</td></tr>
+        <tr><td class="name">0.04</td><td class="dim">0.40 s</td><td class="bad">1.8&nbsp; 3.1&nbsp; 2.6</td><td class="bad">3.3&nbsp; 7.3&nbsp; 5.6</td><td class="bad">5.8 s</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Every run is the same command: stand, trot at 0.55&nbsp;m/s, and keep going
+  for 70&nbsp;s with no stop and no restart &mdash; because a restart reseeds the
+  body reference and the gait phase, which resets the failure and hides it.</p>
+  <p>The ground-truth column is worth keeping in view whatever the horizon turns
+  out to do: at <code>dt = 0.01</code> the same controller trots for 67&nbsp;s on a
+  perfect state estimate. Nothing measured here closes that gap.</p>
+
+  <div class="callout">
+    <span class="eyebrow">How a fall registers</span>
+    <p>The gait schedule stops early only because <code>MdlTrot</code> aborted, and
+    it aborts at the bottom of a topple: the trunk sinks, a leg reaches its limit,
+    and the Cartesian force command is rejected three cycles running. Body height
+    confirms it in every case &mdash; a typical failure runs
+    <span class="mono">0.29 &rarr; 0.27 &rarr; 0.20 &rarr; 0.10&nbsp;m</span> before
+    the rejection. Nothing went non-finite and no QP failed to solve, so these are
+    genuine falls and not a numerical abort.</p>
+  </div>
+</section>
+
+<!-- ============================================================= 2 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">02</div>
+    <h2>mpc.dt was three parameters wearing one name</h2>
+    <div class="because">Horizon step, solve interval, and contact-timing resolution.</div>
+  </div>
+  <p><code>MdlTrot</code> re-solved every <code>mpc.dt</code> seconds, so raising
+  the horizon step from 0.01 to 0.04 also dropped the solver from 100&nbsp;Hz to
+  25&nbsp;Hz. A single sweep of <code>dt</code> moves both and can only report
+  their sum. That is what <code>mpc.solve_period</code> is for: the horizon step
+  now sets the lookahead and nothing else, and the solve interval is its own key,
+  defaulting to <code>dt</code> so every existing config behaves exactly as it
+  did.</p>
+
+  <p>That split was worth having, and it was not enough. The third role stayed
+  hidden: <code>dt</code> is also the grid the contact schedule is sampled on, and
+  the step count was a compile-time constant, so lookahead could still only be
+  bought with resolution. Of the three rows below, only the first two isolate
+  anything.</p>
+  <div class="scroller">
+    <table>
+      <caption>Mean survival, seconds, isolating one factor at a time</caption>
+      <thead>
+        <tr><th>holding fixed</th><th>change</th><th>from</th><th>to</th><th>factor</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="name">horizon at 0.4 s</td><td class="dim">solve 25 &rarr; 100 Hz</td><td>2.5</td><td>5.4</td><td class="fine">2.2&times;</td></tr>
+        <tr><td class="name">horizon at 0.2 s</td><td class="dim">solve 50 &rarr; 100 Hz</td><td>5.0</td><td>6.2</td><td>1.2&times;</td></tr>
+        <tr><td class="name">solve at 100 Hz</td><td class="dim">dt 0.04 &rarr; 0.01, <em>lookahead and resolution together</em></td><td>5.4</td><td>27.9</td><td class="dim">5.2&times;, unattributable</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="fig-cap"><b>Faster solving is worth roughly a factor of two at a
+  coarse step.</b> The third row is the confounded one, left in only to show what
+  it is: a 5.2&times; effect that could belong to lookahead, to contact-timing
+  resolution, or to any mix of the two.</p>
+
+  <div class="callout">
+    <span class="eyebrow">Three keys now, and one rule between them</span>
+    <p><code>horizon</code> is the step count, <code>dt</code> the discretization
+    interval, <code>solve_period</code> the re-solve interval; lookahead is
+    <code>horizon &times; dt</code>. Keep <code>solve_period &le; dt</code>: the QP
+    plans the first force to act for one <code>dt</code> and then be replaced, so
+    re-solving sooner just discards the plan early, while re-solving later holds it
+    past its allotted interval for a successor that never arrives &mdash; a
+    degradation with nothing to do with the horizon.</p>
+  </div>
+</section>
+
+<!-- ============================================================= 3 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">03</div>
+    <h2>What a long horizon actually does</h2>
+    <div class="because">It rides the trunk high on rising torque, then loses it.</div>
+  </div>
+  <div class="scroller">
+    <table>
+      <caption>First three seconds of trot, seed 12345</caption>
+      <thead>
+        <tr><th>setting</th><th>body z at +0.5 s</th><th>at +2 s</th><th>mean |&tau;|</th><th>peak |&tau;|</th></tr>
+      </thead>
+      <tbody>
+        <tr class="ok"><td class="name">dt .01 / solve .01</td><td>0.291</td><td class="fine">0.293</td><td>4.9</td><td class="fine">24.7</td></tr>
+        <tr><td class="name">dt .04 / solve .04</td><td>0.292</td><td class="bad">0.304</td><td>5.4</td><td class="bad">45.5</td></tr>
+        <tr><td class="name">dt .04 / solve .01</td><td>0.292</td><td class="bad">0.305</td><td>6.5</td><td class="bad">41.7</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Height in metres, torque in N&middot;m. The short horizon holds the trunk flat
+  at 0.291&ndash;0.293&nbsp;m on 4&ndash;5&nbsp;N&middot;m. The long ones climb to
+  0.305&nbsp;m on rising torque with peaks near twice as high, and go down shortly
+  after.</p>
+  <p>The likely reason is that the cost has no terminal term. Over ten steps of
+  0.04&nbsp;s the solver can accept large error early and promise to recover it
+  late, and the force it commits for the one interval actually applied is
+  correspondingly soft; the height weight of 50 then has to make that up. This is
+  a hypothesis consistent with the traces, not something the sweep proves &mdash;
+  it would be tested by adding a terminal weight, which nothing here has tried.</p>
+</section>
+
+<!-- ============================================================= 4 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">04</div>
+    <h2>The estimator's drift is not in the loop</h2>
+    <div class="because">Horizontal position carries zero weight. It cannot reach the controller.</div>
+  </div>
+  <p><code>state_weights = [1, 1, 1, 0, 0, 50, 0, 0, 1, 1, 1, 1]</code> in the
+  order <code>roll pitch yaw / x y z / wx wy wz / vx vy vz</code>. The solver never
+  sees a horizontal position error. In an 87&nbsp;s run the estimate ended
+  2.1&nbsp;m out in x and 3.4&nbsp;m out in y and none of it could reach the
+  controller. On flat ground the robot genuinely does not care where it thinks it
+  is, and <code>position_reference_clamp</code> is inert at this tuning.</p>
+
+  <div class="scroller">
+    <table>
+      <caption>Estimator error in the quantities that <em>are</em> weighted, over one long trot</caption>
+      <thead>
+        <tr><th>quantity</th><th>error</th><th>grows?</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="name">roll / pitch</td><td>2&ndash;6 mrad</td><td class="fine">no</td></tr>
+        <tr><td class="name">body-frame velocity</td><td>x &minus;20&hellip;&minus;31, y &minus;3&hellip;&minus;9 mm/s</td><td class="fine">no</td></tr>
+        <tr><td class="name">vertical velocity</td><td>&asymp; &minus;50 mm/s</td><td class="fine">no, constant</td></tr>
+        <tr><td class="name">yaw</td><td>&delta;&psi; 17 &rarr; 173 mrad, ~1.95 mrad/s</td><td class="bad">yes</td></tr>
+        <tr><td class="name">world lateral velocity</td><td>+50 &rarr; +113 mm/s</td><td class="bad">yes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>The last two are one thing. <code>v_err_y</code> tracks
+  <code>v_x &middot; &delta;&psi;</code> to within a few mm/s for eighty seconds
+  &mdash; the estimator's world frame is simply rotated by the unobservable yaw
+  drift. <strong>And that rotation cancels where it matters:</strong> the stance
+  sweep is built on <code>_vfilt = LPF(_Rbw&#7488; &middot; _comVel)</code>, where
+  <code>&delta;&psi;</code> appears in both factors and divides out. The flat
+  body-frame velocity error above is that cancellation, measured while
+  <code>&delta;&psi;</code> nearly doubled.</p>
+
+  <div class="callout">
+    <span class="eyebrow">Why stopping and restarting looks like a reset</span>
+    <p>Everything a restart clears is controller state; everything that carries
+    over is estimator state, and the estimator's carried-over quantities are the
+    zero-weight ones. <code>_trotEntry()</code> reseeds the gait phase datum,
+    <code>_vfilt</code>, <code>_desPos</code> including the height datum,
+    <code>_desYaw</code> and the speed ramp, and releasing the solver drops its
+    warm start. &delta;&psi; and the position drift pass straight through
+    untouched &mdash; &delta;&psi; kept growing <em>through</em> the stop, 57 to
+    87 mrad while the robot stood still. The estimates were not corrected. They
+    did not need to be, and that a restart helps is itself evidence the problem
+    is on the controller side.</p>
+  </div>
+</section>
+
+<!-- ============================================================= 5 -->
+<section class="step">
+  <div class="step-head">
+    <div class="step-n">05</div>
+    <h2>What is left</h2>
+    <div class="because">The horizon is not eliminated &mdash; it was never fairly tested.</div>
+  </div>
+  <div class="actions">
+    <div class="act">
+      <div class="act-rank now">largest in-loop error</div>
+      <div><p>The <span class="mono">&minus;50&nbsp;mm/s</span> vertical velocity
+      bias, against a height weight of 50. It parks the trunk about 25&nbsp;mm
+      above its standing height for the whole trot and roughly doubles roll
+      amplitude &mdash; 60&ndash;90&nbsp;mrad per cycle against 25&ndash;47 on
+      ground truth &mdash; from the first stride, constant rather than
+      accumulating. That is the whole of what the estimator costs, and it is the
+      difference between 67&nbsp;s and 25&ndash;33&nbsp;s. Deliberately not
+      touched here so it would not confound the sweep.</p></div>
+    </div>
+    <div class="act">
+      <div class="act-rank root">what would make lookahead pay</div>
+      <div><p>A gait-consistent <code>reference[k]</code>. The schedule already
+      knows what the body will be doing &mdash; <code>MdlTrot</code> has the phase,
+      the duty and the stance velocity in hand when it fills the horizon &mdash; so
+      the roll, pitch, height and vertical velocity a trot produces could be
+      written into the reference instead of zeros. Then a long horizon predicts
+      the gait rather than arguing with it. This is the change the measurement
+      points at, and it is real work in <code>_solveMPC</code>, not a knob.</p></div>
+    </div>
+    <div class="act">
+      <div class="act-rank">tested, dead</div>
+      <div><p>The input cost. Raising <code>force_weight</code> from
+      <span class="mono">1e-6</span> was the obvious way to stop the solver
+      spending force on an unreachable target, and there is no regime where it
+      works: <span class="mono">1e-4</span> changes nothing, and
+      <span class="mono">1e-3</span> and <span class="mono">1e-2</span> stop the
+      solver pushing at all &mdash; the robot sags to
+      <span class="mono">0.16&ndash;0.24&nbsp;m</span> and makes no headway. Worth
+      knowing that a collapse is not a fall, so it scores as a survival unless the
+      metric checks that the robot actually walked.</p></div>
+    </div>
+    <div class="act">
+      <div class="act-rank">parked</div>
+      <div><p>Duty factor. <code>duty = 0.5</code> is a pure trot with no double
+      support, so there is never an interval with more than two feet down and the
+      solver never has a support polygon to redistribute over &mdash; only a line.
+      <code>trot.toml</code> already suggests 0.6 as the first thing to try when
+      the robot is unsteady.</p></div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<footer class="foot">
+  <p>Forty-five headless runs, MuJoCo, Go2 model, <code>forward_velocity =
+  0.55</code>, <code>period = 0.5</code>, <code>duty = 0.5</code>. Seeds vary
+  <code>orientationestimator.simnoise.seed</code> only; ground-truth rows set
+  <code>use_ground_truth</code> on both estimator stages. A run counts as a fall
+  when <code>MdlTrot</code> aborts, which it does at the bottom of a topple, and
+  separately as a collapse when it never aborts but never walks. The
+  <code>horizon = 50</code> runs are driven by <code>supervisor.exit_time</code>
+  rather than a wall-clock budget, because a 600-variable QP runs the simulator
+  about fifteen times slower than real time and a wall budget would have bought
+  five seconds of trotting and called it a survival.</p>
+</footer>
+
+</div>

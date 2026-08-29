@@ -73,7 +73,10 @@ static const char* g_case = "(none)";
 //  Fixture
 // ---------------------------------------------------------------------------
 
-static constexpr int H = MdlConvexMPC::HORIZON;
+// The horizon these cases are written against. It is a run-time parameter now,
+// so this is the value go2Params() installs rather than a property of the class,
+// and the two are tied together below.
+static constexpr int H = 10;
 static constexpr int NL = MdlConvexMPC::NUM_LEGS;
 
 // The shipped Go2 numbers from config/default/mpc.toml. Duplicated rather than
@@ -83,6 +86,7 @@ static constexpr int NL = MdlConvexMPC::NUM_LEGS;
 static MdlConvexMPC::params_t go2Params() {
   MdlConvexMPC::params_t p;
   p.dt = 0.04;
+  p.horizon = H;
   p.mass = 15.2064;
   p.com_offset_body = Eigen::Vector3d(-0.00172, 0.0, -0.02227);
   p.inertia_body << 0.177718, 0.000122, -0.016809,
@@ -125,7 +129,10 @@ static void makeStandingInput(const MdlConvexMPC::params_t& p,
   in.current.angular_velocity_world.setZero();
   in.current.com_velocity_world.setZero();
 
-  for (int k = 0; k < H; k++) {
+  // p.horizon, not H: this helper is shared with the case that varies the
+  // horizon, and filling a fixed ten steps would leave the rest of the input
+  // uninitialized for any longer one.
+  for (int k = 0; k < p.horizon; k++) {
     in.reference[k] = in.current;
     for (int leg = 0; leg < NL; leg++) {
       // Attitude is level and yaw is zero, so the world moment arm is just the
@@ -483,7 +490,7 @@ void test_numerics() {
   // of hundreds, which is a miserable thing to chase.
   const MdlConvexMPC::RowMatrix& Hm = mpc.getHessian();
   T_CHECK(Hm.allFinite());
-  T_CHECK(Hm.rows() == MdlConvexMPC::NUM_VARS);
+  T_CHECK(Hm.rows() == H * MdlConvexMPC::NUM_INPUTS);
   T_CHECK((Hm - Hm.transpose()).cwiseAbs().maxCoeff() == 0.0);
   T_CHECK(mpc.getGradient().allFinite());
   // Positive definite, which the force penalty guarantees whatever the contact
@@ -573,6 +580,240 @@ void test_numerics() {
   std::cout << "  PASS" << std::endl;
 }
 
+// ---------------------------------------------------------------------------
+//  6. Discretization and condensation consistency
+// ---------------------------------------------------------------------------
+
+// The continuous single-rigid-body dynamics the solver claims to discretize,
+// written out independently: rpy_dot = Rz(yawMean)^T * omega_W, p_dot = v,
+// omega_dot = I_W^-1 * sum(r_i x f_i), v_dot = sum(f_i)/m + [0 0 g_state],
+// g_state constant. Everything below integrates THIS with RK4 and demands the
+// solver's exact-exponential prediction lands on it, so an index slip between a
+// step's moment arms and its inputs, a wrong yaw frame, or a broken condensed
+// stack has nowhere to hide.
+static Eigen::Matrix<double, 13, 1> srbDeriv(const MdlConvexMPC::params_t& p,
+                                             double yawMean,
+                                             const Eigen::Matrix<double, 3, NL>& arms,
+                                             const Eigen::Matrix<double, 13, 1>& x,
+                                             const Eigen::VectorXd& u) {
+  Eigen::Matrix<double, 13, 1> dx = Eigen::Matrix<double, 13, 1>::Zero();
+  const Eigen::Matrix3d Rz =
+      Eigen::AngleAxisd(yawMean, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+  const Eigen::Matrix3d Iw = Rz * p.inertia_body * Rz.transpose();
+
+  dx.segment<3>(0) = Rz.transpose() * x.segment<3>(6);
+  dx.segment<3>(3) = x.segment<3>(9);
+
+  Eigen::Vector3d tau = Eigen::Vector3d::Zero();
+  Eigen::Vector3d f = Eigen::Vector3d::Zero();
+  for (int leg = 0; leg < NL; leg++) {
+    const Eigen::Vector3d fl = u.segment<3>(3 * leg);
+    tau += Eigen::Vector3d(arms.col(leg)).cross(fl);
+    f += fl;
+  }
+  dx.segment<3>(6) = Iw.llt().solve(tau);
+  dx.segment<3>(9) = f / p.mass;
+  dx[11] += x[12];
+  return dx;
+}
+
+// One horizon interval under a zero-order hold, in enough RK4 substeps that the
+// integrator's own error is far below the tolerance the test asserts.
+static Eigen::Matrix<double, 13, 1> rk4Interval(const MdlConvexMPC::params_t& p,
+                                                double yawMean,
+                                                const Eigen::Matrix<double, 3, NL>& arms,
+                                                Eigen::Matrix<double, 13, 1> x,
+                                                const Eigen::VectorXd& u) {
+  const int substeps = 32;
+  const double h = p.dt / substeps;
+  for (int s = 0; s < substeps; s++) {
+    const auto k1 = srbDeriv(p, yawMean, arms, x, u);
+    const auto k2 = srbDeriv(p, yawMean, arms, x + 0.5 * h * k1, u);
+    const auto k3 = srbDeriv(p, yawMean, arms, x + 0.5 * h * k2, u);
+    const auto k4 = srbDeriv(p, yawMean, arms, x + h * k3, u);
+    x += (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+  }
+  return x;
+}
+
+// Poses one solve whose horizon contains a diagonal swap and whose moment arms
+// differ at every single step, then re-integrates the solver's own solution
+// through the independent integrator above and checks the condensed prediction
+// X = Aqp x0 + Bqp U step by step. This is the case the horizon experiments
+// lean on: it is the only check that a plan spanning a mid-horizon contact
+// change is dynamically consistent, which no closed-loop symptom can separate
+// from a tuning problem.
+static void runConsistencyCase(double dt, int horizon, int switchStep) {
+  MdlConvexMPC::params_t p = go2Params();
+  p.dt = dt;
+  p.horizon = horizon;
+
+  MdlConvexMPC mpc;
+  mpc.setParams(p);
+  T_CHECK(mpc.reset());
+
+  const double yaw = 0.3;
+
+  MdlConvexMPC::input_t in;
+  // A body that is off its reference in every state the cost can see, so the
+  // solution carries nonzero, step-varying forces worth re-integrating.
+  in.current.rpy = Eigen::Vector3d(0.03, -0.02, yaw);
+  in.current.com_position_world = Eigen::Vector3d(0.10, -0.05, kStandHeight - 0.015);
+  in.current.angular_velocity_world = Eigen::Vector3d(0.2, -0.1, 0.15);
+  in.current.com_velocity_world = Eigen::Vector3d(0.30, 0.05, -0.10);
+
+  for (int k = 0; k < horizon; k++) {
+    in.reference[k] = in.current;
+    // Every reference yaw equal to the current one keeps yawMean at exactly
+    // yaw, so the independent integrator and the solver agree on the frame by
+    // construction rather than to within an averaging detail.
+    in.reference[k].rpy = Eigen::Vector3d(0.0, 0.0, yaw);
+    in.reference[k].com_position_world =
+        Eigen::Vector3d(0.10 + 0.3 * dt * (k + 1), -0.05, kStandHeight);
+    in.reference[k].angular_velocity_world.setZero();
+    in.reference[k].com_velocity_world = Eigen::Vector3d(0.3, 0.0, 0.0);
+
+    const bool firstPair = k < switchStep;
+    in.contact[k][0] = firstPair;
+    in.contact[k][1] = !firstPair;
+    in.contact[k][2] = !firstPair;
+    in.contact[k][3] = firstPair;
+
+    for (int leg = 0; leg < NL; leg++) {
+      // A distinct arm for every (step, leg), drifting the way a stance sweep
+      // does, so using step j's arms for step k's dynamics cannot cancel out.
+      in.moment_arm_world[k].col(leg) =
+          nominalFoot(leg) - p.com_offset_body +
+          Eigen::Vector3d(-0.03 * dt * k, 0.002 * k, 0.001 * (k % 3));
+    }
+  }
+
+  MdlConvexMPC::output_t out;
+  T_CHECK(mpc.solve(in, out));
+  T_CHECK(out.valid);
+
+  const Eigen::VectorXd& U = mpc.getSolution();
+
+  // Swing pinning holds across the whole stacked solution, not just u_0.
+  for (int k = 0; k < horizon; k++)
+    for (int leg = 0; leg < NL; leg++)
+      if (!in.contact[k][leg])
+        T_NEAR(U.segment<3>(k * MdlConvexMPC::NUM_INPUTS + 3 * leg).norm(), 0.0, 1e-9);
+
+  // The forces are genuinely exercising the dynamics.
+  T_CHECK(U.head<3>().norm() + U.segment<3>(9).norm() > 10.0);
+
+  Eigen::Matrix<double, 13, 1> x0;
+  x0.segment<3>(0) = in.current.rpy;
+  x0.segment<3>(3) = in.current.com_position_world;
+  x0.segment<3>(6) = in.current.angular_velocity_world;
+  x0.segment<3>(9) = in.current.com_velocity_world;
+  x0[12] = -p.gravity;
+
+  const int NS = MdlConvexMPC::NUM_STATES;
+  const Eigen::VectorXd xpred = mpc.getAqp() * x0 + mpc.getBqp() * U;
+
+  Eigen::Matrix<double, 13, 1> x = x0;
+  for (int k = 0; k < horizon; k++) {
+    x = rk4Interval(p, yaw, in.moment_arm_world[k],
+                    x, U.segment(k * MdlConvexMPC::NUM_INPUTS,
+                                 MdlConvexMPC::NUM_INPUTS));
+    const double err = (xpred.segment(k * NS, NS) - x).cwiseAbs().maxCoeff();
+    if (err > 1e-7) {
+      std::cerr << "FAIL [" << g_case << "] step " << k << ": |X_qp - X_rk4| = "
+                << err << std::endl;
+      std::exit(1);
+    }
+  }
+}
+
+void test_discretization_consistency() {
+  g_case = "discretization_consistency";
+  std::cout << "test_discretization_consistency..." << std::endl;
+
+  // The shipped grid with a swap a third of the way in, and the paper's coarse
+  // grid with one in the middle. Between them: both dt regimes, and a horizon
+  // long enough that a stacking error compounds visibly.
+  runConsistencyCase(0.01, 12, 4);
+  runConsistencyCase(0.04, 10, 5);
+
+  std::cout << "  PASS" << std::endl;
+}
+
+// The horizon step and the solve period are separate knobs, and reset() is what
+// resolves an unset solve period to dt. That resolution is what keeps a config
+// written before the split behaving exactly as it did, so it is worth pinning:
+// a silent zero here would make MdlTrot re-solve every single control cycle.
+// The horizon sizes the QP, and qpOASES fixes its dimensions at construction, so
+// changing it has to rebuild the solver rather than resize it. A stale object
+// would show up as a wrong-sized solve rather than as a clean failure, which is
+// worth one case of its own.
+void test_horizon_is_runtime() {
+  std::cout << "test_horizon_is_runtime..." << std::endl;
+
+  MdlConvexMPC mpc;
+  MdlConvexMPC::params_t p = go2Params();
+
+  // Out of range is refused, not clamped: solving a shorter problem than the
+  // caller asked for would be silent and wrong.
+  for (int bad : {0, -1, MdlConvexMPC::MAX_HORIZON + 1}) {
+    p.horizon = bad;
+    mpc.setParams(p);
+    T_CHECK(!mpc.reset());
+  }
+
+  // Grow and shrink on the same object, solving a standing problem each time.
+  // The weight has to come out the same however many steps it is spread over.
+  const double weight = go2Params().mass * go2Params().gravity;
+  for (int h : {H, 25, MdlConvexMPC::MAX_HORIZON, 4, H}) {
+    p.horizon = h;
+    mpc.setParams(p);
+    T_CHECK(mpc.reset());
+    T_CHECK(mpc.getParams().horizon == h);
+
+    MdlConvexMPC::input_t in;
+    makeStandingInput(p, in);
+    MdlConvexMPC::output_t out;
+    T_CHECK(mpc.solve(in, out));
+    T_CHECK(out.valid);
+    checkContactConstraints(p, in, out);
+    T_NEAR(resultantForce(out).z(), weight, 0.06 * weight);
+  }
+
+  std::cout << "  PASS" << std::endl;
+}
+
+void test_solve_period_defaults_to_dt() {
+  std::cout << "test_solve_period_defaults_to_dt..." << std::endl;
+
+  MdlConvexMPC mpc;
+  MdlConvexMPC::params_t p = go2Params();
+
+  // Unset, the documented "follow dt".
+  p.solve_period = 0.0;
+  mpc.setParams(p);
+  T_CHECK(mpc.reset());
+  T_NEAR(mpc.getParams().solve_period, p.dt, 1e-15);
+
+  // Negative and non-finite are the same case, not a way to disable solving.
+  for (double bad : {-1.0, -0.0, std::numeric_limits<double>::quiet_NaN()}) {
+    p.solve_period = bad;
+    mpc.setParams(p);
+    T_CHECK(mpc.reset());
+    T_NEAR(mpc.getParams().solve_period, p.dt, 1e-15);
+  }
+
+  // A real value survives, including one finer than the horizon step, which is
+  // the whole point of the split.
+  p.solve_period = 0.01;
+  mpc.setParams(p);
+  T_CHECK(mpc.reset());
+  T_NEAR(mpc.getParams().solve_period, 0.01, 1e-15);
+  T_NEAR(mpc.getParams().dt, 0.04, 1e-15);
+
+  std::cout << "  PASS" << std::endl;
+}
+
 int main() {
   std::cout << "=== Convex MPC Tests ===" << std::endl;
   // Numerics runs first on purpose. It is the one case that does not depend on
@@ -585,6 +826,9 @@ int main() {
   test_diagonal_support();
   test_correction_direction();
   test_horizon_alignment();
+  test_discretization_consistency();
+  test_solve_period_defaults_to_dt();
+  test_horizon_is_runtime();
   std::cout << "All convex MPC tests passed." << std::endl;
   return 0;
 }

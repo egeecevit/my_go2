@@ -9,6 +9,9 @@
 #ifndef MDLCONVEXMPC_HH
 #define MDLCONVEXMPC_HH
 
+#include <cstdio>
+#include <string>
+
 #include <Eigen/Dense>
 
 #include "rtcore/Module.hh"
@@ -73,17 +76,23 @@ class MdlConvexMPC : public rtcore::Module {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   static constexpr int NUM_LEGS = 4;
-  /** \brief Prediction steps. 10 at the default 0.04 s is a 0.4 s horizon, a
-      little under one gait cycle, which is the paper's Section V-A setting. */
-  static constexpr int HORIZON = 10;
+  /** \brief Largest prediction-step count the solver can be configured for.
+
+    Not the horizon: that is params_t::horizon, chosen at run time, and the
+    lookahead is horizon * dt. This constant exists only to size the fixed
+    storage -- the input struct and the per-step dynamics arrays -- so that a
+    solve allocates nothing. Raising it costs memory whether or not the extra
+    steps are used, and the QP itself is sized from the active horizon. */
+  static constexpr int MAX_HORIZON = 64;
   /** \brief States in the single-rigid-body model, gravity included. */
   static constexpr int NUM_STATES = 13;
   /** \brief Decision variables per prediction step: 3 force components x 4 feet. */
   static constexpr int NUM_INPUTS = 3 * NUM_LEGS;
-  /** \brief Total decision variables in the condensed QP. */
-  static constexpr int NUM_VARS = HORIZON * NUM_INPUTS;
-  /** \brief Friction pyramid rows: |fx| <= mu*fz and |fy| <= mu*fz per foot. */
-  static constexpr int NUM_CONSTRAINTS = HORIZON * NUM_LEGS * 4;
+  /** \brief Decision variables and friction rows at the maximum horizon. The
+      QP is built at the active horizon instead; these bound the allocation.
+      Friction pyramid rows are |fx| <= mu*fz and |fy| <= mu*fz per foot. */
+  static constexpr int MAX_VARS = MAX_HORIZON * NUM_INPUTS;
+  static constexpr int MAX_CONSTRAINTS = MAX_HORIZON * NUM_LEGS * 4;
 
   /** \brief One body state in the layout above, minus the gravity entry, which
       is not something a caller ever chooses. */
@@ -101,13 +110,18 @@ class MdlConvexMPC : public rtcore::Module {
     and contact[k] describe the interval that *starts* at now + k*dt, so they
     are offset from the references by one step by construction. Getting these
     two indexings confused is the classic way to end up with a controller that
-    reacts one interval late and looks merely badly tuned. */
+    reacts one interval late and looks merely badly tuned.
+
+    The arrays are sized for MAX_HORIZON but only the first params_t::horizon
+    entries of each are read. They are arrays rather than vectors so that a
+    caller can hold one on the stack and fill it every cycle without
+    allocating. */
   struct input_t {
     body_state_t current;
-    body_state_t reference[HORIZON];
+    body_state_t reference[MAX_HORIZON];
     /** \brief COM-to-foot vectors in world coordinates, one column per leg. */
-    Eigen::Matrix<double, 3, NUM_LEGS> moment_arm_world[HORIZON];
-    bool contact[HORIZON][NUM_LEGS];
+    Eigen::Matrix<double, 3, NUM_LEGS> moment_arm_world[MAX_HORIZON];
+    bool contact[MAX_HORIZON][NUM_LEGS];
   };
 
   /** \brief The first control interval's forces, and how they were obtained. */
@@ -128,8 +142,27 @@ class MdlConvexMPC : public rtcore::Module {
       exercised from a unit test. The defaults are deliberately unusable: mass
       and inertia have no sensible fallback, and reset() rejects them. */
   struct params_t {
-    /** \brief Prediction and nominal solve interval [s]. */
+    /** \brief Prediction interval [s]. horizon steps of this is the lookahead,
+        which has to reach past the next contact change or the solver plans every
+        stance as though it lasted forever. dt is also the resolution of the
+        contact schedule, since the caller samples the gait on this grid. */
     double dt = 0.04;
+    /** \brief Prediction steps, at most MAX_HORIZON. The QP carries
+        NUM_INPUTS variables and NUM_LEGS*4 constraint rows per step, so this
+        sets the solve cost as well as the lookahead. */
+    int horizon = 10;
+    /** \brief How often the QP is re-solved [s]. Zero, the default, means
+        follow dt.
+
+      Separate from dt because the two want opposite things. The horizon should
+      reach about a gait cycle, which argues for a coarse step; the solve should
+      answer a disturbance promptly, which argues for a fast one. Tying them
+      together forces a choice between a controller that cannot see the next
+      touchdown and one that reacts a quarter of a stance late.
+
+      MdlTrot also re-solves immediately on any contact change, so this is the
+      interval between solves within an unchanging support pattern. */
+    double solve_period = 0.0;
     /** \brief Aggregate robot mass [kg]. */
     double mass = 0.0;
     /** \brief Whole-robot COM relative to the body frame origin [m]. */
@@ -149,8 +182,23 @@ class MdlConvexMPC : public rtcore::Module {
     double force_weight = 1.0e-6;
     /** \brief Diagonal state cost, in the state order above minus gravity. */
     double state_weights[NUM_STATES - 1] = {1, 1, 1, 0, 0, 50, 0, 0, 1, 1, 1, 1};
+    /** \brief Multiplier on the last horizon step's state weights. 1 is the
+        plain repeated cost. Without a terminal term a receding horizon can
+        accept error early and promise to recover it in steps that are then
+        discarded unexecuted; this is the knob for testing whether that is what
+        a long horizon is actually doing. */
+    double terminal_weight_scale = 1.0;
     /** \brief qpOASES working set recalculation budget per solve. */
     int max_working_set = 250;
+    /** \brief When non-empty, every successful solve appends one binary record
+        to this file: the posed problem and the solver's own predicted state
+        trajectory, which is what lets an offline pass compare the plan against
+        what subsequently happened. Layout: an 8-double header
+        {magic 20260828, version 1, horizon, dt, NUM_STATES, NUM_INPUTS,
+        NUM_LEGS, solve_period}, then per record
+        [t, x0(NS), xref(H*NS), U(H*NI), Xpred(H*NS), contact(H*NUM_LEGS)].
+        Diagnostics only; leave empty on hardware. */
+    std::string dump_path;
   };
 
   typedef Eigen::Matrix<double, NUM_STATES, NUM_STATES> StateMatrix;
@@ -205,30 +253,39 @@ class MdlConvexMPC : public rtcore::Module {
       (step, leg, xyz). A swing foot's three entries are pinned to zero. */
   const Eigen::VectorXd& getLowerBound() const { return _lb; }
   const Eigen::VectorXd& getUpperBound() const { return _ub; }
+  /** \brief Condensed dynamics of the last solve, X = Aqp x0 + Bqp U. What the
+      consistency test re-integrates against an independent integrator. */
+  const Eigen::MatrixXd& getAqp() const { return _Aqp; }
+  const Eigen::MatrixXd& getBqp() const { return _Bqp; }
+  /** \brief The full stacked solution of the last successful solve, not just
+      the first interval that solve() hands back. */
+  const Eigen::VectorXd& getSolution() const { return _solution; }
 
  private:
   params_t _params;
   bool _ready = false;
 
   // Per-step discretized dynamics, rebuilt every solve.
-  StateMatrix _Ad[HORIZON];
-  InputMatrix _Bd[HORIZON];
+  // Sized for the maximum; only the first _params.horizon entries are built.
+  StateMatrix _Ad[MAX_HORIZON];
+  InputMatrix _Bd[MAX_HORIZON];
 
   // Condensed dynamics X = _Aqp * x0 + _Bqp * U, sized in reset().
-  Eigen::MatrixXd _Aqp;  // (HORIZON*NUM_STATES) x NUM_STATES
-  Eigen::MatrixXd _Bqp;  // (HORIZON*NUM_STATES) x NUM_VARS
+  // All sized in reset() from the active horizon, not from MAX_HORIZON.
+  Eigen::MatrixXd _Aqp;  // (horizon*NUM_STATES) x NUM_STATES
+  Eigen::MatrixXd _Bqp;  // (horizon*NUM_STATES) x (horizon*NUM_INPUTS)
 
   // Cost and constraint data handed to qpOASES.
-  RowMatrix _H;                // NUM_VARS x NUM_VARS
-  Eigen::VectorXd _g;          // NUM_VARS
-  RowMatrix _Acon;             // NUM_CONSTRAINTS x NUM_VARS, constant after reset()
+  RowMatrix _H;                // nv x nv
+  Eigen::VectorXd _g;          // nv
+  RowMatrix _Acon;             // nc x nv, constant after reset()
   Eigen::VectorXd _lbA, _ubA;  // constant after reset()
   Eigen::VectorXd _lb, _ub;    // per-foot force bounds, rebuilt every solve
   Eigen::VectorXd _solution;
 
   // Stacked weights and references, kept as members so nothing allocates in the
   // control path once reset() has run.
-  Eigen::VectorXd _L;     // diagonal of the state cost, HORIZON*NUM_STATES
+  Eigen::VectorXd _L;     // diagonal of the state cost, horizon*NUM_STATES
   Eigen::VectorXd _xref;  // stacked reference states
   Eigen::VectorXd _x0;    // current state, NUM_STATES
 
@@ -238,8 +295,19 @@ class MdlConvexMPC : public rtcore::Module {
   Eigen::VectorXd _e;   // _Aqp*x0 - _xref
   Eigen::VectorXd _We;  // L .* _e
 
+  // Prediction-audit dump. The scratch is a member for the same allocation
+  // reason as above; the file is opened lazily on the first dumped solve so a
+  // solver driven without a ModuleManager never touches the filesystem.
+  Eigen::VectorXd _Xpred;  // _Aqp*x0 + _Bqp*U of the last dumped solve
+  std::FILE* _dumpFile = nullptr;
+
   qpOASES::SQProblem* _qp = nullptr;
   bool _qpInitialized = false;
+  // Dimensions the current _qp was constructed with. qpOASES fixes them at
+  // construction, so a horizon change has to rebuild the object rather than
+  // resize it.
+  int _qpVars = 0;
+  int _qpCons = 0;
 
   output_t _last;
   double _solveTime = 0.0;
@@ -272,6 +340,10 @@ class MdlConvexMPC : public rtcore::Module {
 
   /** \brief Packs a body_state_t and the gravity entry into the 13-vector. */
   void _packState(const body_state_t& state, Eigen::Ref<Eigen::VectorXd> x) const;
+
+  /** \brief Appends one audit record for the solve just completed. Only called
+      when params_t::dump_path is set. */
+  void _dumpSolve(const input_t& input);
 
   static bool _stateFinite(const body_state_t& state);
 };

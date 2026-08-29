@@ -18,15 +18,108 @@
 
 # ---- HORIZON
 #
-# 10 prediction steps at 0.04 s is a 0.4 s horizon, a little under one gait
-# cycle at the default 0.5 s period, which is the paper's Section V-A setting.
-# The step count is a compile-time constant (MdlConvexMPC::HORIZON) because the
-# QP is a fixed size; only the interval is tunable here.
+# Discretization interval. The lookahead is horizon * dt, and it wants to reach
+# past the next contact change: stance is duty * period, 0.25 s for the default
+# trot, and a full cycle covering both diagonals is 0.5 s.
 #
-# This doubles as the nominal solve rate: MdlTrot solves every dt, and also
-# immediately whenever the four-leg contact mask changes, so a leg that lands
-# off the dt grid does not wait a full interval for a force.
+# dt also sets the resolution of everything sampled on the horizon grid. MdlTrot
+# builds the schedule at tk = elapsed + k*dt, so a touchdown is quantized to a dt
+# cell; at 0.04 that is 40 ms of timing error on an event that lasts 250 ms.
+# Small is good here, and it costs nothing in model accuracy -- the dynamics are
+# discretized with an exact matrix exponential, not a truncated series.
+#
+# A sweep of dt alone was run at 0.55 m/s, three seeds per cell, before `horizon`
+# below existed. Seconds of trotting before the robot went down:
+#
+#     dt      lookahead  solve=dt          solve=0.01
+#     0.005   0.05 s     --                 4.9  3.8  3.7
+#     0.01    0.10 s     25.3 25.4 33.1    (same setting)
+#     0.02    0.20 s      2.8  6.1  6.1     5.6  5.4  7.6
+#     0.04    0.40 s      1.8  3.1  2.6     3.3  7.3  5.6
+#
+# Read this as a measurement of dt, NOT of lookahead. With the step count fixed
+# at ten, raising dt bought lookahead by spending contact-timing resolution, so
+# the two moved together and the table cannot separate them. It does say 0.01 is
+# the best dt of those tried; it does not say a longer horizon is bad, which is
+# what `horizon` exists to test properly.
 dt = 0.01                 # [s]
+
+# Prediction steps. Lookahead is horizon * dt. Bounded by
+# MdlConvexMPC::MAX_HORIZON, which only sizes storage.
+#
+# Ten steps at dt = 0.01 is a 0.1 s lookahead against a 0.25 s stance, so a solve
+# never contains the next touchdown. Every argument says that is too short -- the
+# force redistribution across the diagonal swap is reacted to rather than planned
+# -- and it is nonetheless the best of what was measured. Seconds of trotting
+# before the robot went down, dt and solve_period both pinned at 0.01 so only the
+# step count moves:
+#
+#     horizon  lookahead   full estimator      ground truth
+#     10       0.10 s      20.8 19.3 32.8      survived 67 s
+#     25       0.25 s       3.3  6.3  4.4       5.9 s
+#     50       0.50 s       5.0  3.1  3.0       3.6 s
+#
+# Five times worse, saturating rather than continuing to degrade, and just as bad
+# on a perfect state estimate -- so this is the controller, not the estimator.
+#
+# Adjudicated in reports/mpc/horizon_adjudication.html with a per-solve
+# prediction audit (dump_path below): the reason is the MODEL, not the
+# reference. The assembly is verified consistent to 1e-7 by
+# test_discretization_consistency; what fails is prediction. The single rigid
+# body stops describing this robot at the next touchdown -- the legs are 55% of
+# the mass and the contact transient takes ~0.12 s to settle, neither of which
+# the model contains -- so at 0.25 s of lookahead the attitude plan's error
+# equals the reference error exactly and every step past the swap is fiction.
+# The measured failure is a gait-frequency limit cycle: force bursts saturating
+# both stance legs at each swap, the trunk pumped above reference, roll growing
+# to a topple. Horizon 15 already falls in 12.6 s; the cliff is at the stance
+# duration, duty * period.
+#
+# Escape routes measured dead at horizon 25, ground truth, one run each:
+# terminal_weight_scale = 25 (7.6 s), duty 0.6 (9.0 s), 0.15 m/s (5.6 s --
+# it cannot even trot in place), the full Cheetah-Software weight profile
+# (7.1 s). Cutting only the velocity/rate weights to the Cheetah values reaches
+# 25.3 s, the best a cost change can do, and still 3x short of horizon 10. A
+# gait-consistent reference would decorate a plan whose dynamics are wrong past
+# the swap; longer lookahead needs the model to carry the swing-leg wrench and
+# the touchdown transient first.
+#
+# force_weight does not rescue it either -- see the note there.
+#
+# The QP is dense and grows with this: 12 variables and 16 constraints per step,
+# so horizon = 50 is 600 variables against 120 at the default. In simulation that
+# costs only wall clock, since MdlSimDriver advances by the module manager's step
+# period and the system clock reads sim time; at horizon 50 the sim runs about
+# fifteen times slower than real time, which is a trap for any experiment paced by
+# a wall-clock timeout rather than supervisor.exit_time. On hardware it is a hard
+# real-time budget instead.
+#
+# Raise max_working_set with this. At 600 variables the 250 recalculations below
+# will not be enough, and the symptom is MdlTrot aborting on failed solves rather
+# than anything that looks like a tuning problem.
+horizon = 10
+
+# How often the QP is re-solved. Separate from dt so that the lookahead and the
+# reaction time can be chosen independently: before the split, dt was both, and
+# lengthening the horizon silently slowed the controller.
+#
+# Keep this at or below dt. The QP plans u_0 to act for exactly one dt and then
+# be replaced by u_1; re-solving sooner is harmless, because the plan is simply
+# discarded early and replaced by a fresher one. Re-solving *later* holds u_0
+# past the interval the model allotted it while u_1..u_N never arrive, which is a
+# degradation on its own and has nothing to do with the horizon.
+#
+# In the dt sweep above, solving at 100 Hz instead of at dt was worth roughly a
+# factor of two at dt = 0.04 (2.5 s mean -> 5.4 s) and much less at dt = 0.02.
+# At the shipped dt = 0.01 the two coincide anyway.
+#
+# Zero means follow dt, which is what every config did before the split. Set
+# explicitly here instead, because with horizon and dt now independent the reader
+# should not have to derive the solve rate from another key -- at dt = 0.01 the
+# two coincide at 100 Hz either way. MdlTrot also re-solves immediately whenever
+# the four-leg contact mask changes, so this is the interval between solves
+# within an unchanging support pattern.
+solve_period = 0.01        # [s]
 
 # ---- RIGID BODY
 #
@@ -102,7 +195,29 @@ state_weights = [1, 1, 1, 0, 0, 50, 0, 0, 1, 1, 1, 1]
 # are zero, and this term is the only thing left making the condensed Hessian
 # positive definite. Small enough that it barely biases the solution when the
 # feet are down.
+#
+# Raising it was tried as a way to make a long horizon usable, on the theory that
+# the solver was spending force fighting a reference the gait cannot follow.
+# There is no useful regime, measured at horizon 25, three seeds each:
+#
+#     1e-6   fell 3.3  6.3  4.4 s     (this setting)
+#     1e-4   fell 6.6  4.7  4.3 s     no effect
+#     1e-3   never fell, never walked: body sags to 0.239 m, vx 0.000
+#     1e-2   never fell, never walked: body sags to 0.164 m, vx 0.000
+#
+# Too small to bite, or large enough that the solver declines to push at all and
+# the robot settles into a crouch and shuffles nowhere. Note the failure mode:
+# that is not a fall, so anything scoring these runs on whether the behaviour
+# aborted will score a collapse as a success.
 force_weight = 1.0e-6
+
+# Multiplier on the last horizon step's state weights. 1 is the plain repeated
+# cost, which is what the paper uses. Without a terminal term a receding horizon
+# is free to accept error early and promise to recover it in steps that are then
+# discarded unexecuted -- one hypothesis for why a long horizon measured worse
+# than a short one -- and this key exists so that hypothesis can be tested as a
+# config change instead of argued about.
+terminal_weight_scale = 1.0
 
 # qpOASES working set recalculations allowed per solve, and the budget before
 # the solve is declared failed rather than a target.
@@ -115,3 +230,13 @@ force_weight = 1.0e-6
 # once, which is 120 variables and measured at 125. 250 covers both with margin
 # and still leaves the solve an order of magnitude inside dt.
 max_working_set = 250
+
+# ---- DIAGNOSTICS
+#
+# When set, every successful solve appends one binary record of the problem it
+# was posed and the state trajectory it predicted for its own solution -- see
+# params_t::dump_path in MdlConvexMPC.hh for the exact layout. This is what lets
+# an offline pass compare the plan against what subsequently happened, per
+# horizon step, which no closed-loop symptom can. Costs one mat-vec and a
+# flushed write per solve; leave empty everywhere but a simulation experiment.
+# dump_path = "/tmp/mpc_dump.bin"

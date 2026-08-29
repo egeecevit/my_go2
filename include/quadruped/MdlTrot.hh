@@ -132,9 +132,20 @@ struct TrotGait {
   has no discontinuity; all three keep four feet planted and stay on the
   IK/joint-PD path, which is the right controller for holding a pose.
 
-  Stride grows from zero over rampup_duration once TROT starts, so the robot
-  steps in place before it accelerates. That removes the velocity step at the
-  PREP handoff and keeps the first strides gentle.
+  Entry and exit are ramped, and the ramp is on the *command* rather than on the
+  foot trajectory. A speed scale rising over rampup_duration multiplies the
+  commanded twist wherever it is consumed -- the body reference, the MPC's
+  reference trajectory and the stance sweep's turn term -- so the feet step in
+  place at full clearance from the first cycle and the solver is only asked for
+  acceleration once the gait is actually running. Scaling the foot offsets
+  instead, which is what this did before, breaks the one invariant stance rests
+  on: the sweep is built on the estimated body velocity precisely so a planted
+  foot translates at -v_actual, and a factor in front of it is scrub.
+
+  stopTrotting() runs the same scale back down over rampdown_duration in the
+  STOPPING state, fading the swing clearance with it. Both diagonal pairs end up
+  on the nominal footprint at rest, which is what makes the handoff to CENTERING,
+  and from there to a pose controller, free of a step.
 
   There is no silent fallback. If either estimator is not ready, or the first
   MPC solve fails, or solves keep failing, the module goes to ERROR rather than
@@ -185,7 +196,7 @@ class MdlTrot : public rtcore::Module {
   bool getStancePhase(double phase[NUM_LEGS]) const;
 
  private:
-  enum class _state_t { WAIT, PREP, TROT, CENTERING, DONE };
+  enum class _state_t { WAIT, PREP, TROT, STOPPING, CENTERING, DONE };
 
   MdlLegControl* _legs[NUM_LEGS] = {};
   QuadrupedKinematics* _kinematics = nullptr;
@@ -214,8 +225,31 @@ class MdlTrot : public rtcore::Module {
 
   double _mark = 0.0;       // entry time of the current state
   double _trot_mark = 0.0;  // entry time of TROT, the gait phase datum
+  double _stop_mark = 0.0;  // entry time of STOPPING, the ramp-down datum
+
+  // -- Command ramp ----------------------------------------------------------
+  //
+  // _speedScale multiplies the commanded twist; _liftScale multiplies the swing
+  // clearance. They are deliberately not the same number. On the way up the lift
+  // stays at one, so the gait, the contact schedule and the MPC's contact mask
+  // are all real before any acceleration is demanded; on the way down it fades
+  // with the speed, so every foot settles onto the nominal footprint before a
+  // pose controller takes over.
+  double _speedScale = 0.0;
+  double _liftScale = 1.0;
+  double _liftScaleDot = 0.0;  // d/dt, for the swing velocity's product rule
+  // Speed scale at the moment the stop was asked for, so a stop during the
+  // ramp-up decelerates from where it had got to instead of stepping up first.
+  double _stopSpeedScale0 = 0.0;
 
   int _cmdFailures[NUM_LEGS] = {0, 0, 0, 0};
+
+  // The two ramp scales, which are otherwise invisible offline: nothing else in
+  // the log distinguishes a command the robot is failing to track from one that
+  // was never given. Two doubles and no more -- see the size budget in
+  // supervisor.toml, which the full body reference would overflow.
+  rtcore::LogServer* _logserver = nullptr;
+  double _logScales[2] = {0};  // speed scale, lift scale
 
   // -- Measured body state, refreshed once per TROT cycle --------------------
   //
@@ -268,6 +302,7 @@ class MdlTrot : public rtcore::Module {
   double _wait_duration = 0.3;
   double _prep_duration = 1.5;
   double _rampup_duration = 2.0;
+  double _rampdown_duration = 1.0;
   double _centering_duration = 1.5;
 
   // Joint-space gains, used only by the states that hold a pose through IK.
@@ -306,8 +341,21 @@ class MdlTrot : public rtcore::Module {
   bool _solveMPC(double elapsed);
 
   /** \brief Body velocity the stance sweep is built on: the filtered estimate,
-      or the command when no estimate is available. */
+      or the command when no estimate is available.
+
+    Deliberately not scaled by the command ramp. A planted foot has to translate
+    at the negated velocity the body actually has, whatever the command is doing;
+    scaling this is what makes a stance foot scrub. */
   Eigen::Vector3d _sweepVelocity() const;
+
+  /** \brief Commanded body twist and yaw rate, scaled by the entry/exit ramp.
+      Every consumer of the command goes through these two. */
+  Eigen::Vector3d _twistCommand() const { return _speedScale * _vcmd; }
+  double _yawRateCommand() const { return _speedScale * _yawRate; }
+
+  /** \brief Advances _speedScale, _liftScale and _liftScaleDot for the current
+      state. \param elapsed Time since TROT entry. */
+  void _updateGaitScales(double elapsed);
 
   /** \brief Rotation about the world z axis, the only reference attitude the
       body reference ever has. */
@@ -321,6 +369,7 @@ class MdlTrot : public rtcore::Module {
   void _prepDuring();
   void _trotEntry();
   void _trotDuring();
+  void _stoppingEntry();
   void _centeringEntry();
   void _centeringDuring();
 };
