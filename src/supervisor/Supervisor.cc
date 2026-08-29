@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <termios.h>
+#include <cmath>
 #include "rtcore/ModuleManager.hh"
 #include "rtcore/LogServer.hh"
 
@@ -197,6 +198,11 @@ void Supervisor::init() {
   if (hasConfig) {
     _exitTime = config.getDouble("exit_time", 0.0);
     _standHeight = config.getDouble("stand_height", 0.08);
+    _autorunTrotDuration = config.getDouble("autorun_trot_duration", 0.0);
+    if (!std::isfinite(_autorunTrotDuration) || _autorunTrotDuration < 0.0) {
+      _mgr->warning("Supervisor", "Invalid autorun_trot_duration; disabling autorun");
+      _autorunTrotDuration = 0.0;
+    }
 
     // Process logging configuration
     ConfigTable logconfig;
@@ -255,6 +261,10 @@ void Supervisor::uninit() {
 
 void Supervisor::activate() {
   _state = S_IDLE;
+  _autorunStarted = false;
+  _autorunTrotStarted = false;
+  _autorunStopIssued = false;
+  _autorunDone = false;
   printf("\n  [S]tand  [W]alk(draw)  [T]rot  [R]un-stop  [D]own(sit)  [Q]uit\n\n");
 }
 
@@ -305,6 +315,24 @@ void Supervisor::update() {
 
   int key = _readKey();
 
+  // Synthesize only an otherwise absent key, so an operator can always abort
+  // an autorun with Q. The state transitions below remain the single source of
+  // behavior ownership; autorun merely exercises the same edges deterministically.
+  if (_autorunTrotDuration > 0.0 && key < 0) {
+    if (_state == S_IDLE && !_autorunStarted) {
+      key = 's';
+    } else if (_state == S_IDLE && _autorunDone) {
+      _mgr->message("Supervisor: autorun complete at t=%.3f s", t);
+      _mgr->exitMainLoop();
+      return;
+    } else if (_state == S_STAND && _standSettled && !_autorunTrotStarted) {
+      key = 't';
+    } else if (_state == S_TROT && _autorunTrotStarted && !_autorunStopIssued &&
+               t - _autorunTrotStart >= _autorunTrotDuration) {
+      key = 'd';
+    }
+  }
+
   // Quit from any state
   if (key == 'q' || key == 'Q') {
     _mgr->message("Supervisor: quit");
@@ -328,6 +356,7 @@ void Supervisor::update() {
       _stand->setTargetHeight(_standHeight);
       _standSettled = false;
       _setEstimation(true);
+      if (_autorunTrotDuration > 0.0) _autorunStarted = true;
       _state = S_STAND;
     }
     break;
@@ -337,6 +366,7 @@ void Supervisor::update() {
       _mgr->message("Supervisor: ERROR during stand");
       _mgr->releaseModule(_stand, this);
       _setEstimation(false);
+      if (_autorunStarted) _autorunDone = true;
       _state = S_IDLE;
     } else {
       if (_stand->getStatus() == MdlStand::SETTLED && !_standSettled) {
@@ -354,6 +384,10 @@ void Supervisor::update() {
           _mgr->message("Supervisor: -> S_TROT");
           _mgr->releaseModule(_stand, this);
           _mgr->grabModule(_trot, this);
+          if (_autorunTrotDuration > 0.0) {
+            _autorunTrotStarted = true;
+            _autorunTrotStart = t;
+          }
           _state = S_TROT;
         } else if (key == 'd' || key == 'D') {
           _mgr->message("Supervisor: -> S_SIT");
@@ -391,12 +425,14 @@ void Supervisor::update() {
       _mgr->message("Supervisor: ERROR during trot, sitting down");
       _mgr->releaseModule(_trot, this);
       _mgr->grabModule(_sit, this);
+      if (_autorunStarted) _autorunStopIssued = true;
       _state = S_SIT;
     } else if (key == 'r' || key == 'R' || key == 'd' || key == 'D') {
       _trotStopToStand = (key == 'r' || key == 'R');
       _mgr->message("Supervisor: -> S_TROT_STOPPING (to %s)",
                     _trotStopToStand ? "stand" : "sit");
       _trot->stopTrotting();
+      if (_autorunStarted) _autorunStopIssued = true;
       _state = S_TROT_STOPPING;
     }
     break;
@@ -436,11 +472,13 @@ void Supervisor::update() {
       _mgr->message("Supervisor: ERROR during sit");
       _mgr->releaseModule(_sit, this);
       _setEstimation(false);
+      if (_autorunStarted) _autorunDone = true;
       _state = S_IDLE;
     } else if (_sit->getStatus() == MdlSit::SETTLED) {
       _mgr->message("Supervisor: sitting settled, releasing");
       _mgr->releaseModule(_sit, this);
       _setEstimation(false);
+      if (_autorunStarted) _autorunDone = true;
       _state = S_IDLE;
     }
     break;

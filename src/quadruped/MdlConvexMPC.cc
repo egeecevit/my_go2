@@ -241,22 +241,26 @@ bool MdlConvexMPC::reset() {
   const int H = _params.horizon;
   const int NX = H * NS;
   const int nv = H * NUM_INPUTS;
-  const int nc = H * NUM_LEGS * 4;
 
   _Aqp.setZero(NX, NS);
   _Bqp.setZero(NX, nv);
-  _H.setZero(nv, nv);
-  _g.setZero(nv);
-  _Acon.setZero(nc, nv);
-  _lbA.setZero(nc);
-  _ubA.setZero(nc);
+  _activeBqp.resize(NX, 0);
+  _H.resize(0, 0);
+  _g.resize(0);
+  _Acon.resize(0, 0);
+  _lbA.resize(0);
+  _ubA.resize(0);
   _lb.setZero(nv);
   _ub.setZero(nv);
+  _activeLb.resize(0);
+  _activeUb.resize(0);
+  _activeSolution.resize(0);
   _solution.setZero(nv);
+  _activeVars = 0;
   _L.setZero(NX);
   _xref.setZero(NX);
   _x0.setZero(NS);
-  _LB.setZero(NX, nv);
+  _LB.resize(NX, 0);
   _e.setZero(NX);
   _We.setZero(NX);
   _Xpred.setZero(NX);
@@ -277,61 +281,13 @@ bool MdlConvexMPC::reset() {
     _L[k * NS + NS - 1] = 0.0;
   }
 
-  // Square friction pyramid, constant for the whole run. Four rows per foot per
-  // step:  fx -+ mu*fz  and  fy -+ mu*fz, each one-sided, which together give
-  // |fx| <= mu*fz and |fy| <= mu*fz whenever fz >= 0.
-  //
-  // The normal force itself is a variable bound rather than a row here, so that
-  // pinning a swing foot to zero is a bound change and the constraint matrix
-  // never has to be rebuilt.
-  const double mu = _params.friction;
-  const double INF = qpOASES::INFTY;
-  int row = 0;
-  for (int k = 0; k < H; k++) {
-    for (int leg = 0; leg < NUM_LEGS; leg++) {
-      const int col = k * NUM_INPUTS + 3 * leg;
-
-      _Acon(row, col + 0) = 1.0;
-      _Acon(row, col + 2) = -mu;
-      _lbA[row] = -INF;
-      _ubA[row] = 0.0;
-      row++;
-
-      _Acon(row, col + 0) = 1.0;
-      _Acon(row, col + 2) = mu;
-      _lbA[row] = 0.0;
-      _ubA[row] = INF;
-      row++;
-
-      _Acon(row, col + 1) = 1.0;
-      _Acon(row, col + 2) = -mu;
-      _lbA[row] = -INF;
-      _ubA[row] = 0.0;
-      row++;
-
-      _Acon(row, col + 1) = 1.0;
-      _Acon(row, col + 2) = mu;
-      _lbA[row] = 0.0;
-      _ubA[row] = INF;
-      row++;
-    }
-  }
-
-  // qpOASES fixes its dimensions at construction, so a changed horizon means a
-  // new object rather than a resize. Rebuilt only when the size actually moves,
-  // so a reset() that changes nothing else keeps the solver it already had.
-  if (!_qp || _qpVars != nv || _qpCons != nc) {
-    delete _qp;
-    _qp = new qpOASES::SQProblem(nv, nc);
-    _qpVars = nv;
-    _qpCons = nc;
-    qpOASES::Options options;
-    // The solver's own preset for exactly this use: a sequence of closely
-    // related QPs solved to a modest tolerance under a hard time budget.
-    options.setToMPC();
-    options.printLevel = qpOASES::PL_NONE;
-    _qp->setOptions(options);
-  }
+  // Contact schedules determine the compact QP dimensions, so the solver is
+  // constructed on the first solve rather than here.  A reset deliberately
+  // discards the old active set even if the next dimensions happen to match.
+  delete _qp;
+  _qp = nullptr;
+  _qpVars = 0;
+  _qpCons = 0;
   _qpInitialized = false;
 
   _last = output_t();
@@ -420,9 +376,10 @@ void MdlConvexMPC::_buildCondensedDynamics() {
 }
 
 void MdlConvexMPC::_buildCost() {
-  // H = 2 (B_qp^T L B_qp + alpha I),  g = 2 B_qp^T L (A_qp x_0 - X_ref).
-  _LB.noalias() = _L.asDiagonal() * _Bqp;
-  _H.noalias() = _Bqp.transpose() * _LB;
+  // H = 2 (B_a^T L B_a + alpha I),  g = 2 B_a^T L (A_qp x_0 - X_ref),
+  // where B_a contains only scheduled contact-force columns.
+  _LB.noalias() = _L.asDiagonal() * _activeBqp;
+  _H.noalias() = _activeBqp.transpose() * _LB;
   _H *= 2.0;
   _H.diagonal().array() += 2.0 * _params.force_weight;
 
@@ -443,8 +400,97 @@ void MdlConvexMPC::_buildCost() {
   _e.noalias() = _Aqp * _x0;
   _e -= _xref;
   _We = _L.cwiseProduct(_e);
-  _g.noalias() = _Bqp.transpose() * _We;
+  _g.noalias() = _activeBqp.transpose() * _We;
   _g *= 2.0;
+}
+
+void MdlConvexMPC::_ensureSolverDimensions(int variables, int constraints) {
+  if (_qp && _qpVars == variables && _qpCons == constraints) return;
+
+  delete _qp;
+  _qp = new qpOASES::SQProblem(variables, constraints);
+  _qpVars = variables;
+  _qpCons = constraints;
+  _qpInitialized = false;
+
+  qpOASES::Options options;
+  options.setToMPC();
+  options.printLevel = qpOASES::PL_NONE;
+  _qp->setOptions(options);
+}
+
+bool MdlConvexMPC::_buildActiveProblem(const input_t& input) {
+  const int H = _params.horizon;
+  const int NX = H * NUM_STATES;
+
+  _activeVars = 0;
+  for (int k = 0; k < H; ++k) {
+    for (int leg = 0; leg < NUM_LEGS; ++leg) {
+      if (!input.contact[k][leg]) continue;
+      const int full = k * NUM_INPUTS + 3 * leg;
+      for (int axis = 0; axis < 3; ++axis)
+        _activeFullIndex[_activeVars++] = full + axis;
+    }
+  }
+
+  // A horizon with no support has no physically meaningful force QP.  Refuse
+  // it explicitly instead of asking qpOASES to construct a zero-variable
+  // problem whose result could be mistaken for a valid ballistic command.
+  if (_activeVars == 0) return false;
+
+  const int activeFeet = _activeVars / 3;
+  const int constraints = 4 * activeFeet;
+  _activeBqp.resize(NX, _activeVars);
+  for (int col = 0; col < _activeVars; ++col)
+    _activeBqp.col(col) = _Bqp.col(_activeFullIndex[col]);
+
+  _H.resize(_activeVars, _activeVars);
+  _g.resize(_activeVars);
+  _LB.resize(NX, _activeVars);
+  _activeLb.resize(_activeVars);
+  _activeUb.resize(_activeVars);
+  _activeSolution.resize(_activeVars);
+  _Acon.setZero(constraints, _activeVars);
+  _lbA.resize(constraints);
+  _ubA.resize(constraints);
+
+  const double mu = _params.friction;
+  const double flim = mu * _params.force_max;
+  const double INF = qpOASES::INFTY;
+  for (int foot = 0; foot < activeFeet; ++foot) {
+    const int col = 3 * foot;
+    const int row = 4 * foot;
+
+    _activeLb[col + 0] = -flim;
+    _activeUb[col + 0] = flim;
+    _activeLb[col + 1] = -flim;
+    _activeUb[col + 1] = flim;
+    _activeLb[col + 2] = _params.force_min;
+    _activeUb[col + 2] = _params.force_max;
+
+    _Acon(row + 0, col + 0) = 1.0;
+    _Acon(row + 0, col + 2) = -mu;
+    _lbA[row + 0] = -INF;
+    _ubA[row + 0] = 0.0;
+
+    _Acon(row + 1, col + 0) = 1.0;
+    _Acon(row + 1, col + 2) = mu;
+    _lbA[row + 1] = 0.0;
+    _ubA[row + 1] = INF;
+
+    _Acon(row + 2, col + 1) = 1.0;
+    _Acon(row + 2, col + 2) = -mu;
+    _lbA[row + 2] = -INF;
+    _ubA[row + 2] = 0.0;
+
+    _Acon(row + 3, col + 1) = 1.0;
+    _Acon(row + 3, col + 2) = mu;
+    _lbA[row + 3] = 0.0;
+    _ubA[row + 3] = INF;
+  }
+
+  _ensureSolverDimensions(_activeVars, constraints);
+  return true;
 }
 
 void MdlConvexMPC::_buildBounds(const input_t& input) {
@@ -532,21 +578,24 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
   for (int k = 0; k < H; k++)
     _packState(input.reference[k], _xref.segment(k * NUM_STATES, NUM_STATES));
 
-  _buildCost();
   _buildBounds(input);
+  if (!_buildActiveProblem(input)) return false;
+  _buildCost();
 
-  if (!_H.allFinite() || !_g.allFinite()) return false;
+  if (!_H.allFinite() || !_g.allFinite() || !_Acon.allFinite() ||
+      !_activeLb.allFinite() || !_activeUb.allFinite())
+    return false;
 
   const auto t0 = std::chrono::steady_clock::now();
 
   qpOASES::int_t nWSR = _params.max_working_set;
   qpOASES::returnValue ret;
   if (_qpInitialized) {
-    ret = _qp->hotstart(_H.data(), _g.data(), _Acon.data(), _lb.data(), _ub.data(),
-                        _lbA.data(), _ubA.data(), nWSR, nullptr);
+    ret = _qp->hotstart(_H.data(), _g.data(), _Acon.data(), _activeLb.data(),
+                        _activeUb.data(), _lbA.data(), _ubA.data(), nWSR, nullptr);
   } else {
-    ret = _qp->init(_H.data(), _g.data(), _Acon.data(), _lb.data(), _ub.data(),
-                    _lbA.data(), _ubA.data(), nWSR, nullptr);
+    ret = _qp->init(_H.data(), _g.data(), _Acon.data(), _activeLb.data(),
+                    _activeUb.data(), _lbA.data(), _ubA.data(), nWSR, nullptr);
   }
 
   _solveTime = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -563,11 +612,16 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
     return false;
   }
 
-  if (_qp->getPrimalSolution(_solution.data()) != qpOASES::SUCCESSFUL_RETURN) {
+  if (_qp->getPrimalSolution(_activeSolution.data()) !=
+      qpOASES::SUCCESSFUL_RETURN) {
     _qpInitialized = false;
     return false;
   }
   _qpInitialized = true;
+
+  _solution.setZero();
+  for (int col = 0; col < _activeVars; ++col)
+    _solution[_activeFullIndex[col]] = _activeSolution[col];
 
   // Only u_0 is used; the rest of the horizon exists to make u_0 right.
   if (!_solution.head(NUM_INPUTS).allFinite()) return false;
@@ -630,4 +684,3 @@ void MdlConvexMPC::_dumpSolve(const input_t& input) {
   // until exit_time, and a killed run loses exactly the data it was run for.
   std::fflush(_dumpFile);
 }
-

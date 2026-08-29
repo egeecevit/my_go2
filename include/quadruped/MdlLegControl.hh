@@ -16,9 +16,23 @@
 #define LEGMODULE_NAME "MdlLegControl"
 
 class QuadrupedKinematics;
+class QuadrupedLegDynamics;
 
 class MdlLegControl : public rtcore::Module {
 public:
+  struct command_result_t {
+    Eigen::Vector3d kp_cartesian = Eigen::Vector3d::Zero();
+    Eigen::Vector3d kd_cartesian = Eigen::Vector3d::Zero();
+    Eigen::Vector3d feedback_torque = Eigen::Vector3d::Zero();
+    Eigen::Vector3d feedforward_torque = Eigen::Vector3d::Zero();
+    /** Net torque including configured joint damping at the measured qdot. */
+    Eigen::Vector3d requested_torque = Eigen::Vector3d::Zero();
+    Eigen::Vector3d applied_torque = Eigen::Vector3d::Zero();
+    /** Value placed in MotorHW::cmd_t::tau; local kd supplies the remainder. */
+    Eigen::Vector3d motor_feedforward_torque = Eigen::Vector3d::Zero();
+    double torque_scale = 1.0;
+  };
+
   MdlLegControl(int ind);
   ~MdlLegControl();
 
@@ -67,7 +81,30 @@ public:
                                 const Eigen::Vector3d &kp_cartesian,
                                 const Eigen::Vector3d &kd_cartesian,
                                 const Eigen::Vector3d &force_feedforward_body,
-                                double joint_damping);
+                                double joint_damping,
+                                command_result_t *result = nullptr);
+
+  /** Paper equations (1)--(3), including Go2 inverse-dynamics feedforward. */
+  bool computeSwingCommand(const Eigen::Vector3d& q, const Eigen::Vector3d& qdot,
+                           const Eigen::Vector3d& position_ref_body,
+                           const Eigen::Vector3d& velocity_ref_body,
+                           const Eigen::Vector3d& acceleration_ref_body,
+                           const Eigen::Vector3d& gravity_body,
+                           const Eigen::Vector3d& natural_frequency,
+                           const Eigen::Vector3d& damping_ratio,
+                           double feedforward_scale, double joint_damping,
+                           command_result_t& result) const;
+
+  bool setSwingCommand(const Eigen::Vector3d& position_ref_body,
+                       const Eigen::Vector3d& velocity_ref_body,
+                       const Eigen::Vector3d& acceleration_ref_body,
+                       const Eigen::Vector3d& gravity_body,
+                       const Eigen::Vector3d& natural_frequency,
+                       const Eigen::Vector3d& damping_ratio,
+                       double feedforward_scale, double joint_damping,
+                       command_result_t* result = nullptr);
+
+  bool hasSwingDynamics() const;
 
   /** \brief The equation (1) computation on its own, with no hardware.
 
@@ -91,6 +128,7 @@ public:
 
   // FK from current joint state. False if motors not STATUS_READY.
   bool getFootPosition(Eigen::Vector3d &pos) const;
+  bool getFootState(Eigen::Vector3d& pos, Eigen::Vector3d& vel) const;
 
   // Legacy wrappers using default gains. Now return bool.
   bool setTargetAngles(const Eigen::Vector3d &a, const Eigen::Vector3d &adot);
@@ -102,12 +140,21 @@ private:
 
   int _indices[3];
   QuadrupedKinematics *_kinematics = nullptr;
+  QuadrupedLegDynamics *_dynamics = nullptr;
 
   Eigen::Vector3d _default_kp = Eigen::Vector3d(100.0, 100.0, 100.0);
   Eigen::Vector3d _default_kd = Eigen::Vector3d(5.0, 5.0, 5.0);
+  // Targets without a populated dynamics model retain the legacy unbounded
+  // command path. Go2 init replaces this with the real motor limits.
+  Eigen::Vector3d _torqueLimit = Eigen::Vector3d::Constant(1e12);
   double _jacobian_damping = 0.01;
 
   void _emitCommands();
+  bool _readJointState(Eigen::Vector3d& q, Eigen::Vector3d& qdot) const;
+  bool _limitTorque(const Eigen::Vector3d& qdot, const Eigen::Vector3d& task_torque,
+                    double joint_damping, command_result_t& result) const;
+  bool _emitTorqueCommand(const Eigen::Vector3d& q, double joint_damping,
+                          const command_result_t& result);
 };
 
 #endif

@@ -76,6 +76,17 @@ private:
   double _last_print = 0;
   double _exitTime = 0;
 
+  // Deterministic simulation runner. A positive duration drives the normal
+  // stand -> trot -> stop -> sit state-machine edges without a pty, then exits.
+  // The duration starts when MdlTrot is grabbed and therefore includes its
+  // configured WAIT/PREP transition, exactly as an interactive T key does.
+  double _autorunTrotDuration = 0.0;
+  double _autorunTrotStart = 0.0;
+  bool _autorunStarted = false;
+  bool _autorunTrotStarted = false;
+  bool _autorunStopIssued = false;
+  bool _autorunDone = false;
+
   int _readKey();
 
   // Configuration and components for local data logging

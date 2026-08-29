@@ -1,4 +1,4 @@
-set(CONTROLSRC CoreModules.cc QuadrupedConfigs.cc MdlDrawSquare.cc MdlTrot.cc MdlStand.cc MdlSit.cc MdlLegControl.cc MdlConvexMPC.cc QuadrupedKinematics.cc MdlOrientationEstimator.cc MdlPosVelEstimator.cc MdlHWTest.cc)
+set(CONTROLSRC CoreModules.cc QuadrupedConfigs.cc QuadrupedLegDynamics.cc MdlDrawSquare.cc MdlTrot.cc MdlStand.cc MdlSit.cc MdlLegControl.cc MdlConvexMPC.cc QuadrupedKinematics.cc MdlOrientationEstimator.cc MdlPosVelEstimator.cc MdlHWTest.cc)
 
 # ---- qpOASES
 #

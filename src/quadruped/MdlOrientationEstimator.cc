@@ -20,6 +20,28 @@
 
 using namespace rtcore;
 
+namespace {
+
+// Quaternion exponential for a body-frame rotation vector.  Keeping the
+// increment exact makes the propagation/transport pair use precisely the same
+// rotation, rather than two slightly different Euler approximations.
+Eigen::Quaterniond rotationIncrement(const Eigen::Vector3d& rotationVector) {
+  const double angle = rotationVector.norm();
+  if (angle < 1e-12) {
+    return Eigen::Quaterniond(1.0, 0.5 * rotationVector.x(),
+                              0.5 * rotationVector.y(),
+                              0.5 * rotationVector.z())
+        .normalized();
+  }
+
+  const double scale = std::sin(0.5 * angle) / angle;
+  return Eigen::Quaterniond(std::cos(0.5 * angle), scale * rotationVector.x(),
+                            scale * rotationVector.y(),
+                            scale * rotationVector.z());
+}
+
+}  // namespace
+
 // Simulation ground truth, defined in MdlSimDriver.cc. Only exists in the
 // simulation target; on go1 and robot it resolves to null and every use below
 // is guarded. Same convention as simPollKey().
@@ -71,6 +93,7 @@ void MdlOrientationEstimator::setParams(const params_t& params) {
 }
 
 void MdlOrientationEstimator::reset() {
+  _qFilter = Eigen::Quaterniond::Identity();
   _q = Eigen::Quaterniond::Identity();
   _Rbw.setIdentity();
   _rpy.setZero();
@@ -100,22 +123,33 @@ void MdlOrientationEstimator::reset() {
 // knows which way is down. Blending them at a crossover of roughly mahony_kp
 // takes the honest half of each.
 //
-// Our _q is body to world, as is the paper's R-hat, so the expressions carry
-// over without transposing anything -- unlike the position filter, which has to
-// flip every one of MIT's.
+// Our _qFilter is body to world, as is the paper's R-hat, so the expressions
+// carry over without transposing anything -- unlike the position filter, which
+// has to flip every one of MIT's.
 void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
                                               const Eigen::Vector3d& acc, double dt) {
   // The rotation that would bring the measured specific force into line with
   // where the estimate currently believes gravity to be. Zero when they already
   // agree, and by construction perpendicular to the vertical, which is why this
   // corrects roll and pitch but never yaw.
-  // Low pass the specific force over about a gait period before using it as a
-  // gravity reference. On a legged robot there is no instant at which the
-  // accelerometer reads gravity alone: the trunk surges fore and aft at twice
-  // the gait frequency, about 0.2 g on this robot, and every footfall rings on
-  // top. Averaged over a whole cycle that acceleration very nearly cancels,
-  // because steady locomotion has no mean acceleration, and what is left is
-  // gravity.
+  // First propagate with the rate estimate that existed at the beginning of
+  // the interval.  The same increment transports the stored gravity reference
+  // from B(k-1) into B(k).  Merely storing _accFilt as three "body-frame"
+  // components is not enough: the body basis itself rotated between samples,
+  // and adding components expressed in those two different bases produces a
+  // stale gravity direction during real roll/pitch motion.
+  const Eigen::Vector3d omegaPrediction = gyro - _gyroBias;
+  const Eigen::Quaterniond delta = rotationIncrement(omegaPrediction * dt);
+  const Eigen::Quaterniond qPred = (_qFilter * delta).normalized();
+  _accFilt = delta.conjugate() * _accFilt;
+
+  // Low pass the frame-consistent specific force over about a gait period
+  // before using it as a gravity reference. On a legged robot there is no
+  // instant at which the accelerometer reads gravity alone: the trunk surges
+  // fore and aft at twice the gait frequency, about 0.2 g on this robot, and
+  // every footfall rings on top. Averaged over a whole cycle that acceleration
+  // very nearly cancels, because steady locomotion has no mean acceleration,
+  // and what is left is gravity.
   //
   // Filtering rather than gating, and this is the part that is easy to get
   // wrong. A gate on |a| alone does not even see the disturbance -- a specific
@@ -132,7 +166,7 @@ void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
 
   const double anorm = _accFilt.norm();
   if (anorm > 1e-6) {
-    const Eigen::Vector3d upBody = _q.conjugate() * Eigen::Vector3d::UnitZ();
+    const Eigen::Vector3d upBody = qPred.conjugate() * Eigen::Vector3d::UnitZ();
     _wcorr = (_accFilt / anorm).cross(upBody);
 
     // The magnitude test still earns its place, but as a backstop rather than as
@@ -165,34 +199,43 @@ void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
     _gyroBias = _gyroBias.cwiseMax(-_params.mahony_bias_limit)
                     .cwiseMin(_params.mahony_bias_limit);
 
-  const Eigen::Vector3d w = gyro - _gyroBias + _params.mahony_kp * _gain * _wcorr;
-
-  // qdot = 0.5 * q * (0, w) for a body-to-world Hamilton quaternion, with w in
-  // the body frame. Explicit Euler is ample at 1 kHz against a body turning at
-  // a few rad/s; the renormalization below absorbs what it loses.
-  const Eigen::Quaterniond qw(0.0, w.x(), w.y(), w.z());
-  const Eigen::Quaterniond qdot = _q * qw;
-  _q.coeffs() += 0.5 * dt * qdot.coeffs();
-  _q.normalize();
+  // Apply the accelerometer innovation after the gyro prediction.  Both are
+  // body-frame increments and right-multiply a body-to-world quaternion.  The
+  // split form keeps qPred, upBody and the transported reference at one
+  // unambiguous time index.
+  const Eigen::Vector3d correction = _params.mahony_kp * _gain * _wcorr;
+  _qFilter = (qPred * rotationIncrement(correction * dt)).normalized();
 }
 
 void MdlOrientationEstimator::step(const Eigen::Quaterniond& q,
                                    const Eigen::Vector3d& gyro,
                                    const Eigen::Vector3d& acc, double dt) {
-  if (_params.filter_attitude) {
+  // Ground truth is an exact diagnostic bypass.  It must win over a stale
+  // attitude_source="filter" setting; otherwise a run advertised as perfect
+  // attitude still integrates gyro/accelerometer data after the first sample
+  // and no longer isolates the downstream controller.
+  if (_params.filter_attitude && !_params.use_ground_truth) {
     // Seeded from the sensor rather than started at identity, so the filter
     // begins already level instead of spending its first seconds rotating there
     // and dragging the position estimate along with it.
     if (!_haveAttitude) {
-      _q = q.normalized();
-      // Seeded too, so the low pass starts from the current reading instead of
-      // sweeping up from zero and tilting the estimate over its first second.
-      _accFilt = acc;
+      _qFilter = q.normalized();
+      // The startup quaternion is the attitude datum selected for filter mode,
+      // so it also gives the gravity vector in the initial body frame.  Do not
+      // seed a half-second history from the simultaneous raw accelerometer:
+      // the model may still be dropping into contact (and real hardware may be
+      // moving at enable), which would preserve one dynamic sample as false
+      // gravity and drive the slow bias integrator long after the event.
+      _accFilt = _qFilter.conjugate() *
+                 (_params.gravity_magnitude * Eigen::Vector3d::UnitZ());
+      _wcorr.setZero();
+      _gain = 0.0;
       _haveAttitude = true;
+    } else {
+      _filterAttitude(gyro, acc, dt);
     }
-    _filterAttitude(gyro, acc, dt);
   } else {
-    _q = q.normalized();
+    _qFilter = q.normalized();
   }
 
   if (_params.zero_initial_yaw) {
@@ -202,7 +245,7 @@ void MdlOrientationEstimator::step(const Eigen::Quaterniond& q,
       // real information; yaw has no such reference and its origin is
       // arbitrary. MIT reaches this by zeroing the roll and pitch entries of
       // the initial rpy before inverting, which amounts to the same rotation.
-      const double yaw0 = rpyFromQuat(_q).z();
+      const double yaw0 = rpyFromQuat(_qFilter).z();
       _qYawInv = Eigen::Quaterniond(Eigen::AngleAxisd(-yaw0, Eigen::Vector3d::UnitZ()));
       _haveYawDatum = true;
     }
@@ -210,7 +253,9 @@ void MdlOrientationEstimator::step(const Eigen::Quaterniond& q,
     // vertical. Multiplying on the right would rotate about the body's own z
     // axis, which for any non level attitude mixes the correction into roll and
     // pitch and corrupts both.
-    _q = (_qYawInv * _q).normalized();
+    _q = (_qYawInv * _qFilter).normalized();
+  } else {
+    _q = _qFilter;
   }
 
   _rpy = rpyFromQuat(_q);

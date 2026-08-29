@@ -341,7 +341,8 @@ void MdlSimDriver::deactivate() { DBGPRINT("MdlSimDriver::deactivate\n"); }
 
 class MujocoStateAccessor : public LogAccessor {
  public:
-  MujocoStateAccessor(mjModel* model, mjData* data) : LogAccessor(LOG_DOUBLE, model->nq) {
+  MujocoStateAccessor(mjModel* model, mjData* data, int array_size)
+      : LogAccessor(LOG_DOUBLE, array_size) {
     _mjmodel = model;
     _mjdata = data;
   }
@@ -353,7 +354,8 @@ class MujocoStateAccessor : public LogAccessor {
 
 class MujocoConfigAccessor : public MujocoStateAccessor {
  public:
-  MujocoConfigAccessor(mjModel* model, mjData* data) : MujocoStateAccessor(model, data) {}
+  MujocoConfigAccessor(mjModel* model, mjData* data)
+      : MujocoStateAccessor(model, data, model->nq) {}
   virtual ~MujocoConfigAccessor() {}
 
   void getVar(int size, unsigned char* p) override {
@@ -363,32 +365,32 @@ class MujocoConfigAccessor : public MujocoStateAccessor {
 
 class MujocoVelAccessor : public MujocoStateAccessor {
  public:
-  MujocoVelAccessor(mjModel* model, mjData* data) : MujocoStateAccessor(model, data) {}
+  MujocoVelAccessor(mjModel* model, mjData* data)
+      : MujocoStateAccessor(model, data, model->nv) {}
   virtual ~MujocoVelAccessor() {}
 
   void getVar(int size, unsigned char* p) override {
     // Warning: This assumes that mjtNum is double
-    memcpy(p, _mjdata->qvel, _mjmodel->nq * sizeof(double));
+    memcpy(p, _mjdata->qvel, _mjmodel->nv * sizeof(double));
   }
 };
 
 class MujocoAccelAccessor : public MujocoStateAccessor {
  public:
-  MujocoAccelAccessor(mjModel* model, mjData* data) : MujocoStateAccessor(model, data) {}
+  MujocoAccelAccessor(mjModel* model, mjData* data)
+      : MujocoStateAccessor(model, data, model->nv) {}
   virtual ~MujocoAccelAccessor() {}
 
   void getVar(int size, unsigned char* p) override {
     // Warning: This assumes that mjtNum is double
-    memcpy(p, _mjdata->qacc, _mjmodel->nq * sizeof(double));
+    memcpy(p, _mjdata->qacc, _mjmodel->nv * sizeof(double));
   }
 };
 
 class MujocoControlAccessor : public MujocoStateAccessor {
  public:
-  MujocoControlAccessor(mjModel* model, mjData* data) : MujocoStateAccessor(model, data) {
-    _array_size = model->nu;
-    _type = LOG_DOUBLE;
-  }
+  MujocoControlAccessor(mjModel* model, mjData* data)
+      : MujocoStateAccessor(model, data, model->nu) {}
   virtual ~MujocoControlAccessor() {}
 
   void getVar(int size, unsigned char* p) override {
@@ -415,7 +417,11 @@ void MdlSimDriver::update() {
   _integrate(CLOCK_TO_SEC(_mgr->getStepPeriod()));
 
   double sim_time = _data ? _data->time : 0.0;
-  _now = sim_time * 1000000;  // Update current simulation time
+  // MuJoCo accumulates time in binary floating point. Truncating its nominal
+  // 10.000 ms boundary to integer microseconds occasionally produced 9,999 us,
+  // delaying an integer-deadline controller by a whole 1 ms cycle. Round to
+  // the nearest hardware-clock tick instead.
+  _now = static_cast<CLOCK>(std::llround(sim_time * 1000000.0));
 
   if (!_headless && _window && glfwWindowShouldClose(_window) != 0)
     _mgr->exitMainLoop();

@@ -357,6 +357,11 @@ static void test_bias_clamp() {
   MdlOrientationEstimator ori;
   MdlOrientationEstimator::params_t p = baseParams(kp, 0.09);
   p.mahony_bias_limit = limit;
+  // Keep this analytic clamp test independent of rotating-reference dynamics.
+  // With a nonzero tau, the deliberately uncorrected residual rate also
+  // transports the stored gravity vector and adds residual * tau to the
+  // standing tilt.  The clamp itself is what this case is intended to pin.
+  p.accel_filter_tau = 0.0;
   ori.setParams(p);
   ori.reset();
 
@@ -376,6 +381,7 @@ static void test_bias_clamp() {
     MdlOrientationEstimator open;
     MdlOrientationEstimator::params_t q = baseParams(kp, 0.09);
     q.mahony_bias_limit = 0.0;  // no clamp
+    q.accel_filter_tau = 0.0;
     open.setParams(q);
     open.reset();
     runStationary(open, Eigen::Quaterniond::Identity(), gyro, acc, 30000);
@@ -391,6 +397,186 @@ static void test_bias_clamp() {
 }
 
 // ---------------------------------------------------------------------------
+// 8. Ground truth is an exact bypass
+// ---------------------------------------------------------------------------
+
+// Ground truth is a diagnostic contract, not another sensor feeding the
+// configured estimator.  In particular, a config that happens to retain
+// attitude_source="filter" must still reproduce every supplied simulator
+// quaternion exactly.  Otherwise a run labelled ground truth is partly a
+// Mahony-filter run and cannot isolate the controller.
+static void test_ground_truth_bypasses_filter() {
+  MdlOrientationEstimator ori;
+  MdlOrientationEstimator::params_t p = baseParams(0.6, 0.09);
+  p.use_ground_truth = true;
+  ori.setParams(p);
+  ori.reset();
+
+  const Eigen::Vector3d gyro = Eigen::Vector3d::Zero();
+  const Eigen::Vector3d acc(0.0, 0.0, G);
+  for (int k = 0; k < 100; ++k) {
+    const Eigen::Quaterniond truth =
+        quatFromRPY(0.001 * k, -0.0005 * k, 0.002 * k);
+    ori.step(truth, gyro, acc, DT);
+    T_CHECK(ori.getOrientation().angularDistance(truth) < 1e-12);
+  }
+
+  T_NEAR(ori.getGyroBias().norm(), 0.0, 0.0);
+  std::cout << "  ground_truth_bypasses_filter OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 9. Low-pass history must follow the rotating body frame
+// ---------------------------------------------------------------------------
+
+// A gravity vector stored at time k - 1 is expressed in B(k - 1), while the
+// next accelerometer reading is expressed in B(k).  They cannot be blended as
+// component triples when the body is rotating: doing so turns a true pitch
+// motion into a delayed gravity vector, then into a fictitious y-axis gyro
+// bias.  This is deliberately an ideal IMU case -- exact angular rate and
+// exact gravity, with no translational acceleration -- so neither source of
+// error can explain a nonzero correction.
+//
+// At 1 rad/s for 1.5 s the body pitches through 86 degrees.  That is much more
+// attitude motion than a nominal gait, but makes the coordinate-frame error
+// unambiguous and keeps the test short.  A frame-consistent filter transports
+// the previous average from B(k - 1) to B(k) before blending it, therefore it
+// follows this trajectory to numerical integration accuracy and learns no
+// bias.  The old direct body-component average has about a half-second stale
+// gravity direction and fails both checks by a wide margin.
+static void test_rotating_frame_accel_filter_invariance() {
+  const double pitchRate = 1.0;
+  const int steps = 1500;
+
+  MdlOrientationEstimator ori;
+  MdlOrientationEstimator::params_t p = baseParams(0.6, 0.09);
+  p.accel_filter_tau = 0.5;
+  ori.setParams(p);
+  ori.reset();
+
+  for (int k = 0; k <= steps; ++k) {
+    const double pitch = pitchRate * k * DT;
+    const Eigen::Quaterniond truth = quatFromRPY(0.0, pitch, 0.0);
+    const Eigen::Vector3d acc =
+        truth.conjugate() * Eigen::Vector3d(0.0, 0.0, G);
+    ori.step(truth, Eigen::Vector3d(0.0, pitchRate, 0.0), acc, DT);
+  }
+
+  const double truePitch = pitchRate * steps * DT;
+  const Eigen::Vector3d rpy = ori.getRPY();
+  const Eigen::Vector3d bias = ori.getGyroBias();
+  std::cout << "    pitch " << rpy.y() << " true " << truePitch << " bias y "
+            << bias.y() << std::endl;
+
+  T_NEAR(rpy.y(), truePitch, 3e-3);
+  T_NEAR(bias.y(), 0.0, 1e-4);
+  std::cout << "  rotating_frame_accel_filter_invariance OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 10. A dynamic first accelerometer sample must not become the gravity history
+// ---------------------------------------------------------------------------
+
+// Filter mode explicitly trusts the first IMU quaternion as its attitude seed.
+// The matching gravity vector is therefore already known.  Seeding the long
+// acceleration low pass from the simultaneous raw sample instead lets a startup
+// shove or settling transient masquerade as gravity for roughly tau seconds,
+// corrupting both attitude and the much slower bias integrator long after the
+// transient itself is gone.
+static void test_dynamic_first_accel_does_not_poison_startup() {
+  const Eigen::Quaterniond truth = quatFromRPY(0.0, -0.1, 0.0);
+  const Eigen::Vector3d gravityBody =
+      truth.conjugate() * Eigen::Vector3d(0.0, 0.0, G);
+
+  MdlOrientationEstimator ori;
+  MdlOrientationEstimator::params_t p = baseParams(0.6, 0.09);
+  p.accel_filter_tau = 0.5;
+  ori.setParams(p);
+  ori.reset();
+
+  // A horizontal 0.6 g transient is plausible while the simulated model drops
+  // into its initial contacts.  It occurs only in the seed sample.
+  ori.step(truth, Eigen::Vector3d::Zero(),
+           gravityBody + Eigen::Vector3d(6.0, 0.0, 0.0), DT);
+
+  double peakPitchError = 0.0;
+  for (int k = 0; k < 2000; ++k) {
+    ori.step(truth, Eigen::Vector3d::Zero(), gravityBody, DT);
+    peakPitchError = std::max(
+        peakPitchError, std::fabs(ori.getRPY().y() + 0.1));
+  }
+
+  std::cout << "    startup peak pitch error " << peakPitchError
+            << " bias " << ori.getGyroBias().transpose() << std::endl;
+  T_CHECK(peakPitchError < 1e-3);
+  T_CHECK(ori.getGyroBias().norm() < 1e-4);
+  std::cout << "  dynamic_first_accel_does_not_poison_startup OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 11. Initial yaw is a datum, not a recursive correction
+// ---------------------------------------------------------------------------
+
+// zero_initial_yaw is an output-frame convention.  In filter mode the
+// propagated state must remain in the IMU's original world frame and the fixed
+// datum rotation must be applied only when publishing it.  Reapplying the same
+// half-radian inverse yaw to the recursive quaternion every sample creates a
+// spurious -0.5 rad heading step on every call while the robot is completely
+// still.
+static void test_zero_initial_yaw_is_applied_once() {
+  const Eigen::Quaterniond initial = quatFromRPY(0.0, 0.0, 0.5);
+  const Eigen::Vector3d acc(0.0, 0.0, G);
+
+  MdlOrientationEstimator ori;
+  MdlOrientationEstimator::params_t p = baseParams(0.6, 0.09);
+  p.zero_initial_yaw = true;
+  ori.setParams(p);
+  ori.reset();
+
+  for (int k = 0; k < 10; ++k)
+    ori.step(initial, Eigen::Vector3d::Zero(), acc, DT);
+
+  const Eigen::Vector3d rpy = ori.getRPY();
+  std::cout << "    stationary relative yaw " << rpy.z() << std::endl;
+  T_NEAR(rpy.x(), 0.0, 1e-10);
+  T_NEAR(rpy.y(), 0.0, 1e-10);
+  T_NEAR(rpy.z(), 0.0, 1e-10);
+  std::cout << "  zero_initial_yaw_is_applied_once OK" << std::endl;
+}
+
+// The same datum must retain subsequent relative heading rather than pinning
+// yaw to zero or accumulating the datum on every propagation step.
+static void test_zero_initial_yaw_reports_relative_heading() {
+  const double initialYaw = 0.5;
+  const double yawRate = 0.2;
+  const int steps = 1000;
+  const Eigen::Vector3d acc(0.0, 0.0, G);
+
+  MdlOrientationEstimator ori;
+  MdlOrientationEstimator::params_t p = baseParams(0.6, 0.09);
+  p.zero_initial_yaw = true;
+  ori.setParams(p);
+  ori.reset();
+
+  const Eigen::Quaterniond initial = quatFromRPY(0.0, 0.0, initialYaw);
+  ori.step(initial, Eigen::Vector3d(0.0, 0.0, yawRate), acc, DT);
+  for (int k = 1; k <= steps; ++k) {
+    const Eigen::Quaterniond truth =
+        quatFromRPY(0.0, 0.0, initialYaw + yawRate * k * DT);
+    ori.step(truth, Eigen::Vector3d(0.0, 0.0, yawRate), acc, DT);
+  }
+
+  const double expected = yawRate * steps * DT;
+  const Eigen::Vector3d rpy = ori.getRPY();
+  std::cout << "    relative yaw " << rpy.z() << " expected " << expected
+            << std::endl;
+  T_NEAR(rpy.x(), 0.0, 1e-10);
+  T_NEAR(rpy.y(), 0.0, 1e-10);
+  T_NEAR(rpy.z(), expected, 2e-3);
+  std::cout << "  zero_initial_yaw_reports_relative_heading OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
 
 int main() {
   std::cout << "test_mahony_filter" << std::endl;
@@ -402,6 +588,11 @@ int main() {
   test_dynamic_acceleration_rejection();
   test_yaw_unobservability();
   test_bias_clamp();
+  test_ground_truth_bypasses_filter();
+  test_zero_initial_yaw_is_applied_once();
+  test_zero_initial_yaw_reports_relative_heading();
+  test_rotating_frame_accel_filter_invariance();
+  test_dynamic_first_accel_does_not_poison_startup();
 
   std::cout << "test_mahony_filter PASSED" << std::endl;
   return 0;

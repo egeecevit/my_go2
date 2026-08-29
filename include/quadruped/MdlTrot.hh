@@ -11,6 +11,7 @@
 
 #include <Eigen/Dense>
 
+#include "rtcore/ClockHW.hh"
 #include "rtcore/Module.hh"
 
 #define TROTMODULE_NAME "MdlTrot"
@@ -21,6 +22,67 @@ class MdlLegControl;
 class MdlOrientationEstimator;
 class MdlPosVelEstimator;
 class QuadrupedKinematics;
+
+/** Integer-clock schedule for MPC solve deadlines.
+
+  Module time is represented in integer microseconds. Keeping the cadence in
+  that representation avoids the repeated floating comparison which made a
+  nominal 10 ms solve slip to 11 ms. Contact changes may trigger an early solve;
+  that event starts a fresh exact period so it is not followed immediately by
+  the obsolete deadline. */
+class PeriodicSolveSchedule {
+ public:
+  bool reset(rtcore::CLOCK now, double period_seconds);
+  bool due(rtcore::CLOCK now) const { return _valid && now >= _next; }
+  void consumed(rtcore::CLOCK now, bool asynchronous);
+
+  rtcore::CLOCK period() const { return _period; }
+  rtcore::CLOCK next() const { return _next; }
+
+ private:
+  bool _valid = false;
+  rtcore::CLOCK _period = 0;
+  rtcore::CLOCK _next = 0;
+};
+
+/** One immutable, acceleration-continuous swing segment in body coordinates.
+
+  A segment is reset exactly once at liftoff and sampled until touchdown. This
+  prevents the current velocity estimate from moving both endpoints every
+  control cycle, which would make an analytic acceleration feedforward describe
+  a different trajectory from the position command. */
+class SwingTrajectory {
+ public:
+  bool reset(const Eigen::Vector3d& position0, const Eigen::Vector3d& velocity0,
+             const Eigen::Vector3d& position1, const Eigen::Vector3d& velocity1,
+             double duration, double height);
+
+  /** Sample with a possibly time-varying clearance scale.
+
+    scale_dot and scale_ddot are included so STOPPING can fade clearance without
+    breaking the derivative relationship between the returned p, v and a. */
+  void sample(double time, double scale, double scale_dot, double scale_ddot,
+              Eigen::Vector3d& position, Eigen::Vector3d& velocity,
+              Eigen::Vector3d& acceleration) const;
+
+  bool isValid() const { return _valid; }
+  double duration() const { return _duration; }
+  const Eigen::Vector3d& endPosition() const { return _position1; }
+  const Eigen::Vector3d& endVelocity() const { return _velocity1; }
+
+ private:
+  bool _valid = false;
+  double _duration = 0.0;
+  double _height = 0.0;
+  Eigen::Vector3d _position1 = Eigen::Vector3d::Zero();
+  Eigen::Vector3d _velocity1 = Eigen::Vector3d::Zero();
+  Eigen::Vector3d _coefficient[6] = {Eigen::Vector3d::Zero(),
+                                     Eigen::Vector3d::Zero(),
+                                     Eigen::Vector3d::Zero(),
+                                     Eigen::Vector3d::Zero(),
+                                     Eigen::Vector3d::Zero(),
+                                     Eigen::Vector3d::Zero()};
+};
 
 /** \brief Foot trajectory scheduler for a periodic diagonal gait.
 
@@ -113,10 +175,10 @@ struct TrotGait {
   diagram of Di Carlo et al., *Dynamic Locomotion in the MIT Cheetah 3 through
   Convex Model-Predictive Control* (IROS 2018).
 
-  Both control modes go through one call, MdlLegControl's Cartesian force
-  command, and differ only in what is passed to it:
+  Both control modes end at MdlLegControl's Cartesian torque boundary:
 
-    - swing:  Cartesian kp/kd about the gait's foot reference, zero feedforward
+    - swing: a frozen C2 foot segment with configuration-dependent
+      apparent-mass kp/kd and an explicitly gated inverse-dynamics term
     - stance: zero Cartesian gains, the MPC force rotated into the body frame
 
   This is what the module could not do before. Its earlier revision commanded
@@ -211,7 +273,12 @@ class MdlTrot : public rtcore::Module {
   // Reference trajectory for the current cycle, in the body frame
   Eigen::Vector3d _footpos[NUM_LEGS];
   Eigen::Vector3d _footvel[NUM_LEGS];
+  Eigen::Vector3d _footacc[NUM_LEGS];
   bool _stance[NUM_LEGS] = {true, true, true, true};
+
+  SwingTrajectory _swingTrajectory[NUM_LEGS];
+  double _swingStart[NUM_LEGS] = {0};
+  double _swingEnd[NUM_LEGS] = {0};
 
   // Pose captured at activation, and the PREP blend target
   Eigen::Vector3d _footpos_start[NUM_LEGS];
@@ -238,6 +305,7 @@ class MdlTrot : public rtcore::Module {
   double _speedScale = 0.0;
   double _liftScale = 1.0;
   double _liftScaleDot = 0.0;  // d/dt, for the swing velocity's product rule
+  double _liftScaleDDot = 0.0;
   // Speed scale at the moment the stop was asked for, so a stop during the
   // ramp-up decelerates from where it had got to instead of stepping up first.
   double _stopSpeedScale0 = 0.0;
@@ -250,6 +318,9 @@ class MdlTrot : public rtcore::Module {
   // supervisor.toml, which the full body reference would overflow.
   rtcore::LogServer* _logserver = nullptr;
   double _logScales[2] = {0};  // speed scale, lift scale
+  double _logFootReference[NUM_LEGS * 9] = {0};  // per-leg p, v, a
+  double _logContact[NUM_LEGS] = {0};
+  double _logTorqueScale[NUM_LEGS] = {1, 1, 1, 1};
 
   // -- Measured body state, refreshed once per TROT cycle --------------------
   //
@@ -277,17 +348,18 @@ class MdlTrot : public rtcore::Module {
 
   // Filtered body-frame velocity estimate, refreshed once per cycle in TROT.
   // The touchdown geometry is built on the estimate rather than the command,
-  // matching paper equation (33): a planted foot only avoids scrubbing if it is
-  // swept at the negated *actual* body velocity. The filter is there because
-  // the estimate is refreshed every millisecond and carries the trunk's own
-  // bounce, which would otherwise modulate the stride within a single stance.
+  // Low-passed body-frame velocity used as a bounded correction to the commanded
+  // stance sweep. Pure estimated-velocity sweep turns a small persistent KF
+  // bias into continuous foot scrubbing, while a pure command cannot recover
+  // from a real disturbance.
   Eigen::Vector3d _vfilt = Eigen::Vector3d::Zero();
   bool _vfiltValid = false;
+  double _stanceVelocityFeedback = 0.25;
 
   // -- MPC cadence and result ------------------------------------------------
   MdlConvexMPC::output_t _mpcOut;
   bool _mpcHave = false;   // a valid force has been solved for at least once
-  double _mpcMark = 0.0;   // time of the last solve attempt
+  PeriodicSolveSchedule _mpcSchedule;
   int _mpcFailures = 0;    // consecutive failed solves
   bool _mpcMask[NUM_LEGS] = {true, true, true, true};  // contact mask at that solve
 
@@ -314,12 +386,18 @@ class MdlTrot : public rtcore::Module {
   // names: the units changed with the control law.
   Eigen::Vector3d _swing_kp = Eigen::Vector3d::Constant(500.0);
   Eigen::Vector3d _swing_kd = Eigen::Vector3d::Constant(8.0);
+  Eigen::Vector3d _swingNaturalFrequency = Eigen::Vector3d::Constant(28.0);
+  Eigen::Vector3d _swingDampingRatio = Eigen::Vector3d::Constant(0.8);
+  bool _swingInverseDynamics = true;
+  double _swingFeedforwardScale = 0.0;
   double _jointDamping = 0.2;
 
   double _positionClamp = 0.1;  // [m]
   double _trackingErrorLimit = 0.5;
   int _cmdFailureLimit = 3;
   int _mpcFailureLimit = 3;
+  int _torqueSaturationLimit = 20;
+  int _torqueSaturationCycles[NUM_LEGS] = {0, 0, 0, 0};
 
   void _readConfig();
 
@@ -356,6 +434,8 @@ class MdlTrot : public rtcore::Module {
   /** \brief Advances _speedScale, _liftScale and _liftScaleDot for the current
       state. \param elapsed Time since TROT entry. */
   void _updateGaitScales(double elapsed);
+
+  bool _startSwing(int leg, double elapsed, double duration);
 
   /** \brief Rotation about the world z axis, the only reference attitude the
       body reference ever has. */

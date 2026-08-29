@@ -1,3 +1,4 @@
 
 [hardware]
 library = "robothw"  # Required hardware library to be linked against
+robot_model = "robotv1"

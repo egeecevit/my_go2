@@ -255,6 +255,13 @@ void test_diagonal_support() {
   T_CHECK(mpc.solve(in, out));
   T_CHECK(out.valid);
 
+  // A pure trot carries two stance feet per step.  Swing-foot force variables
+  // are not merely boxed to zero: they are absent from the QP, cutting this
+  // horizon from 12H to 6H unknowns without changing the expanded solution or
+  // the caller-facing force layout.
+  T_CHECK(mpc.getActiveVariableCount() == H * 2 * 3);
+  T_CHECK(mpc.getHessian().rows() == H * 2 * 3);
+
   checkContactConstraints(p, in, out);
 
   // The two feet that are down carry the robot between them.

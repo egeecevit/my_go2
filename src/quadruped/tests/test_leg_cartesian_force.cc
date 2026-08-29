@@ -35,6 +35,7 @@
 #include "quadruped/MdlLegControl.hh"
 #include "quadruped/QuadrupedConfigs.hh"
 #include "quadruped/QuadrupedKinematics.hh"
+#include "quadruped/QuadrupedLegDynamics.hh"
 #include "rtcore/ClockHW.hh"
 #include "rtcore/Hardware.hh"
 
@@ -321,12 +322,90 @@ void test_rejection() {
   std::cout << "  PASS" << std::endl;
 }
 
+void test_inverse_dynamics_swing_command() {
+  g_case = "inverse_dynamics_swing_command";
+  std::cout << "test_inverse_dynamics_swing_command..." << std::endl;
+
+  const int leg = 0;
+  TestLeg t(leg);
+  T_CHECK(t.leg.hasSwingDynamics());
+
+  const Eigen::Vector3d q = nominalAngles(leg);
+  const Eigen::Vector3d qdot(0.35, -0.8, 1.15);
+  QuadrupedLegDynamics dynamics(createGo2DynamicsConfig());
+  QuadrupedLegDynamics::terms_t terms;
+  const Eigen::Vector3d gravity(0.0, 0.0, -9.81);
+  T_CHECK(dynamics.compute(leg, q, qdot, gravity, terms));
+
+  const Eigen::Vector3d pref = terms.foot_position + Eigen::Vector3d(0.006, -0.004, 0.008);
+  const Eigen::Vector3d vref = terms.foot_jacobian * qdot +
+                               Eigen::Vector3d(0.03, -0.02, 0.015);
+  const Eigen::Vector3d aref(1.2, -0.7, 2.4);
+  const Eigen::Vector3d omega(28.0, 31.0, 34.0);
+  const Eigen::Vector3d zeta(0.8, 0.9, 1.0);
+  const double joint_damping = 0.2;
+
+  MdlLegControl::command_result_t result;
+  T_CHECK(t.leg.computeSwingCommand(q, qdot, pref, vref, aref, gravity, omega, zeta,
+                                    1.0, joint_damping, result));
+
+  const Eigen::Vector3d kp = omega.array().square() *
+                             terms.operational_inertia.diagonal().array();
+  const Eigen::Vector3d kd = 2.0 * zeta.array() * omega.array() *
+                             terms.operational_inertia.diagonal().array();
+  const Eigen::Vector3d feedback =
+      terms.foot_jacobian.transpose() *
+      (kp.cwiseProduct(pref - terms.foot_position) +
+       kd.cwiseProduct(vref - terms.foot_jacobian * qdot));
+  const Eigen::Vector3d feedforward =
+      terms.foot_jacobian.transpose() * terms.operational_inertia *
+          (aref - terms.jdot_qdot) +
+      terms.bias;
+  const Eigen::Vector3d requested = feedback + feedforward - joint_damping * qdot;
+
+  T_VEC_NEAR(result.kp_cartesian, kp, 1e-9, "apparent-mass kp");
+  T_VEC_NEAR(result.kd_cartesian, kd, 1e-9, "apparent-mass kd");
+  T_VEC_NEAR(result.feedback_torque, feedback, 1e-9, "equation 1 feedback");
+  T_VEC_NEAR(result.feedforward_torque, feedforward, 1e-9, "equation 2 feedforward");
+  T_VEC_NEAR(result.requested_torque, requested, 1e-9, "net requested torque");
+  T_CHECK(result.torque_scale > 0.999999);
+  T_VEC_NEAR(result.applied_torque, requested, 1e-9, "unsaturated torque");
+  // The heavy-legged Go2 ships with this term gated off until the MPC models
+  // the equal-and-opposite leg momentum. The gate must remove equation (2)
+  // without removing the apparent-mass gains from equation (3).
+  MdlLegControl::command_result_t feedbackOnly;
+  T_CHECK(t.leg.computeSwingCommand(q, qdot, pref, vref, aref, gravity, omega, zeta,
+                                    0.0, joint_damping, feedbackOnly));
+  T_VEC_NEAR(feedbackOnly.kp_cartesian, result.kp_cartesian, 0.0,
+             "feedforward gate preserves kp");
+  T_VEC_NEAR(feedbackOnly.kd_cartesian, result.kd_cartesian, 0.0,
+             "feedforward gate preserves kd");
+  T_VEC_NEAR(feedbackOnly.feedforward_torque, Eigen::Vector3d::Zero(), 0.0,
+             "feedforward gate");
+
+  // A deliberately impossible acceleration must be scaled as one leg vector,
+  // preserving direction rather than independently clipping three axes.
+  MdlLegControl::command_result_t limited;
+  T_CHECK(t.leg.computeSwingCommand(q, qdot, pref, vref,
+                                    Eigen::Vector3d(2000.0, -1500.0, 3000.0), gravity,
+                                    omega, zeta, 1.0, joint_damping, limited));
+  T_CHECK(limited.torque_scale > 0.0 && limited.torque_scale < 1.0);
+  T_VEC_NEAR(limited.applied_torque,
+             limited.torque_scale * limited.requested_torque, 1e-9,
+             "uniform torque scaling");
+  const Eigen::Vector3d limits(23.7, 23.7, 45.43);
+  T_CHECK((limited.applied_torque.cwiseAbs() - limits).maxCoeff() <= 1e-10);
+
+  std::cout << "  PASS" << std::endl;
+}
+
 int main() {
   std::cout << "=== Leg Cartesian Force Tests ===" << std::endl;
   test_velocity_from_jacobian();
   test_jacobian_transpose_mapping();
   test_pure_feedforward();
   test_rejection();
+  test_inverse_dynamics_swing_command();
   std::cout << "All leg Cartesian force tests passed." << std::endl;
   return 0;
 }

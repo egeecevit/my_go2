@@ -6,8 +6,10 @@
  * strictly prohibited.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 #include "hardware/MotorHW.hh"
 #include "quadruped/MdlConvexMPC.hh"
@@ -26,6 +28,120 @@ using namespace rtcore;
 
 // Comment in/out beyond printf to enable/disable debug messages
 #define DBGPRINT(...)  // printf(__VA_ARGS__)
+
+// ---------------------------------------------------------------------------
+// PeriodicSolveSchedule
+// ---------------------------------------------------------------------------
+
+bool PeriodicSolveSchedule::reset(CLOCK now, double period_seconds) {
+  _valid = false;
+  const double ticks = 1.0e6 * period_seconds;
+  if (!std::isfinite(ticks) || ticks < 0.5 ||
+      ticks > static_cast<double>(std::numeric_limits<CLOCK>::max()))
+    return false;
+
+  _period = static_cast<CLOCK>(std::llround(ticks));
+  _next = now + _period;
+  _valid = true;
+  return true;
+}
+
+void PeriodicSolveSchedule::consumed(CLOCK now, bool asynchronous) {
+  if (!_valid) return;
+
+  if (asynchronous && now < _next) {
+    _next = now + _period;
+    return;
+  }
+
+  // Preserve the integer deadline lattice when a controller cycle arrives
+  // late. Assigning now+period here would turn one late cycle into permanent
+  // cadence drift.
+  while (_next <= now) _next += _period;
+}
+
+// ---------------------------------------------------------------------------
+// SwingTrajectory
+// ---------------------------------------------------------------------------
+
+bool SwingTrajectory::reset(const Eigen::Vector3d& position0,
+                            const Eigen::Vector3d& velocity0,
+                            const Eigen::Vector3d& position1,
+                            const Eigen::Vector3d& velocity1, double duration,
+                            double height) {
+  _valid = false;
+  if (!position0.allFinite() || !velocity0.allFinite() || !position1.allFinite() ||
+      !velocity1.allFinite() || !(duration > 0.0) || !std::isfinite(duration) ||
+      !(height >= 0.0) || !std::isfinite(height))
+    return false;
+
+  _duration = duration;
+  _height = height;
+  _position1 = position1;
+  _velocity1 = velocity1;
+
+  const double T = duration;
+  const double T2 = T * T;
+  const double T3 = T2 * T;
+  const double T4 = T3 * T;
+  const double T5 = T4 * T;
+  const Eigen::Vector3d delta = position1 - position0;
+
+  // Fifth-order Hermite polynomial with zero acceleration at both ends.
+  _coefficient[0] = position0;
+  _coefficient[1] = velocity0;
+  _coefficient[2].setZero();
+  _coefficient[3] = 10.0 * delta / T3 - (6.0 * velocity0 + 4.0 * velocity1) / T2;
+  _coefficient[4] = -15.0 * delta / T4 +
+                    (8.0 * velocity0 + 7.0 * velocity1) / T3;
+  _coefficient[5] = 6.0 * delta / T5 -
+                    3.0 * (velocity0 + velocity1) / T4;
+  _valid = true;
+  return true;
+}
+
+void SwingTrajectory::sample(double time, double scale, double scale_dot,
+                             double scale_ddot, Eigen::Vector3d& position,
+                             Eigen::Vector3d& velocity,
+                             Eigen::Vector3d& acceleration) const {
+  if (!_valid) {
+    position.setZero();
+    velocity.setZero();
+    acceleration.setZero();
+    return;
+  }
+
+  const double t = std::max(0.0, std::min(_duration, time));
+  const double t2 = t * t;
+  const double t3 = t2 * t;
+  const double t4 = t3 * t;
+  const double t5 = t4 * t;
+  position = _coefficient[0] + _coefficient[1] * t + _coefficient[2] * t2 +
+             _coefficient[3] * t3 + _coefficient[4] * t4 + _coefficient[5] * t5;
+  velocity = _coefficient[1] + 2.0 * _coefficient[2] * t +
+             3.0 * _coefficient[3] * t2 + 4.0 * _coefficient[4] * t3 +
+             5.0 * _coefficient[5] * t4;
+  acceleration = 2.0 * _coefficient[2] + 6.0 * _coefficient[3] * t +
+                 12.0 * _coefficient[4] * t2 + 20.0 * _coefficient[5] * t3;
+
+  const double s = t / _duration;
+  const double s2 = s * s;
+  const double s3 = s2 * s;
+  const double s4 = s3 * s;
+  const double s5 = s4 * s;
+  const double s6 = s5 * s;
+  const double bump = 64.0 * (s3 - 3.0 * s4 + 3.0 * s5 - s6);
+  const double bump_dot =
+      64.0 * (3.0 * s2 - 12.0 * s3 + 15.0 * s4 - 6.0 * s5) / _duration;
+  const double bump_ddot =
+      64.0 * (6.0 * s - 36.0 * s2 + 60.0 * s3 - 30.0 * s4) /
+      (_duration * _duration);
+
+  position.z() += _height * scale * bump;
+  velocity.z() += _height * (scale * bump_dot + scale_dot * bump);
+  acceleration.z() +=
+      _height * (scale * bump_ddot + 2.0 * scale_dot * bump_dot + scale_ddot * bump);
+}
 
 // ---------------------------------------------------------------------------
 // TrotGait
@@ -166,9 +282,16 @@ void MdlTrot::init() {
   // failed to track apart from one that was never given, which is exactly the
   // distinction the entry and exit transitions turn on.
   _logserver = (LogServer*)_mgr->findModule(LOGSERVER_NAME, 0);
-  if (_logserver)
+  if (_logserver) {
     _logserver->registerVar(LOG_DOUBLE, 2, TROTMODULE_NAME, "scales",
                             (unsigned char*)_logScales);
+    _logserver->registerVar(LOG_DOUBLE, NUM_LEGS * 9, TROTMODULE_NAME, "footref",
+                            (unsigned char*)_logFootReference);
+    _logserver->registerVar(LOG_DOUBLE, NUM_LEGS, TROTMODULE_NAME, "contact",
+                            (unsigned char*)_logContact);
+    _logserver->registerVar(LOG_DOUBLE, NUM_LEGS, TROTMODULE_NAME, "torquescale",
+                            (unsigned char*)_logTorqueScale);
+  }
 
   _readConfig();
 }
@@ -190,6 +313,10 @@ void MdlTrot::_readConfig() {
   // A zero time constant would make the filter a passthrough of a 1 kHz signal,
   // which is exactly what it is there to avoid.
   if (!(_velocityFilterTau > 0.0)) _velocityFilterTau = 0.01;
+  _stanceVelocityFeedback =
+      config.getDouble("stance_velocity_feedback", _stanceVelocityFeedback);
+  if (!(_stanceVelocityFeedback >= 0.0)) _stanceVelocityFeedback = 0.0;
+  if (_stanceVelocityFeedback > 1.0) _stanceVelocityFeedback = 1.0;
 
   TrotGait::params_t gp;
   gp.period = config.getDouble("period", gp.period);
@@ -228,6 +355,28 @@ void MdlTrot::_readConfig() {
   _swing_kd =
       Eigen::Vector3d::Constant(config.getDouble("swing_kd_cartesian", _swing_kd.x()));
 
+  ConfigArray naturalFrequency;
+  if (config.getArray("swing_natural_frequency", naturalFrequency) &&
+      naturalFrequency.size() == 3) {
+    for (int i = 0; i < 3; ++i)
+      _swingNaturalFrequency[i] =
+          naturalFrequency.getDoubleAt(i, _swingNaturalFrequency[i]);
+  }
+  ConfigArray dampingRatio;
+  if (config.getArray("swing_damping_ratio", dampingRatio) && dampingRatio.size() == 3) {
+    for (int i = 0; i < 3; ++i)
+      _swingDampingRatio[i] = dampingRatio.getDoubleAt(i, _swingDampingRatio[i]);
+  }
+  for (int i = 0; i < 3; ++i) {
+    if (!(_swingNaturalFrequency[i] > 0.0)) _swingNaturalFrequency[i] = 28.0;
+    if (!(_swingDampingRatio[i] > 0.0)) _swingDampingRatio[i] = 0.8;
+  }
+  _swingInverseDynamics = config.getBool("swing_inverse_dynamics", true);
+  _swingFeedforwardScale =
+      config.getDouble("swing_feedforward_scale", _swingFeedforwardScale);
+  if (!(_swingFeedforwardScale >= 0.0) || !std::isfinite(_swingFeedforwardScale))
+    _swingFeedforwardScale = 0.0;
+
   _jointDamping = config.getDouble("joint_damping", _jointDamping);
   // MdlSimDriver substitutes 5.0 for a non-positive kd by mutating the stored
   // command, so a zero here would silently install a damping forty times the
@@ -242,6 +391,9 @@ void MdlTrot::_readConfig() {
   if (_cmdFailureLimit < 1) _cmdFailureLimit = 1;
   _mpcFailureLimit = (int)config.getInt("mpc_failure_limit", _mpcFailureLimit);
   if (_mpcFailureLimit < 0) _mpcFailureLimit = 0;
+  _torqueSaturationLimit =
+      (int)config.getInt("torque_saturation_limit", _torqueSaturationLimit);
+  if (_torqueSaturationLimit < 1) _torqueSaturationLimit = 1;
 }
 
 void MdlTrot::uninit() {
@@ -249,6 +401,9 @@ void MdlTrot::uninit() {
 
   if (_logserver) {
     _logserver->deleteVar(TROTMODULE_NAME, "scales");
+    _logserver->deleteVar(TROTMODULE_NAME, "footref");
+    _logserver->deleteVar(TROTMODULE_NAME, "contact");
+    _logserver->deleteVar(TROTMODULE_NAME, "torquescale");
     _logserver = nullptr;
   }
 
@@ -265,6 +420,8 @@ void MdlTrot::activate() {
 
   for (int i = 0; i < NUM_LEGS; i++) {
     _cmdFailures[i] = 0;
+    _torqueSaturationCycles[i] = 0;
+    _logTorqueScale[i] = 1.0;
     _stance[i] = true;
     _mgr->grabModule(_legs[i], this);
   }
@@ -335,11 +492,15 @@ Eigen::Vector3d MdlTrot::_originFoot(int leg) const {
 }
 
 Eigen::Vector3d MdlTrot::_sweepVelocity() const {
-  // The estimate, not the command. Paper equation (33) places the touchdown
-  // point against the velocity the body actually has; using the command instead
-  // drags every planted foot by the tracking error for the whole of stance.
-  // The command is only the fallback for a cycle in which no estimate arrived.
-  return _vfiltValid ? _vfilt : _vcmd;
+  const Eigen::Vector3d command = _twistCommand();
+  if (!_vfiltValid) return command;
+
+  // Equation (33) wants the actual velocity, but the filter is the signal
+  // closing this loop. In the H25 failure it under-reported forward velocity
+  // by about 3 cm/s for every stance, so a pure estimate swept each planted
+  // foot forward relative to the ground and accumulated slip. Keep the
+  // feedforward stride as the anchor and admit only a bounded correction.
+  return command + _stanceVelocityFeedback * (_vfilt - command);
 }
 
 Eigen::Vector3d MdlTrot::_stanceVelocity(int leg) const {
@@ -470,7 +631,14 @@ bool MdlTrot::_solveMPC(double elapsed) {
       // ramp is deliberately not applied to the future steps -- it scales a
       // couple of centimetres of moment arm against a hip offset of twenty.
       Eigen::Vector3d dp, dv;
-      _gait.sample(leg, tk, _stanceVelocity(leg), dp, dv);
+      if (!_gait.inStance(leg, elapsed) && in.contact[k][leg] &&
+          _swingTrajectory[leg].isValid() && tk >= _swingEnd[leg]) {
+        dp = _swingTrajectory[leg].endPosition() - _originFoot(leg) +
+             _swingTrajectory[leg].endVelocity() * (tk - _swingEnd[leg]);
+        dv = _swingTrajectory[leg].endVelocity();
+      } else {
+        _gait.sample(leg, tk, _stanceVelocity(leg), dp, dv);
+      }
       in.moment_arm_world[k].col(leg) = Rz * (_originFoot(leg) + dp - rcom);
     }
 
@@ -606,7 +774,11 @@ void MdlTrot::_prepDuring() {
 void MdlTrot::_trotEntry() {
   _mark = _mgr->readTime();
   _trot_mark = _mark;
-  _mpcMark = _mark;
+  if (!_mpcSchedule.reset(_mgr->readClock(), _mpc->getParams().solve_period)) {
+    _mgr->warning(TROTMODULE_NAME, "Invalid MPC solve period");
+    _status = ERROR;
+    return;
+  }
 
   _mpcOut = MdlConvexMPC::output_t();
   _mpcHave = false;
@@ -621,6 +793,7 @@ void MdlTrot::_trotEntry() {
   _speedScale = 0.0;
   _liftScale = 1.0;
   _liftScaleDot = 0.0;
+  _liftScaleDDot = 0.0;
 
   // Torque-controlled stance with no state estimate is a robot falling over in
   // a controlled fashion, so this is where the behavior refuses rather than
@@ -640,6 +813,20 @@ void MdlTrot::_trotEntry() {
   for (int i = 0; i < NUM_LEGS; i++) {
     _stance[i] = _gait.inStance(i, 0.0);
     _mpcMask[i] = _stance[i];
+    _footacc[i].setZero();
+    if (!_stance[i]) {
+      const double phi = _gait.legPhase(i, 0.0);
+      const double beta = _gait.getParams().duty;
+      const double progress = (phi - beta) / (1.0 - beta);
+      const double remaining =
+          (1.0 - progress) * (1.0 - beta) * _gait.getParams().period;
+      if (!_startSwing(i, 0.0, remaining)) {
+        _mgr->warning(TROTMODULE_NAME,
+                      "Cannot initialize swing trajectory for leg %d", i);
+        _status = ERROR;
+        return;
+      }
+    }
   }
 
   if (!_solveMPC(0.0)) {
@@ -654,12 +841,13 @@ void MdlTrot::_updateGaitScales(double elapsed) {
     // sigma runs 0 -> 1 over the ramp-down, so both scales are 1 - sigma. The
     // speed starts from wherever the ramp-up had got to rather than from one,
     // so a stop asked for mid-ramp decelerates instead of stepping up first.
-    double sigma, sigma_dot;
+    double sigma, sigma_dot, sigma_ddot;
     TrajectoryUtils::sampleQuintic((_mgr->readTime() - _stop_mark) / _rampdown_duration,
-                                   _rampdown_duration, sigma, sigma_dot);
+                                   _rampdown_duration, sigma, sigma_dot, sigma_ddot);
     _speedScale = _stopSpeedScale0 * (1.0 - sigma);
     _liftScale = 1.0 - sigma;
     _liftScaleDot = -sigma_dot;
+    _liftScaleDDot = -sigma_ddot;
     return;
   }
 
@@ -671,6 +859,22 @@ void MdlTrot::_updateGaitScales(double elapsed) {
                                  scale_dot);
   _liftScale = 1.0;
   _liftScaleDot = 0.0;
+  _liftScaleDDot = 0.0;
+}
+
+bool MdlTrot::_startSwing(int leg, double elapsed, double duration) {
+  Eigen::Vector3d position, velocity;
+  if (!_legs[leg]->getFootState(position, velocity)) return false;
+  const Eigen::Vector3d stanceVelocity = _stanceVelocity(leg);
+  const double stanceTime = _gait.getParams().duty * _gait.getParams().period;
+  const Eigen::Vector3d touchdown =
+      _originFoot(leg) - 0.5 * stanceTime * stanceVelocity;
+  if (!_swingTrajectory[leg].reset(position, velocity, touchdown, stanceVelocity,
+                                   duration, _gait.getParams().swing_height))
+    return false;
+  _swingStart[leg] = elapsed;
+  _swingEnd[leg] = elapsed + duration;
+  return true;
 }
 
 void MdlTrot::_stoppingEntry() {
@@ -680,6 +884,7 @@ void MdlTrot::_stoppingEntry() {
 
 void MdlTrot::_trotDuring() {
   const double t = _mgr->readTime();
+  const CLOCK now = _mgr->readClock();
   const double elapsed = t - _trot_mark;
 
   // Once per cycle, before any leg is sampled, so all four are swept against
@@ -694,24 +899,37 @@ void MdlTrot::_trotDuring() {
 
   bool maskChanged = false;
   for (int i = 0; i < NUM_LEGS; i++) {
-    Eigen::Vector3d dp, dv;
-    _gait.sample(i, elapsed, _stanceVelocity(i), dp, dv);
-    _stance[i] = _gait.inStance(i, elapsed);
+    const bool scheduledStance = _gait.inStance(i, elapsed);
+    if (!scheduledStance && _stance[i]) {
+      const double swingTime =
+          (1.0 - _gait.getParams().duty) * _gait.getParams().period;
+      if (!_startSwing(i, elapsed, swingTime)) {
+        _mgr->warning(TROTMODULE_NAME, "Cannot start swing trajectory for leg %d", i);
+        _status = ERROR;
+        return;
+      }
+    }
+
+    if (scheduledStance) {
+      Eigen::Vector3d dp, dv;
+      _gait.sample(i, elapsed, _stanceVelocity(i), dp, dv);
+      _footpos[i] = _originFoot(i) + dp;
+      _footvel[i] = dv;
+      _footacc[i].setZero();
+    } else {
+      _swingTrajectory[i].sample(elapsed - _swingStart[i], _liftScale,
+                                 _liftScaleDot, _liftScaleDDot, _footpos[i],
+                                 _footvel[i], _footacc[i]);
+    }
+
+    _stance[i] = scheduledStance;
+    _logContact[i] = scheduledStance ? 1.0 : 0.0;
+    for (int axis = 0; axis < 3; ++axis) {
+      _logFootReference[9 * i + axis] = _footpos[i][axis];
+      _logFootReference[9 * i + 3 + axis] = _footvel[i][axis];
+      _logFootReference[9 * i + 6 + axis] = _footacc[i][axis];
+    }
     if (_stance[i] != _mpcMask[i]) maskChanged = true;
-
-    // The horizontal offset is left alone. It is built on the estimated body
-    // velocity, which is what makes a planted foot translate at -v_actual and
-    // not scrub, and it is already zero at zero speed -- so the PREP handoff is
-    // continuous without a factor in front of it. Only the clearance is scaled,
-    // and only on the way down. Product rule on the z velocity: the scale is a
-    // function of time too, and dropping its term would leave the commanded
-    // velocity inconsistent with the commanded position for the whole ramp.
-    const double lift = dp.z();
-    dp.z() = _liftScale * lift;
-    dv.z() = _liftScale * dv.z() + _liftScaleDot * lift;
-
-    _footpos[i] = _originFoot(i) + dp;
-    _footvel[i] = dv;
   }
 
   _integrateBodyReference();
@@ -721,8 +939,9 @@ void MdlTrot::_trotDuring() {
   // solve interval for a force, which is what happens whenever the gait period
   // and the solve period are not commensurate. It matters more, not less, as the
   // horizon step grows: mpc.solve_period is deliberately not mpc.dt.
-  if (maskChanged || (t - _mpcMark) >= _mpc->getParams().solve_period) {
-    _mpcMark = t;
+  const bool deadlineDue = _mpcSchedule.due(now);
+  if (maskChanged || deadlineDue) {
+    _mpcSchedule.consumed(now, maskChanged && !deadlineDue);
     for (int i = 0; i < NUM_LEGS; i++) _mpcMask[i] = _stance[i];
 
     if (!_solveMPC(elapsed)) {
@@ -734,37 +953,45 @@ void MdlTrot::_trotDuring() {
   }
 
   const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
+  const Eigen::Vector3d gravityBody =
+      _Rbw.transpose() * Eigen::Vector3d(0.0, 0.0, -_mpc->getParams().gravity);
   for (int i = 0; i < NUM_LEGS; i++) {
     bool ok;
+    MdlLegControl::command_result_t command;
 
     if (!_stance[i]) {
-      // Swing: Cartesian impedance about the gait's foot reference, no
-      // feedforward force. Equation (1) of the paper with tau_ff = 0; the
-      // inverse-dynamics term of equation (2) needs a full multibody model and
-      // is out of scope here.
-      ok = _legs[i]->setCartesianForceCommand(_footpos[i], _footvel[i], _swing_kp,
-                                              _swing_kd, zero, _jointDamping);
+      if (_swingInverseDynamics && _legs[i]->hasSwingDynamics()) {
+        ok = _legs[i]->setSwingCommand(_footpos[i], _footvel[i], _footacc[i],
+                                       gravityBody, _swingNaturalFrequency,
+                                       _swingDampingRatio, _swingFeedforwardScale,
+                                       _jointDamping, &command);
+      } else {
+        ok = _legs[i]->setCartesianForceCommand(_footpos[i], _footvel[i], _swing_kp,
+                                                _swing_kd, zero, _jointDamping,
+                                                &command);
+      }
     } else {
-      // TODO(ege): implement
-      //
-      // - Transform the MPC's world-frame ground reaction force for this leg
-      //   into the force the actuators apply at the foot:
-      //   f_foot_B = -R_BW^T * f_grf_W, with _Rbw the body-to-world rotation.
-      // - Issue it through the same Cartesian force command as swing, but with
-      //   zero Cartesian kp and kd -- a planted foot must not be tracking a
-      //   position -- and the same joint damping.
-      // - Gotchas: verify the sign with the static MuJoCo test before trusting
-      //   it (a flipped sign pulls the body down and looks like a tuning
-      //   problem); and use _mpcOut.force_world[i], which may be a retained
-      //   result from an earlier solve, rather than re-solving here.
-
+      // Convert the MPC's world-frame ground reaction into the force the leg
+      // applies at its foot.  The static MuJoCo sign regression covers this
+      // convention; _mpcOut may be the latest retained successful solve.
       const Eigen::Vector3d f_foot_B = -(_Rbw.transpose() * _mpcOut.force_world[i]);
-      ok = _legs[i]->setCartesianForceCommand(_footpos[i], _footvel[i], zero, zero, f_foot_B,
-                                              _jointDamping);
+      ok = _legs[i]->setCartesianForceCommand(_footpos[i], _footvel[i], zero, zero,
+                                              f_foot_B, _jointDamping, &command);
     }
 
     if (ok) {
       _cmdFailures[i] = 0;
+      _logTorqueScale[i] = command.torque_scale;
+      if (command.torque_scale < 0.999999) {
+        if (++_torqueSaturationCycles[i] >= _torqueSaturationLimit) {
+          _mgr->warning(TROTMODULE_NAME,
+                        "Leg %d torque limited for %d cycles (scale %.3f)", i,
+                        _torqueSaturationCycles[i], command.torque_scale);
+          _status = ERROR;
+        }
+      } else {
+        _torqueSaturationCycles[i] = 0;
+      }
       continue;
     }
 

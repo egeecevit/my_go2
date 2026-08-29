@@ -35,6 +35,10 @@ add_executable(test_leg_cartesian_force test_leg_cartesian_force.cc)
 target_link_libraries(test_leg_cartesian_force quadruped rtcore rtclient)
 add_test(NAME test_leg_cartesian_force COMMAND test_leg_cartesian_force)
 
+add_executable(test_leg_dynamics test_leg_dynamics.cc)
+target_link_libraries(test_leg_dynamics quadruped rtcore rtclient)
+add_test(NAME test_leg_dynamics COMMAND test_leg_dynamics)
+
 add_executable(test_config_layering test_config_layering.cc)
 target_link_libraries(test_config_layering rtcore rtclient)
 foreach(chain robotv1 sim go1)

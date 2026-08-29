@@ -246,7 +246,9 @@ class MdlConvexMPC : public rtcore::Module {
   /** \brief True once reset() has accepted a set of parameters. */
   bool isReady() const { return _ready; }
 
-  // Solver internals, exposed for unit testing.
+  // Solver internals, exposed for unit testing.  H and g use the compact
+  // contact-only variable layout; the expanded solution and bounds retain the
+  // public (step, leg, xyz) layout used by prediction dumps and callers.
   const RowMatrix& getHessian() const { return _H; }
   const Eigen::VectorXd& getGradient() const { return _g; }
   /** \brief Per-variable force bounds from the last solve, in the stacked order
@@ -260,6 +262,12 @@ class MdlConvexMPC : public rtcore::Module {
   /** \brief The full stacked solution of the last successful solve, not just
       the first interval that solve() hands back. */
   const Eigen::VectorXd& getSolution() const { return _solution; }
+  /** \brief Number of force components actually handed to qpOASES.
+
+      This is three times the number of scheduled stance-foot intervals.  A
+      pure trot therefore solves 6*horizon variables rather than carrying the
+      six identically-zero swing components at every step. */
+  int getActiveVariableCount() const { return _activeVars; }
 
  private:
   params_t _params;
@@ -275,13 +283,22 @@ class MdlConvexMPC : public rtcore::Module {
   Eigen::MatrixXd _Aqp;  // (horizon*NUM_STATES) x NUM_STATES
   Eigen::MatrixXd _Bqp;  // (horizon*NUM_STATES) x (horizon*NUM_INPUTS)
 
+  // Contact-only view of _Bqp. _activeFullIndex maps each compact column back
+  // into the full (step, leg, xyz) layout.  The full matrix remains available
+  // for the prediction audit and independent-discretization tests.
+  Eigen::MatrixXd _activeBqp;
+  int _activeFullIndex[MAX_VARS] = {0};
+  int _activeVars = 0;
+
   // Cost and constraint data handed to qpOASES.
   RowMatrix _H;                // nv x nv
   Eigen::VectorXd _g;          // nv
   RowMatrix _Acon;             // nc x nv, constant after reset()
-  Eigen::VectorXd _lbA, _ubA;  // constant after reset()
-  Eigen::VectorXd _lb, _ub;    // per-foot force bounds, rebuilt every solve
-  Eigen::VectorXd _solution;
+  Eigen::VectorXd _lbA, _ubA;
+  Eigen::VectorXd _lb, _ub;  // expanded diagnostic bounds, rebuilt every solve
+  Eigen::VectorXd _activeLb, _activeUb;
+  Eigen::VectorXd _activeSolution;
+  Eigen::VectorXd _solution;  // expanded solution, swing entries exactly zero
 
   // Stacked weights and references, kept as members so nothing allocates in the
   // control path once reset() has run.
@@ -291,7 +308,7 @@ class MdlConvexMPC : public rtcore::Module {
 
   // Cost assembly scratch. Members purely so that _buildCost() allocates
   // nothing: it runs inside the 1 kHz behavior's cycle whenever the MPC is due.
-  Eigen::MatrixXd _LB;  // L * _Bqp
+  Eigen::MatrixXd _LB;  // L * _activeBqp
   Eigen::VectorXd _e;   // _Aqp*x0 - _xref
   Eigen::VectorXd _We;  // L .* _e
 
@@ -332,11 +349,14 @@ class MdlConvexMPC : public rtcore::Module {
   /** \brief Builds _H and _g from the condensed dynamics and the references. */
   void _buildCost();
 
-  /** \brief Fills _lb/_ub from the contact schedule. Swing feet are pinned to
-      exactly zero rather than being removed from the problem: at this horizon
-      length the saving is not worth a decision-variable count that changes
-      every time a foot lifts. */
+  /** \brief Selects stance-force columns and builds their friction rows. */
+  bool _buildActiveProblem(const input_t& input);
+
+  /** \brief Fills the expanded diagnostic bounds from the contact schedule. */
   void _buildBounds(const input_t& input);
+
+  /** \brief Recreates qpOASES only when the active problem dimensions change. */
+  void _ensureSolverDimensions(int variables, int constraints);
 
   /** \brief Packs a body_state_t and the gravity entry into the 13-vector. */
   void _packState(const body_state_t& state, Eigen::Ref<Eigen::VectorXd> x) const;

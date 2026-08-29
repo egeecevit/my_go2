@@ -3,6 +3,12 @@
 # Time to terminate execution (seconds since start). Use <= 0 to disable. Default: 0
 exit_time = 0
 
+# Headless deterministic gait run. A positive value follows the same state
+# machine as S, then T, then D: stand, own MdlTrot for this many seconds
+# (including its WAIT/PREP), stop and sit, then exit. Zero keeps the interactive
+# supervisor. Useful for reproducible horizon comparisons without pty timing.
+autorun_trot_duration = 0
+
 log = {
   # Enable/disable automatic local logging
   enable = false

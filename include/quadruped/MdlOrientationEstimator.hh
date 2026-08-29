@@ -86,10 +86,11 @@ class MdlOrientationEstimator : public rtcore::Module {
 
       Turned on, this runs the filter of equation (19) of the Cheetah 3 paper --
       a Mahony nonlinear complementary filter on SO(3) -- which is what the
-      VN-100 is doing internally. Wanted when the IMU reports rates but no
-      attitude, when its attitude is not trusted, and in simulation, where the
-      quaternion is the simulator's own and passing it through means nothing is
-      ever tested. See _filterAttitude(). */
+      VN-100 is doing internally. Wanted when the IMU supplies a usable startup
+      quaternion but its continuing attitude is not trusted, and in simulation,
+      where passing the simulator's own quaternion through would test nothing.
+      The first quaternion is trusted as the startup datum; continuing
+      quaternions are ignored. See _filterAttitude(). */
     bool filter_attitude = false;
 
     /** \brief Proportional gain of the attitude filter, kappa in eq (19) [1/s].
@@ -99,7 +100,7 @@ class MdlOrientationEstimator : public rtcore::Module {
         genuinely rolls and pitches through a stride, and a loop fast enough to
         argue with that leaves a gait locked attitude error. Choose it against
         mahony_ki by damping rather than alone; see there and the config. */
-    double mahony_kp = 0.6;
+    double mahony_kp = 0.1;
 
     /** \brief Integral gain of the attitude filter [1/s^2], zero for eq (19)
         exactly.
@@ -123,7 +124,7 @@ class MdlOrientationEstimator : public rtcore::Module {
       mahony_kp / (2 sqrt(mahony_ki)), rather than either alone: the settling
       time of the bias estimate is what shows up downstream, because everything
       before it settles is a transient the position filter integrates. */
-    double mahony_ki = 0.09;
+    double mahony_ki = 0.0025;
 
     /** \brief Time constant for low passing the specific force before it is
         used as a gravity reference [s]. Should span at least one gait period.
@@ -131,6 +132,9 @@ class MdlOrientationEstimator : public rtcore::Module {
       This, not the gate, is what makes the accelerometer usable on a legged
       robot. There is no instant at which it reads gravity alone, but over a
       whole gait cycle the trunk's own acceleration averages to nearly nothing.
+      The stored vector is transported by the gyro increment before every
+      blend, so every sample is expressed in the latest body frame. Without
+      that transport the low pass would also delay real roll and pitch motion.
       See _filterAttitude() for why gating cannot substitute. */
     double accel_filter_tau = 0.5;
 
@@ -247,6 +251,14 @@ class MdlOrientationEstimator : public rtcore::Module {
  private:
   params_t _params;
 
+  // Recursive attitude state in the IMU/world frame.  It must remain separate
+  // from _q: zero_initial_yaw is an output-frame convention, and feeding that
+  // fixed datum rotation back into this state would apply it again every step.
+  Eigen::Quaterniond _qFilter = Eigen::Quaterniond::Identity();
+
+  // Published attitude in the configured output frame.  This is either
+  // _qFilter directly or the same attitude left-multiplied by the one-time yaw
+  // datum; all public accessors and downstream rotations use this quaternion.
   Eigen::Quaterniond _q = Eigen::Quaterniond::Identity();
   Eigen::Matrix3d _Rbw = Eigen::Matrix3d::Identity();
   Eigen::Vector3d _rpy = Eigen::Vector3d::Zero();
@@ -262,7 +274,9 @@ class MdlOrientationEstimator : public rtcore::Module {
 
   // Attitude filter state. _gyroBias is the integral term of the complementary
   // filter and stays at zero unless filter_attitude is set, so the subtraction
-  // in step() is a no-op on the passthrough path and needs no branch.
+  // in step() is a no-op on the passthrough path and needs no branch. _accFilt
+  // is expressed in the body frame of the latest processed sample; the filter
+  // transports it whenever that frame rotates before blending a new sample.
   Eigen::Vector3d _gyroBias = Eigen::Vector3d::Zero();
   Eigen::Vector3d _accFilt = Eigen::Vector3d::Zero();
   bool _haveAttitude = false;

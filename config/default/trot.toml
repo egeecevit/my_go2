@@ -34,10 +34,13 @@ yaw_rate         = 0.0    # [rad/s], positive turns left
 # would otherwise modulate the stride within a single stance. Well under the
 # gait period, so a genuine change of speed still gets through.
 #
-# The gain/limit machinery that used to sit here is gone. It existed to blend
-# between the command and the estimate for an open-loop gait, and the body
-# reference is the closed loop now.
 velocity_filter_tau = 0.1   # [s]
+
+# The stance sweep is command-feedforward plus this fraction of the filtered
+# velocity-estimation residual. Keeping it below one prevents a small persistent
+# estimator bias from turning into continuous stance-foot scrubbing; zero is
+# pure commanded stride and one restores pure estimated-velocity sweep.
+stance_velocity_feedback = 0.25
 
 # ---- GAIT
 
@@ -133,24 +136,31 @@ prep_kd = 4.0
 # were joint-space gains inside setFootCommand(), and the units changed with the
 # control law. Do not carry the old numbers over.
 #
-# This is equation (1) of the paper with tau_ff = 0. The feedforward term of
-# equation (2) needs a full multibody dynamics model, which this implementation
-# does not have, so the feedback has to cover the swing leg's own inertia and
-# weight on its own -- which is why these sit above what MIT uses with the
-# feedforward in place, scaled for the Go2's lighter leg.
+# These scalar gains are the fallback for robot models without populated
+# inertial parameters. Go2 uses the apparent-mass gains below instead.
 #
-# Starting values, chosen by argument rather than measured: the swing foot's
-# peak acceleration through the raised-cosine lift is about 16 m/s^2, which at
-# the leg's roughly half-kilo effective foot mass is order 10 N, and a
-# centimetre of tracking error at 500 N/m supplies it. Tune against actual swing
-# tracking in simulation before trusting them.
-#
-# There is no longer an estimator argument for keeping these low. The old table
-# here tied swing stiffness to estimator drift through a force-threshold contact
-# detector; that detector is gone, and MdlPosVelEstimator now takes its contact
-# phase from this module's gait schedule, which a swing gain cannot influence.
+# There is no estimator argument for keeping these low. MdlPosVelEstimator takes
+# contact phase from the gait schedule, which a swing gain cannot influence.
 swing_kp_cartesian = 800.0
 swing_kd_cartesian = 8.0
+
+# Go2 operational-space dynamics and paper equation (3). Cartesian gains follow
+# the configuration-dependent apparent mass instead of remaining fixed while
+# the leg inertia changes through swing. Other robot models retain the scalar
+# feedback gains above until their inertial parameters are populated.
+swing_inverse_dynamics = true
+swing_natural_frequency = [28.0, 28.0, 28.0]  # omega_x,y,z [rad/s]
+swing_damping_ratio = [0.8, 0.8, 0.8]
+
+# Scale on the acceleration/Coriolis/gravity term of equation (2): 1 is the
+# exact fixed-base leg inverse dynamics, 0 leaves the apparent-mass feedback
+# above. The Go2 default is deliberately zero. Its legs are 55% of total mass,
+# and applying the exact swing torque while the MPC still assumes massless legs
+# injects an unmodelled internal-angular-momentum wrench: ground-truth H10 fell
+# in 6.6 s at 1.0 and 10.3 s even at 0.25. At 0.0, both H10 and H25 completed
+# the 42 s acceptance run. Do not enable this term until the MPC carries the
+# matching leg-momentum rate in its angular dynamics.
+swing_feedforward_scale = 0.0
 
 # Joint-space damping carried alongside every TROT command, both phases
 # [Nm/(rad/s)]. Small and strictly positive, and it must stay that way:
@@ -196,3 +206,8 @@ command_failure_limit = 3
 # has been removed on purpose, and a robot silently trotting on a stale force is
 # worse than one that stops.
 mpc_failure_limit = 3
+
+# Uniform motor-limit scaling is a last line of defence, not a gait mode. A
+# continuous run means the requested motion is infeasible, so abort instead of
+# hiding it behind actuator clipping. At 1 kHz this default is 20 ms.
+torque_saturation_limit = 20

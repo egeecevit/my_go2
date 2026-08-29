@@ -12,3 +12,9 @@ target_link_libraries(test_stance_force_sign quadruped mujoco::mujoco rtcore rtc
 add_test(NAME test_stance_force_sign
          COMMAND test_stance_force_sign
                  ${CMAKE_SOURCE_DIR}/models/unitree_go2/scene.xml)
+
+add_executable(test_go2_leg_dynamics test_go2_leg_dynamics.cc)
+target_link_libraries(test_go2_leg_dynamics quadruped mujoco::mujoco rtcore rtclient)
+add_test(NAME test_go2_leg_dynamics
+         COMMAND test_go2_leg_dynamics
+                 ${CMAKE_SOURCE_DIR}/models/unitree_go2/scene.xml)

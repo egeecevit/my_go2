@@ -608,6 +608,84 @@ void test_future_horizon_samples() {
   std::cout << "  PASS" << std::endl;
 }
 
+void test_stateful_swing_is_c2_and_frozen() {
+  std::cout << "test_stateful_swing_is_c2_and_frozen..." << std::endl;
+
+  SwingTrajectory swing;
+  const Eigen::Vector3d p0(-0.03, 0.11, -0.28);
+  const Eigen::Vector3d v0(-0.48, 0.02, 0.0);
+  const Eigen::Vector3d p1(0.08, 0.10, -0.28);
+  const Eigen::Vector3d v1(-0.55, 0.0, 0.0);
+  const double duration = 0.25;
+  T_CHECK(swing.reset(p0, v0, p1, v1, duration, 0.05));
+
+  Eigen::Vector3d p, v, a;
+  swing.sample(0.0, 1.0, 0.0, 0.0, p, v, a);
+  T_VEC_NEAR(p, p0, 1e-14, "swing start position");
+  T_VEC_NEAR(v, v0, 1e-14, "swing start velocity");
+  T_VEC_NEAR(a, Eigen::Vector3d::Zero(), 1e-12, "swing start acceleration");
+
+  swing.sample(duration, 1.0, 0.0, 0.0, p, v, a);
+  T_VEC_NEAR(p, p1, 1e-12, "swing touchdown position");
+  T_VEC_NEAR(v, v1, 1e-11, "swing touchdown velocity");
+  T_VEC_NEAR(a, Eigen::Vector3d::Zero(), 1e-9, "swing touchdown acceleration");
+
+  swing.sample(0.5 * duration, 1.0, 0.0, 0.0, p, v, a);
+  T_NEAR(p.z(), -0.23, 1e-12);
+
+  // The lift scale is time varying while STOPPING. Position, velocity and
+  // acceleration must all contain the product-rule terms.
+  Eigen::Vector3d ps, vs, as;
+  swing.sample(0.37 * duration, 0.6, -0.7, 1.4, ps, vs, as);
+  const double h = 1e-6;
+  Eigen::Vector3d pp, vp, ap, pm, vm, am;
+  swing.sample(0.37 * duration + h, 0.6 - 0.7 * h + 0.5 * 1.4 * h * h,
+               -0.7 + 1.4 * h, 1.4, pp, vp, ap);
+  swing.sample(0.37 * duration - h, 0.6 + 0.7 * h + 0.5 * 1.4 * h * h,
+               -0.7 - 1.4 * h, 1.4, pm, vm, am);
+  T_VEC_NEAR((pp - pm) / (2.0 * h), vs, 2e-7, "scaled swing velocity");
+  T_VEC_NEAR((vp - vm) / (2.0 * h), as, 2e-5, "scaled swing acceleration");
+
+  const Eigen::Vector3d endpoint = swing.endPosition();
+  T_VEC_NEAR(swing.endPosition(), endpoint, 0.0, "frozen swing endpoint");
+  std::cout << "  PASS" << std::endl;
+}
+
+void test_mpc_solve_schedule_uses_integer_deadlines() {
+  std::cout << "test_mpc_solve_schedule_uses_integer_deadlines..." << std::endl;
+
+  PeriodicSolveSchedule schedule;
+  T_CHECK(schedule.reset(1234, 0.01));
+  T_CHECK(schedule.period() == 10000);
+  T_CHECK(schedule.next() == 11234);
+
+  int solves = 0;
+  for (rtcore::CLOCK now = 1234; now <= 101234; now += 1000) {
+    if (!schedule.due(now)) continue;
+    T_CHECK((now - 1234) % 10000 == 0);
+    schedule.consumed(now, false);
+    ++solves;
+  }
+  T_CHECK(solves == 10);
+
+  // An asynchronous contact transition gets an immediate solve and starts a
+  // fresh exact period. It must not be followed by a second solve a few
+  // microseconds later at the old deadline.
+  T_CHECK(schedule.reset(0, 0.01));
+  schedule.consumed(4000, true);
+  T_CHECK(schedule.next() == 14000);
+  T_CHECK(!schedule.due(13999));
+  T_CHECK(schedule.due(14000));
+
+  // If a cycle arrives late, advance by whole periods rather than assigning
+  // next=now+period and accumulating phase drift.
+  T_CHECK(schedule.reset(0, 0.01));
+  T_CHECK(schedule.due(35000));
+  schedule.consumed(35000, false);
+  T_CHECK(schedule.next() == 40000);
+  std::cout << "  PASS" << std::endl;
+}
+
 int main() {
   std::cout << "=== Trot Gait Tests ===" << std::endl;
   test_phase_schedule();
@@ -621,6 +699,8 @@ int main() {
   test_zero_command_steps_in_place();
   test_degenerate_params_are_clamped();
   test_future_horizon_samples();
+  test_stateful_swing_is_c2_and_frozen();
+  test_mpc_solve_schedule_uses_integer_deadlines();
   std::cout << "All trot gait tests passed." << std::endl;
   return 0;
 }

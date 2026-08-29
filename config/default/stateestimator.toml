@@ -38,13 +38,15 @@ enable = true
 # angle to the simulator's, and the ground truth comparison in the filter below
 # would then report a large error for an estimate that is tracking perfectly.
 # Turn it on for hardware, where there is no ground truth to disagree with.
+# This changes only the published output frame. The fixed yaw datum is never fed
+# back into the recursive attitude state.
 zero_initial_yaw = false
 
 # Take attitude from the simulator rather than the IMU. Simulation only; this is
 # the "cheater" estimator of the MIT sources. With a perfect attitude, whatever
 # error remains belongs to the position and velocity filter, which is the first
 # thing worth establishing when the estimate looks wrong.
-use_ground_truth = true
+use_ground_truth = false
 
 # ---- ATTITUDE SOURCE
 #
@@ -63,13 +65,18 @@ use_ground_truth = true
 #           same algorithm the VN-100 runs internally, which is why the paper
 #           describes it and the open source code does not contain it.
 #
-# Wanted whenever the IMU reports rates but no attitude, or an attitude not worth
-# trusting. Wanted in simulation for a different reason: there the quaternion is
-# the simulator's own qpos[3:7], so passing it through means the attitude is
-# exact by construction and nothing about it is ever tested. No amount of
-# simnoise changes that, because simnoise deliberately corrupts only the rates
-# and forces. Switch to "filter" and the corruption finally has somewhere to act.
-attitude_source = "imu"
+# Wanted whenever the IMU reports a usable startup quaternion but its continuing
+# attitude is not worth trusting. Wanted in simulation for a different reason:
+# there the quaternion is the simulator's own qpos[3:7], so passing it through
+# means the attitude is exact by construction and nothing about it is ever
+# tested. No amount of simnoise changes that, because simnoise deliberately
+# corrupts only the rates and forces. Switch to "filter" and the corruption
+# finally has somewhere to act.
+# The first quaternion is nevertheless used as the startup roll/pitch/yaw datum;
+# subsequent quaternions are ignored. Its implied gravity vector also seeds the
+# acceleration history, so a dynamic accelerometer sample at enable cannot be
+# preserved as false gravity for accel_filter_tau seconds.
+attitude_source = "filter"
 
 # Proportional gain, kappa in equation (19) [1/s]. The de-drifting time constant
 # is roughly its reciprocal. Larger tracks gravity harder and lets more of the
@@ -81,9 +88,10 @@ attitude_source = "imu"
 #
 #     wn = sqrt(mahony_ki)        zeta = mahony_kp / (2 * sqrt(mahony_ki))
 #
-# At 0.6/0.09 below, zeta = 1.0 and wn = 0.3 rad/s, so the bias estimate settles
-# in about eleven seconds. Both ends of that are bounded, and by different
-# things, which is what the sweep table further down is for.
+# At 0.1/0.0025 below, zeta = 1.0 and wn = 0.05 rad/s. The bias estimate takes
+# about 49 seconds to enter the tolerance used by the sweep below. That is slow,
+# but the initial quaternion removes the attitude-startup transient, while the
+# lower bandwidth stops gait acceleration from being mistaken for gravity.
 #
 # SLOWER is bounded by the transient. Everything before the bias settles is one,
 # and the position filter integrates transients into permanent offsets, through
@@ -106,8 +114,8 @@ attitude_source = "imu"
 # 3.80 measured. That error is not white: it is phase locked to the foot
 # kinematics it multiplies, so it rectifies into a velocity bias rather than
 # averaging out. Keep mahony_kp at least an order of magnitude below the gait
-# frequency in rad/s (12.6 for a 2 Hz stride); 0.6 leaves a factor of twenty.
-mahony_kp = 0.6
+# frequency in rad/s (12.6 for a 2 Hz stride); 0.1 leaves a factor of 126.
+mahony_kp = 0.1
 
 # Integral gain [1/s^2]. Set to zero to reproduce equation (19) exactly.
 #
@@ -138,7 +146,7 @@ mahony_kp = 0.6
 # Raising this converges the bias faster and rings if mahony_kp does not follow.
 # It is the gain that actually matters for the position estimate: the sweep below
 # is monotone in it and nearly flat in mahony_kp over the usable range.
-mahony_ki = 0.09
+mahony_ki = 0.0025
 
 # Symmetric per-axis clamp on the bias estimate [rad/s]. Zero or negative leaves
 # the integrator unbounded, which is equation (19) plus a pure integral term and
@@ -152,7 +160,7 @@ mahony_ki = 0.09
 # that does not average away, and it cannot tell that from a gyroscope drifting,
 # so it walks. The damage outlives the event, because the bias it ends up holding
 # is subtracted from the rate handed to the position filter for as long as it
-# takes the loop to unwind it -- eleven seconds at the gains above.
+# takes the loop to unwind it -- tens of seconds at the gains above.
 #
 # 0.02 rad/s is about 1 deg/s, which is generous for any MEMS gyroscope worth
 # flying and an order of magnitude above the worst datasheet turn-on bias in that
@@ -174,6 +182,13 @@ mahony_bias_limit = 0.02
 # 0.2 g on this robot, and every footfall rings on top. Over a whole cycle that
 # averages to nearly nothing, because steady locomotion has no mean acceleration,
 # and what remains is gravity.
+#
+# The low-pass state is stored in body coordinates, but "body frame" is a
+# different basis after every rotation. Before blending a new sample, the filter
+# uses the gyro increment to transport the old average from B(k-1) into B(k).
+# Without that step, a large real pitch or roll is itself low-passed: the old
+# gravity components are mistaken for current-frame components, producing a
+# stale gravity reference and a false gyro-bias correction.
 #
 # Gating on magnitude cannot do this job, which is worth understanding before
 # reaching for the knob below. A specific force tilted by 0.2 g has almost
@@ -201,12 +216,12 @@ gravity_magnitude = 9.81
 # below for why the raw ey column must not be read instead.
 #
 #   kp     ki    zeta  settle  rollosc |  ex     ey  | ey_free  vel rms x,y
-#   0.10  0.0025  1.0   49 s     0.33  | +15   -31   |  -70     13.3  16.7
+#   0.10  0.0025  1.0   49 s     0.33  | +15   -31   |  -70     13.3  16.7  <--
 #   0.20  0.0025  2.0   >55 s    0.37  |  -2   -14   |  -53      9.3  11.1
 #   0.20  0.0100  1.0   28 s     0.27  | -24    +9   |  -31      7.1   7.2
 #   0.20  0.0400  0.5   10 s     0.27  | -42   +32   |  -10      8.9   5.5
 #   0.40  0.0400  1.0   16 s     0.62  | -38   +29   |  -12      7.3   5.5
-#   0.60  0.0900  1.0   11 s     1.02  | -42   +32   |   -9      7.3   5.5  <--
+#   0.60  0.0900  1.0   11 s     1.02  | -42   +32   |   -9      7.3   5.5
 #   1.00  0.2500  1.0    8 s     1.82  | -43   +35   |   -7      7.1   5.8
 #   2.00  1.0000  1.0    8 s     3.80  | -43   +37   |   -7      7.1   6.8
 #
@@ -227,11 +242,15 @@ gravity_magnitude = 9.81
 # the same thing without any correction at all, which is why it is the metric to
 # trust here: the y component falls 16.7 -> 5.5 mm/s and then stops improving.
 #
-# Everything worth having is bought by ki = 0.04 and above. Past that the bias
-# is already settled and only rollosc keeps growing, so the choice among the last
-# three rows is about attitude quality on hardware rather than about position.
-# 0.60/0.09 takes the fastest settle whose attitude error is still near a
-# milliradian.
+# This sweep predates the large-attitude inverse-dynamics gait and measures only
+# a mild, already stable trajectory. It originally selected 0.60/0.09 for fast
+# bias convergence. In the current closed loop, even after making the low-pass
+# frame-consistent, that pair trusts residual translational acceleration enough
+# to drive a torque-limit fault. Pure gyro postpones the same failure but drifts
+# into it after about twenty seconds. Both 0.10/0.0025 and 0.20/0.0100 complete a
+# 60 second fully estimated trot; the former has the lower velocity RMS and is
+# therefore the default. Stability under the actual controller takes precedence
+# over the old open-loop endpoint ranking.
 #
 # One row that is not in the table: mahony_ki = 0, equation (19) as printed. It
 # leaves a standing 5 mrad roll tilt that happens to oppose the gyro bias in the
@@ -311,7 +330,7 @@ enable = true
 # Simulation only. Pair with orientationestimator.use_ground_truth to bisect a
 # problem: perfect attitude with the real filter tests the filter, and the
 # reverse tests everything downstream of it.
-use_ground_truth = true
+use_ground_truth = false
 
 # ---- KALMAN FILTER NOISE
 

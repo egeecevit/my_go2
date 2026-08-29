@@ -1,3 +1,4 @@
 
 [hardware]
 library = "simhw"  # Required hardware library to be linked against
+robot_model = "go2"
