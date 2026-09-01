@@ -22,7 +22,7 @@
 # enough that the swing foot never leaves the leg's comfortable workspace.
 # Raise it and raise period or duty along with it.
 
-forward_velocity = 0.55   # v_x [m/s], positive is forward
+forward_velocity = 1.05   # v_x [m/s], positive is forward
 lateral_velocity = 0.0    # v_y [m/s], positive is left
 yaw_rate         = 0.0    # [rad/s], positive turns left
 
@@ -149,7 +149,7 @@ swing_kd_cartesian = 8.0
 # the leg inertia changes through swing. Other robot models retain the scalar
 # feedback gains above until their inertial parameters are populated.
 swing_inverse_dynamics = true
-swing_natural_frequency = [28.0, 28.0, 28.0]  # omega_x,y,z [rad/s]
+swing_natural_frequency = [50.0, 50.0, 50.0]  # omega_x,y,z [rad/s]
 swing_damping_ratio = [0.8, 0.8, 0.8]
 
 # Scale on the acceleration/Coriolis/gravity term of equation (2): 1 is the

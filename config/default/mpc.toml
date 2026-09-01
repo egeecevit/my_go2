@@ -97,7 +97,7 @@ dt = 0.01                 # [s]
 # Raise max_working_set with this. At 600 variables the 250 recalculations below
 # will not be enough, and the symptom is MdlTrot aborting on failed solves rather
 # than anything that looks like a tuning problem.
-horizon = 10
+horizon = 20
 
 # How often the QP is re-solved. Separate from dt so that the lookahead and the
 # reaction time can be chosen independently: before the split, dt was both, and

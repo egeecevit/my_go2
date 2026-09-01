@@ -291,6 +291,10 @@ void MdlTrot::init() {
                             (unsigned char*)_logContact);
     _logserver->registerVar(LOG_DOUBLE, NUM_LEGS, TROTMODULE_NAME, "torquescale",
                             (unsigned char*)_logTorqueScale);
+    _logserver->registerVar(LOG_DOUBLE, NUM_LEGS * 3, TROTMODULE_NAME, "torquereq",
+                            (unsigned char*)_logTorqueRequest);
+    _logserver->registerVar(LOG_DOUBLE, 12, TROTMODULE_NAME, "bodyref",
+                            (unsigned char*)_logBodyReference);
   }
 
   _readConfig();
@@ -386,6 +390,9 @@ void MdlTrot::_readConfig() {
   _positionClamp = config.getDouble("position_reference_clamp", _positionClamp);
   if (!(_positionClamp > 0.0)) _positionClamp = 0.1;
 
+  _yawClamp = config.getDouble("yaw_reference_clamp", _yawClamp);
+  if (!(_yawClamp > 0.0)) _yawClamp = 0.2;
+
   _trackingErrorLimit = config.getDouble("tracking_error_limit", _trackingErrorLimit);
   _cmdFailureLimit = (int)config.getInt("command_failure_limit", _cmdFailureLimit);
   if (_cmdFailureLimit < 1) _cmdFailureLimit = 1;
@@ -404,6 +411,8 @@ void MdlTrot::uninit() {
     _logserver->deleteVar(TROTMODULE_NAME, "footref");
     _logserver->deleteVar(TROTMODULE_NAME, "contact");
     _logserver->deleteVar(TROTMODULE_NAME, "torquescale");
+    _logserver->deleteVar(TROTMODULE_NAME, "torquereq");
+    _logserver->deleteVar(TROTMODULE_NAME, "bodyref");
     _logserver = nullptr;
   }
 
@@ -577,6 +586,20 @@ void MdlTrot::_integrateBodyReference() {
   // heading instead would let a heading error steer the reference.
   const Eigen::Vector3d vc = _twistCommand();
   _desYaw += _yawRateCommand() * dt;
+
+  // Heading needs the same bound as position below, and needs it even when
+  // nothing has gone wrong. A yaw rate the robot cannot quite achieve leaves
+  // the reference running away at the shortfall for as long as the turn
+  // lasts: at 0.5 rad/s commanded the robot held 0.46 rad/s while otherwise
+  // healthy, and that 8% alone carried the reference 7.1 rad ahead in 30 s.
+  // Bounding it converts an integrator into a saturated proportional heading
+  // correction. 0.2 rad is one gait cycle of commanded heading at the nominal
+  // yaw rate, the scale position_reference_clamp uses against stride length,
+  // and a quarter of the 1.4 rad error the robot was toppling at.
+  const double yawErr = _desYaw - _yawUnwrapped;
+  if (yawErr > _yawClamp) _desYaw = _yawUnwrapped + _yawClamp;
+  if (yawErr < -_yawClamp) _desYaw = _yawUnwrapped - _yawClamp;
+
   const Eigen::Vector3d v = _rotZ(_desYaw) * Eigen::Vector3d(vc.x(), vc.y(), 0.0);
   _desPos.x() += v.x() * dt;
   _desPos.y() += v.y() * dt;
@@ -590,6 +613,19 @@ void MdlTrot::_integrateBodyReference() {
     if (err > _positionClamp) _desPos[i] = _comPos[i] + _positionClamp;
     if (err < -_positionClamp) _desPos[i] = _comPos[i] - _positionClamp;
   }
+
+  _logBodyReference[0] = _desPos.x();
+  _logBodyReference[1] = _desPos.y();
+  _logBodyReference[2] = _desPos.z();
+  _logBodyReference[3] = _desYaw;
+  _logBodyReference[4] = v.x();
+  _logBodyReference[5] = v.y();
+  _logBodyReference[6] = v.z();
+  _logBodyReference[7] = _yawRateCommand();
+  _logBodyReference[8] = _yawUnwrapped;
+  _logBodyReference[9] = _speedScale;
+  _logBodyReference[10] = _liftScale;
+  _logBodyReference[11] = _yawClamp;
 }
 
 bool MdlTrot::_solveMPC(double elapsed) {
@@ -982,6 +1018,9 @@ void MdlTrot::_trotDuring() {
     if (ok) {
       _cmdFailures[i] = 0;
       _logTorqueScale[i] = command.torque_scale;
+      for (int axis = 0; axis < 3; axis++) {
+        _logTorqueRequest[3 * i + axis] = command.requested_torque[axis];
+      }
       if (command.torque_scale < 0.999999) {
         if (++_torqueSaturationCycles[i] >= _torqueSaturationLimit) {
           _mgr->warning(TROTMODULE_NAME,

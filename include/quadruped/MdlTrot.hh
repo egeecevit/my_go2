@@ -321,6 +321,21 @@ class MdlTrot : public rtcore::Module {
   double _logFootReference[NUM_LEGS * 9] = {0};  // per-leg p, v, a
   double _logContact[NUM_LEGS] = {0};
   double _logTorqueScale[NUM_LEGS] = {1, 1, 1, 1};
+  // Torque _limitTorque() asked for, before the saturation scale above is
+  // applied to it -- MdlSimDriver_ctrl only logs what the motor actually got,
+  // so "commanded vs applied" is otherwise unplottable. Same 3*leg+joint
+  // layout as MotorHW.
+  double _logTorqueRequest[NUM_LEGS * 3] = {0};
+  // Body reference and the ramp/clamp state around it, laid out as:
+  //   [0] _desPos.x()      [4] desVel_world.x()   [8]  _yawUnwrapped
+  //   [1] _desPos.y()      [5] desVel_world.y()   [9]  _speedScale
+  //   [2] _desPos.z()      [6] desVel_world.z()   [10] _liftScale
+  //   [3] _desYaw          [7] _yawRateCommand()  [11] _yawClamp
+  // _yawClamp rides along so an offline plot can draw the clamp band without
+  // hard-coding a number that may change; everything else here was previously
+  // dead reckonable only from the command config, which a ramp or a clamp
+  // silently overrides.
+  double _logBodyReference[12] = {0};
 
   // -- Measured body state, refreshed once per TROT cycle --------------------
   //
@@ -393,6 +408,7 @@ class MdlTrot : public rtcore::Module {
   double _jointDamping = 0.2;
 
   double _positionClamp = 0.1;  // [m]
+  double _yawClamp = 0.2;       // [rad]
   double _trackingErrorLimit = 0.5;
   int _cmdFailureLimit = 3;
   int _mpcFailureLimit = 3;
