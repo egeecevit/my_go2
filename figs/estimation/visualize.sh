@@ -60,6 +60,7 @@ Options:
                       splays the front and rear feet to opposite sides. This
                       view leaves what a change to the position filter would
                       actually move
+      --dpi N         Figure resolution in dots per inch (default: 200)
       --setup         Create or refresh the virtualenv, then exit
   -h, --help          Show this message
 
@@ -108,6 +109,8 @@ while [[ $# -gt 0 ]]; do
                  [[ $# -ge 2 ]] || { echo "$1 needs a time in seconds" >&2; exit 2; }
                  ARGS+=(--stop "$2"); shift 2 ;;
     -w|--show)   ARGS+=(--show); shift ;;
+    --dpi)       [[ $# -ge 2 ]] || { echo "$1 needs a number" >&2; exit 2; }
+                 ARGS+=(--dpi "$2"); shift 2 ;;
     -a|--heading-aligned)
                  ARGS+=(--heading-aligned); shift ;;
     --)          shift; LOGFILES+=("$@"); break ;;

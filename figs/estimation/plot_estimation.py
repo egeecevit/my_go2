@@ -10,8 +10,10 @@
 
 Reads one or two .mat files written by the Supervisor's logging thread and
 produces one figure per estimated quantity for each log, each with an x, y and z
-subplot. Ground truth is solid blue and estimates are solid red throughout; the
-angular-velocity figure additionally shows the reconstructed raw gyro in orange.
+subplot. Ground truth is a dashed blue line drawn on top of the estimate's solid
+vermillion one; the angular-velocity and gravity-reference figures add the
+unprocessed sensor reading as a pale orange band beneath both. The palette and
+line weights are the colourblind-safe set figs/mpc/plot_mpc.py uses.
 With two logs, each log's filename appears in both its figure titles and output
 filenames. With one log, the original unsuffixed output filenames are retained.
 
@@ -51,16 +53,35 @@ import matplotlib.pyplot as plt  # noqa: E402
 # (QuadrupedKinematics::LegIndex). Foot state i occupies footholds[3i:3i+3].
 LEG_NAMES = ["FL", "FR", "RL", "RR"]
 
-TRUTH_STYLE = dict(color="blue", linestyle="-", linewidth=1.2, label="ground truth")
-EST_STYLE = dict(color="red", linestyle="-", linewidth=1.0, label="estimate")
-RAW_GYRO_STYLE = dict(color="darkorange", linestyle="-", linewidth=0.8,
-                      alpha=0.8, label="raw gyro (reconstructed)")
-CORRECTED_GYRO_STYLE = dict(color="red", linestyle="-", linewidth=1.0,
-                            label="bias-corrected gyro")
-# Same weight and colour as the raw gyro: on both figures the orange trace is the
-# unprocessed sensor and the red one is what the module made of it.
-RAW_ACCEL_STYLE = dict(color="darkorange", linestyle="-", linewidth=0.8,
-                       alpha=0.8, label="raw specific force")
+# Okabe-Ito, the colourblind-safe pair figs/mpc/plot_mpc.py uses, and the same
+# convention: the curve being compared *against* is dashed and drawn on top, the
+# curve under test is solid beneath it. Two solid lines of near-equal weight,
+# which is what this file drew before, cannot be told apart wherever they agree
+# -- and agreeing is the normal case here, so the trace drawn second simply
+# erased the one below it. Weights are down from 1.2/1.0 as well: at 1 kHz a
+# 35 s log puts 35k samples on a 10 inch axis, and a 1.2 pt line fills the
+# envelope solid.
+TRUTH_STYLE = dict(color="#0072B2", linestyle="--", linewidth=1.0, zorder=3,
+                   label="ground truth")
+EST_STYLE = dict(color="#D55E00", linestyle="-", linewidth=0.9, zorder=2,
+                 label="estimate")
+
+# The unprocessed sensor goes underneath both as a wide pale band rather than a
+# third line of the same weight. Raw gyro, corrected gyro and truth agree to
+# about 5 mrad/s on a signal spanning 4 rad/s, so as an equal-weight line the
+# raw trace was covered completely and appeared only in the legend. As a halo it
+# stays visible where all three coincide and still separates where they do not.
+RAW_GYRO_STYLE = dict(color="#E69F00", linestyle="-", linewidth=2.2, alpha=0.45,
+                      zorder=1, label="raw gyro (reconstructed)")
+CORRECTED_GYRO_STYLE = dict(color="#D55E00", linestyle="-", linewidth=0.9,
+                            zorder=2, label="bias-corrected gyro")
+# Same colour and layer as the raw gyro -- orange is the unprocessed sensor on
+# both figures -- but thin rather than wide, and the reason is the opposite one.
+# The raw specific force swings +/-8 m/s^2 about a gravity reference that moves
+# by tenths, so it is in no danger of being hidden; drawn as a wide band it
+# instead swamps the two traces the figure exists to compare.
+RAW_ACCEL_STYLE = dict(color="#E69F00", linestyle="-", linewidth=0.8, alpha=0.35,
+                       zorder=1, label="raw specific force")
 
 AXES = ["x", "y", "z"]
 
@@ -218,7 +239,16 @@ def heading_align(est, leak, dyaw, lever=None):
     return out
 
 
-def triple_plot(t, truth, est, title, ylabels, outpath, show, error_fn=None):
+def _annotate(ax, lines, loc=(0.995, 0.04)):
+    """Small boxed text in a subplot corner. Shared by all four figure kinds."""
+    ax.text(
+        loc[0], loc[1], "\n".join(lines),
+        transform=ax.transAxes, ha="right", va="bottom", fontsize=8,
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.7", alpha=0.85),
+    )
+
+
+def triple_plot(t, truth, est, title, ylabels, outpath, show, dpi, error_fn=None):
     """One figure, three stacked subplots, truth and estimate overlaid."""
     fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 
@@ -233,22 +263,13 @@ def triple_plot(t, truth, est, title, ylabels, outpath, show, error_fn=None):
         # Error as an annotation rather than a fourth panel: it keeps the three
         # subplots the user asked for while still answering "how far off is it".
         rms = float(np.sqrt(np.mean(error[:, i] ** 2)))
-        axs[i].text(
-            0.995,
-            0.04,
-            f"rms {rms:.4g}",
-            transform=axs[i].transAxes,
-            ha="right",
-            va="bottom",
-            fontsize=8,
-            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.7", alpha=0.85),
-        )
+        _annotate(axs[i], [f"rms {rms:.4g}"])
 
     axs[0].legend(loc="upper left", fontsize=9)
     axs[-1].set_xlabel("time [s]")
     fig.suptitle(title)
     fig.tight_layout()
-    fig.savefig(outpath, dpi=140)
+    fig.savefig(outpath, dpi=dpi)
     print(f"wrote {outpath}")
     if not show:
         plt.close(fig)
@@ -270,7 +291,7 @@ def body_rate_series(t, qvel, ori):
     return t[1:], qvel[:-1, 3:6], raw, corrected
 
 
-def angular_velocity_plot(t, truth, raw, corrected, title, outpath, show):
+def angular_velocity_plot(t, truth, raw, corrected, title, outpath, show, dpi):
     """Body angular velocity with raw and corrected gyro RMSE per axis."""
     fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 
@@ -283,28 +304,20 @@ def angular_velocity_plot(t, truth, raw, corrected, title, outpath, show):
 
         raw_rms = float(np.sqrt(np.mean((raw[:, i] - truth[:, i]) ** 2)))
         corrected_rms = float(np.sqrt(np.mean((corrected[:, i] - truth[:, i]) ** 2)))
-        axs[i].text(
-            0.995,
-            0.04,
-            f"raw rms {raw_rms:.4g}\ncorrected rms {corrected_rms:.4g}",
-            transform=axs[i].transAxes,
-            ha="right",
-            va="bottom",
-            fontsize=8,
-            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.7", alpha=0.85),
-        )
+        _annotate(axs[i], [f"raw rms {raw_rms:.4g}",
+                           f"corrected rms {corrected_rms:.4g}"])
 
     axs[0].legend(loc="upper left", fontsize=9)
     axs[-1].set_xlabel("time [s]")
     fig.suptitle(title)
     fig.tight_layout()
-    fig.savefig(outpath, dpi=140)
+    fig.savefig(outpath, dpi=dpi)
     print(f"wrote {outpath}")
     if not show:
         plt.close(fig)
 
 
-def filtered_acceleration_plot(t, ideal, raw, filtered, title, outpath, show):
+def filtered_acceleration_plot(t, ideal, raw, filtered, title, outpath, show, dpi):
     """The attitude filter's gravity reference against the ideal one.
 
     Three traces per axis: the ideal body-frame gravity from ground truth, the
@@ -323,22 +336,14 @@ def filtered_acceleration_plot(t, ideal, raw, filtered, title, outpath, show):
 
         raw_rms = float(np.sqrt(np.mean((raw[:, i] - ideal[:, i]) ** 2)))
         filt_rms = float(np.sqrt(np.mean((filtered[:, i] - ideal[:, i]) ** 2)))
-        axs[i].text(
-            0.995,
-            0.04,
-            f"raw rms {raw_rms:.4g}\nfiltered rms {filt_rms:.4g}",
-            transform=axs[i].transAxes,
-            ha="right",
-            va="bottom",
-            fontsize=8,
-            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.7", alpha=0.85),
-        )
+        _annotate(axs[i], [f"raw rms {raw_rms:.4g}",
+                           f"filtered rms {filt_rms:.4g}"])
 
     axs[0].legend(loc="upper left", fontsize=9)
     axs[-1].set_xlabel("time [s]")
     fig.suptitle(title)
     fig.tight_layout()
-    fig.savefig(outpath, dpi=140)
+    fig.savefig(outpath, dpi=dpi)
     print(f"wrote {outpath}")
     if not show:
         plt.close(fig)
@@ -377,7 +382,7 @@ def unique_log_tags(paths):
     return tags
 
 
-def plot_log(logfile, log_tag, outdir, start, stop, show, heading_aligned):
+def plot_log(logfile, log_tag, outdir, start, stop, show, dpi, heading_aligned):
     """Loads one log and writes its complete set of estimator figures."""
     t, data = load_log(logfile)
 
@@ -420,14 +425,14 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, heading_aligned):
     #    point the filter's r describes, so no offset correction is needed.
     triple_plot(t, qpos[:, 0:3], align(pv[:, 0:3]),
                 "Body position: estimate vs ground truth" + position_suffix + log_title,
-                ["x [m]", "y [m]", "z [m]"], out("body_position"), show)
+                ["x [m]", "y [m]", "z [m]"], out("body_position"), show, dpi)
 
     # -- Body velocity, world frame. The filter also carries a body frame
     #    velocity in columns 6:9; the world frame one is what qvel reports.
     triple_plot(t, qvel[:, 0:3], pv[:, 3:6],
                 "Body velocity (world frame): estimate vs ground truth" + log_title,
                 ["vx [m/s]", "vy [m/s]", "vz [m/s]"], out("body_velocity"),
-                show)
+                show, dpi)
 
     # -- Body orientation.
     #
@@ -450,7 +455,7 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, heading_aligned):
                    "(attitude_source = \"filter\": estimated here, so these curves "
                    "can and do differ)") + log_title,
                 ["roll [rad]", "pitch [rad]", "yaw [rad]"],
-                out("body_orientation"), show, wrapped_angle_error)
+                out("body_orientation"), show, dpi, wrapped_angle_error)
 
     # -- Body angular velocity. Both qvel[3:6] and the gyroscope use the body
     #    frame. The proportional Mahony term corrects quaternion propagation but
@@ -462,7 +467,7 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, heading_aligned):
         rate_t, rate_truth, raw_gyro, corrected_gyro,
         "Body angular velocity (body frame): gyro vs ground truth\n"
         "(ground truth shifted by one sample to match estimator logging)" + log_title,
-        out("body_angular_velocity"), show)
+        out("body_angular_velocity"), show, dpi)
 
     # -- Attitude filter internals. Optional: MdlOrientationEstimator_filter was
     #    added after these plots existed, so any log recorded before it is
@@ -490,7 +495,7 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, heading_aligned):
         triple_plot(t, filt[:, 7:10], ori[:, 13:16],
                     "Gyroscope bias: attitude filter estimate vs injected truth"
                     + log_title,
-                    [f"b_{a} [rad/s]" for a in AXES], out("gyro_bias"), show)
+                    [f"b_{a} [rad/s]" for a in AXES], out("gyro_bias"), show, dpi)
 
         # -- The gravity reference. The Mahony correction is built from
         #    _accFilt, so how well it can possibly do is bounded by how far that
@@ -509,7 +514,7 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, heading_aligned):
             "Gravity reference (body frame): _accFilt vs true gravity\n"
             f"(reference tilt rho: mean {1e3 * float(np.mean(rho)):.2f} mrad, "
             f"rms {1e3 * float(np.sqrt(np.mean(rho ** 2))):.2f} mrad)" + log_title,
-            out("filtered_acceleration"), show)
+            out("filtered_acceleration"), show, dpi)
 
     # -- Foot positions, one figure per leg.
     fh = require(data, "MdlPosVelEstimator_footholds", 12, "foot position estimates")
@@ -520,7 +525,7 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, heading_aligned):
                     f"{name} foot position (world frame): estimate vs ground truth"
                     + position_suffix + log_title,
                     [f"{a} [m]" for a in AXES],
-                    out(f"foot_position_{name}"), show)
+                    out(f"foot_position_{name}"), show, dpi)
 
 
 def main():
@@ -541,6 +546,8 @@ def main():
                     help="drop samples after this time [s] in both logs")
     ap.add_argument("--show", action="store_true",
                     help="also open the figures in a window")
+    ap.add_argument("--dpi", type=int, default=200,
+                    help="figure resolution in dots per inch (default: 200)")
     ap.add_argument("-a", "--heading-aligned", action="store_true",
                     help="rotate position errors out of the drifted heading "
                          "before plotting; see heading_align()")
@@ -570,7 +577,7 @@ def main():
         else [None]
     for logfile, log_tag in zip(resolved_logfiles, log_tags):
         plot_log(logfile, log_tag, args.outdir, args.start, args.stop,
-                 args.show, args.heading_aligned)
+                 args.show, args.dpi, args.heading_aligned)
 
     if args.show:
         plt.show()

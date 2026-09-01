@@ -28,6 +28,12 @@ log, the original unsuffixed output filenames are retained.
                                         body frame, one figure per leg, with
                                         scheduled swing shaded
 
+A log missing a variable is not fatal. When only the commanded half of a
+pair is absent -- MdlTrot_torquereq, MdlTrot_bodyref, MdlTrot_footref -- the
+figure is still written from the measured half alone, and the note names
+exactly which variable was missing rather than every variable the figure
+could use.
+
 See README.md in this directory for how to record the log.
 """
 
@@ -144,6 +150,58 @@ def require(data, name, width, what):
     return data[name]
 
 
+def missing_note(data, *names):
+    """"'X' is not in this log" for the absent members of names, or None.
+
+    Only the names actually absent are reported: a note reading "'A', 'B' or
+    'C' is not in this log" sends the reader hunting through three variables
+    when one of them is the problem.
+    """
+    absent = [f"'{n}'" for n in names if n not in data]
+    if not absent:
+        return None
+    if len(absent) == 1:
+        return f"{absent[0]} is not in this log"
+    return ", ".join(absent[:-1]) + f" and {absent[-1]} are not in this log"
+
+
+def optional(data, name, width, what, note):
+    """require() for a variable a figure can do without; None if absent."""
+    if name not in data:
+        print(f"note: '{name}' is not in this log; {note}")
+        return None
+    return require(data, name, width, what)
+
+
+def gait_contact(data):
+    """(contact signal, what it means) for swing shading; (None, None) if neither.
+
+    MdlTrot_contact is the gait schedule, which is what the shading is meant
+    to show. Failing that, MdlPosVelEstimator_contacts carries the
+    estimator's contact trust ramp over the same footfalls -- close enough to
+    read gait phase off, but a different quantity, so its name is carried
+    along and printed on the figure rather than passing it off as the
+    schedule.
+    """
+    if "MdlTrot_contact" in data:
+        return require(data, "MdlTrot_contact", 4, "gait contact schedule"), \
+            "scheduled swing"
+    if "MdlPosVelEstimator_contacts" in data:
+        return require(data, "MdlPosVelEstimator_contacts", 4,
+                       "estimator contact trust"), "estimator contact trust < 0.5"
+    return None, None
+
+
+def quat_yaw(q):
+    """Yaw about +Z from (N,4) w-first quaternions, radians.
+
+    Only needed when MdlTrot_bodyref is absent: bodyref[8] is the measured
+    yaw the controller itself saw, and is preferred when it is there.
+    """
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    return np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
 def quat_rotate(q, v, inverse=False):
     """Rotates (N,3) vectors by (N,4) w-first quaternions; (3,) v broadcasts.
 
@@ -199,8 +257,11 @@ def _shade_swing(ax, t, contact):
     contact is the SCHEDULED stance signal (MdlTrot_contact), not measured
     ground contact, so this reads gait phase, not actual touchdown -- useful
     for judging tracking lag against where in the step the foot is supposed
-    to be.
+    to be. None when the log carries no contact signal at all, in which case
+    nothing is shaded.
     """
+    if contact is None:
+        return
     swing = contact < 0.5
     if not swing.any():
         return
@@ -224,27 +285,43 @@ def torque_plot(t, req, app, contact, leg_name, title, outpath, show, dpi):
     quantified in the annotation, is the whole reason the requested signal is
     logged at all -- it is invisible from the applied trace alone, which is
     clipped at the limit by construction.
+
+    req is None when the log has no MdlTrot_torquereq: the figure then shows
+    the applied trace alone and the annotation counts samples sitting on the
+    limit, which is all the saturation a clipped signal can still reveal.
     """
     fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 
     for i in range(3):
         limit = TORQUE_LIMIT[i]
         _shade_swing(axs[i], t, contact)
-        axs[i].plot(t, req[:, i], **REQ_STYLE)
+        if req is not None:
+            axs[i].plot(t, req[:, i], **REQ_STYLE)
         axs[i].plot(t, app[:, i], **APP_STYLE)
         axs[i].axhline(limit, **LIMIT_STYLE)
         axs[i].axhline(-limit, **LIMIT_STYLE)
         axs[i].set_ylabel(f"{JOINT_NAMES[i]} tau [N*m]")
         axs[i].grid(True, alpha=0.3)
 
-        rms = float(np.sqrt(np.mean((req[:, i] - app[:, i]) ** 2)))
-        over_frac = float(np.mean(np.abs(req[:, i]) > limit))
-        max_pct = 100.0 * float(np.max(np.abs(req[:, i]))) / limit
-        _annotate(axs[i], [
-            f"rms(req-app) {rms:.4g}",
-            f"|req|>limit: {100.0 * over_frac:.1f}% of samples",
-            f"max|req|: {max_pct:.1f}% of limit",
-        ])
+        if req is not None:
+            rms = float(np.sqrt(np.mean((req[:, i] - app[:, i]) ** 2)))
+            over_frac = float(np.mean(np.abs(req[:, i]) > limit))
+            max_pct = 100.0 * float(np.max(np.abs(req[:, i]))) / limit
+            _annotate(axs[i], [
+                f"rms(req-app) {rms:.4g}",
+                f"|req|>limit: {100.0 * over_frac:.1f}% of samples",
+                f"max|req|: {max_pct:.1f}% of limit",
+            ])
+        else:
+            # Equality against the clip value, not a > test: a saturated
+            # sample lands exactly on the limit, so a strict inequality
+            # counts nothing.
+            at_limit = float(np.mean(np.abs(app[:, i]) >= limit - 1e-9))
+            max_pct = 100.0 * float(np.max(np.abs(app[:, i]))) / limit
+            _annotate(axs[i], [
+                f"|app| at limit: {100.0 * at_limit:.1f}% of samples",
+                f"max|app|: {max_pct:.1f}% of limit",
+            ])
 
     axs[0].legend(loc="upper left", fontsize=9)
     axs[-1].set_xlabel("time [s]")
@@ -262,20 +339,27 @@ def triple_plot(t, cmd, act, title, ylabels, outpath, show, dpi, shade_contact=N
     Structurally figs/estimation's triple_plot with the truth/estimate
     styling swapped for this tool's commanded/actual palette, and an optional
     per-subplot swing shading for the foot-reference figures.
+
+    cmd is None when the log carries no command for this quantity; the actual
+    trace is then plotted on its own, annotated with its mean and rms since
+    there is no error to report.
     """
     fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 
-    error = act - cmd
     for i in range(3):
-        if shade_contact is not None:
-            _shade_swing(axs[i], t, shade_contact)
-        axs[i].plot(t, cmd[:, i], **CMD_STYLE)
+        _shade_swing(axs[i], t, shade_contact)
+        if cmd is not None:
+            axs[i].plot(t, cmd[:, i], **CMD_STYLE)
         axs[i].plot(t, act[:, i], **ACT_STYLE)
         axs[i].set_ylabel(ylabels[i])
         axs[i].grid(True, alpha=0.3)
 
-        rms = float(np.sqrt(np.mean(error[:, i] ** 2)))
-        _annotate(axs[i], [f"rms {rms:.4g}"])
+        if cmd is not None:
+            rms = float(np.sqrt(np.mean((act[:, i] - cmd[:, i]) ** 2)))
+            _annotate(axs[i], [f"rms {rms:.4g}"])
+        else:
+            _annotate(axs[i], [f"mean {float(np.mean(act[:, i])):.4g}",
+                               f"rms {float(np.sqrt(np.mean(act[:, i] ** 2))):.4g}"])
 
     axs[0].legend(loc="upper left", fontsize=9)
     axs[-1].set_xlabel("time [s]")
@@ -295,30 +379,43 @@ def body_reference_plot(t, des_pos, meas_pos, des_yaw, meas_yaw, clamp, title,
     bodyref[11] actually enforces, so it is visible on the plot whether the
     controller's yaw command is being clamped rather than having to cross
     -reference against the config.
+
+    des_pos, des_yaw and clamp are all None when the log has no
+    MdlTrot_bodyref: the measured position and yaw are then plotted alone,
+    with no clamp band to draw.
     """
     fig, axs = plt.subplots(4, 1, figsize=(10, 10), sharex=True)
     labels = ["x [m]", "y [m]", "z [m]"]
 
     for i in range(3):
-        axs[i].plot(t, des_pos[:, i], **CMD_STYLE)
+        if des_pos is not None:
+            axs[i].plot(t, des_pos[:, i], **CMD_STYLE)
         axs[i].plot(t, meas_pos[:, i], **ACT_STYLE)
         axs[i].set_ylabel(labels[i])
         axs[i].grid(True, alpha=0.3)
-        rms = float(np.sqrt(np.mean((meas_pos[:, i] - des_pos[:, i]) ** 2)))
-        _annotate(axs[i], [f"rms {rms:.4g}"])
+        if des_pos is not None:
+            rms = float(np.sqrt(np.mean((meas_pos[:, i] - des_pos[:, i]) ** 2)))
+            _annotate(axs[i], [f"rms {rms:.4g}"])
+        else:
+            _annotate(axs[i], [f"mean {float(np.mean(meas_pos[:, i])):.4g}"])
 
     ax = axs[3]
-    ax.fill_between(t, meas_yaw - clamp, meas_yaw + clamp, color="grey",
-                    alpha=0.15, linewidth=0, label="clamp band")
-    ax.plot(t, des_yaw, **CMD_STYLE)
+    if clamp is not None:
+        ax.fill_between(t, meas_yaw - clamp, meas_yaw + clamp, color="grey",
+                        alpha=0.15, linewidth=0, label="clamp band")
+    if des_yaw is not None:
+        ax.plot(t, des_yaw, **CMD_STYLE)
     ax.plot(t, meas_yaw, **ACT_STYLE)
     ax.set_ylabel("yaw [rad]")
     ax.grid(True, alpha=0.3)
-    yaw_err = meas_yaw - des_yaw
-    rms = float(np.sqrt(np.mean(yaw_err ** 2)))
-    inside = float(np.mean(np.abs(yaw_err) <= clamp))
-    _annotate(ax, [f"rms {rms:.4g}", f"inside clamp: {100.0 * inside:.1f}%"])
-    ax.legend(loc="upper left", fontsize=9)
+    if des_yaw is not None:
+        yaw_err = meas_yaw - des_yaw
+        rms = float(np.sqrt(np.mean(yaw_err ** 2)))
+        inside = float(np.mean(np.abs(yaw_err) <= clamp))
+        _annotate(ax, [f"rms {rms:.4g}", f"inside clamp: {100.0 * inside:.1f}%"])
+        ax.legend(loc="upper left", fontsize=9)
+    else:
+        _annotate(ax, [f"drift {float(meas_yaw[-1] - meas_yaw[0]):.4g} rad"])
 
     axs[0].legend(loc="upper left", fontsize=9)
     axs[-1].set_xlabel("time [s]")
@@ -349,57 +446,71 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, dpi):
     out = lambda n: os.path.join(outdir, f"{n}{filename_suffix}.png")  # noqa: E731
     log_title = f"\nLog: {os.path.basename(logfile)}" if log_tag else ""
 
-    # -- Torque, one figure per leg. Skipped independently of everything
+    # Which variables the log carries decides how much of each figure can be
+    # drawn. A missing command leaves the measured trace, which is still worth
+    # plotting; only a missing measurement kills the figure outright.
+    contact, contact_kind = gait_contact(data)
+    swing_note = f"\n(shaded: {contact_kind})" if contact is not None else ""
+
+    # -- Torque, one figure per leg. Guarded independently of everything
     #    below: an older log missing MdlTrot_torquereq should still get the
     #    tracking figures.
-    have_torque = "MdlTrot_torquereq" in data and "MdlSimDriver_ctrl" in data \
-        and "MdlTrot_contact" in data
-    if not have_torque:
-        print("note: 'MdlTrot_torquereq', 'MdlSimDriver_ctrl' or "
-              "'MdlTrot_contact' is not in this log; skipping torque_<LEG>. "
-              "Add them to supervisor.log.vars and re-record to get them.")
+    note = missing_note(data, "MdlSimDriver_ctrl")
+    if note:
+        print(f"note: {note}; skipping torque_<LEG>. Add what is missing "
+              "to supervisor.log.vars and re-record.")
     else:
-        req = require(data, "MdlTrot_torquereq", 12, "requested motor torque")
         app = require(data, "MdlSimDriver_ctrl", 12, "applied motor torque")
-        contact = require(data, "MdlTrot_contact", 4, "gait contact schedule")
+        req = optional(data, "MdlTrot_torquereq", 12, "requested motor torque",
+                       "torque_<LEG> shows the applied torque alone, without "
+                       "the pre-saturation request.")
+        what = "requested vs applied" if req is not None else "applied"
         for leg, name in enumerate(LEG_NAMES):
             s = slice(3 * leg, 3 * leg + 3)
             direction = np.asarray(JOINT_DIRECTION[leg])
-            torque_plot(t, req[:, s], app[:, s] * direction, contact[:, leg],
-                       name, f"{name} motor torque: requested vs applied" + log_title,
+            torque_plot(t, None if req is None else req[:, s],
+                       app[:, s] * direction,
+                       None if contact is None else contact[:, leg],
+                       name, f"{name} motor torque: {what}" + swing_note + log_title,
                        out(f"torque_{name}"), show, dpi)
 
     # -- Body velocity tracking, world frame.
-    if "MdlTrot_bodyref" not in data or "MdlSimDriver_qvel" not in data:
-        print("note: 'MdlTrot_bodyref' or 'MdlSimDriver_qvel' is not in this "
-              "log; skipping body_velocity_tracking and "
+    note = missing_note(data, "MdlSimDriver_qvel")
+    if note:
+        print(f"note: {note}; skipping body_velocity_tracking and "
               "body_angular_velocity_tracking.")
     else:
-        bodyref = require(data, "MdlTrot_bodyref", 12, "body reference command")
         qvel = require(data, "MdlSimDriver_qvel", 6, "body velocity truth")
+        bodyref = optional(data, "MdlTrot_bodyref", 12, "body reference command",
+                           "body_velocity_tracking, "
+                           "body_angular_velocity_tracking and body_reference "
+                           "show the measured signals alone, with no "
+                           "commanded trace.")
+        what = "commanded vs actual" if bodyref is not None else "actual"
 
-        triple_plot(t, bodyref[:, 4:7], qvel[:, 0:3],
-                   "Body linear velocity (world frame): commanded vs actual"
-                   + log_title,
+        triple_plot(t, None if bodyref is None else bodyref[:, 4:7], qvel[:, 0:3],
+                   f"Body linear velocity (world frame): {what}" + log_title,
                    ["vx [m/s]", "vy [m/s]", "vz [m/s]"],
                    out("body_velocity_tracking"), show, dpi)
 
         # Roll and pitch rate are always commanded to zero; only yaw rate is
         # a real setpoint (MdlTrot_bodyref[7]).
-        cmd_rate = np.zeros((len(t), 3))
-        cmd_rate[:, 2] = bodyref[:, 7]
+        cmd_rate = None
+        if bodyref is not None:
+            cmd_rate = np.zeros((len(t), 3))
+            cmd_rate[:, 2] = bodyref[:, 7]
         triple_plot(t, cmd_rate, qvel[:, 3:6],
-                   "Body angular velocity (body frame): commanded vs actual\n"
+                   f"Body angular velocity (body frame): {what}\n"
                    "(roll and pitch rate are always commanded to zero)"
                    + log_title,
                    ["roll rate [rad/s]", "pitch rate [rad/s]", "yaw rate [rad/s]"],
                    out("body_angular_velocity_tracking"), show, dpi)
 
     # -- Body reference: desired position/yaw vs measured.
-    if "MdlTrot_bodyref" not in data or "MdlSimDriver_qpos" not in data:
-        print("note: 'MdlTrot_bodyref' or 'MdlSimDriver_qpos' is not in this "
-              "log; skipping body_reference.")
-    else:
+    note = missing_note(data, "MdlSimDriver_qpos")
+    if note:
+        print(f"note: {note}; skipping body_reference.")
+    elif "MdlTrot_bodyref" in data:
         bodyref = require(data, "MdlTrot_bodyref", 12, "body reference command")
         qpos = require(data, "MdlSimDriver_qpos", 3, "body position truth")
         body_reference_plot(
@@ -407,20 +518,28 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, dpi):
             bodyref[:, 11],
             "Body reference: desired vs measured position and yaw" + log_title,
             out("body_reference"), show, dpi)
+    else:
+        # The note was already printed with the velocity figures above.
+        qpos = require(data, "MdlSimDriver_qpos", 7,
+                       "body position and orientation")
+        body_reference_plot(
+            t, None, qpos[:, 0:3], None, quat_yaw(qpos[:, 3:7]), None,
+            "Body pose: measured position and yaw" + log_title,
+            out("body_reference"), show, dpi)
 
     # -- Foot reference, one figure per leg.
-    have_foot = "MdlTrot_footref" in data and "MdlPosVelEstimator_foottruth" in data \
-        and "MdlSimDriver_qpos" in data and "MdlTrot_contact" in data
-    if not have_foot:
-        print("note: 'MdlTrot_footref', 'MdlPosVelEstimator_foottruth', "
-              "'MdlSimDriver_qpos' or 'MdlTrot_contact' is not in this log; "
-              "skipping foot_reference_<LEG>.")
+    note = missing_note(data, "MdlPosVelEstimator_foottruth", "MdlSimDriver_qpos")
+    if note:
+        print(f"note: {note}; skipping foot_reference_<LEG>. Add what is "
+              "missing to supervisor.log.vars and re-record.")
     else:
-        footref = require(data, "MdlTrot_footref", 36, "commanded foot state")
         foottruth = require(data, "MdlPosVelEstimator_foottruth", 12,
                             "measured foot position, world frame")
         qpos = require(data, "MdlSimDriver_qpos", 7, "body position and orientation")
-        contact = require(data, "MdlTrot_contact", 4, "gait contact schedule")
+        footref = optional(data, "MdlTrot_footref", 36, "commanded foot state",
+                           "foot_reference_<LEG> shows the measured foot "
+                           "position alone, with no commanded trace.")
+        what = "commanded vs measured" if footref is not None else "measured"
 
         # World-frame foot position relative to the base, rotated into the
         # body frame with R_bw = R_wb^T, so it lives in the same frame as
@@ -429,13 +548,13 @@ def plot_log(logfile, log_tag, outdir, start, stop, show, dpi):
         for leg, name in enumerate(LEG_NAMES):
             rel_world = foottruth[:, 3 * leg:3 * leg + 3] - base_pos
             meas_body = quat_rotate(qpos[:, 3:7], rel_world, inverse=True)
-            cmd_body = footref[:, 9 * leg:9 * leg + 3]
+            cmd_body = None if footref is None else footref[:, 9 * leg:9 * leg + 3]
             triple_plot(t, cmd_body, meas_body,
-                       f"{name} foot reference (body frame): commanded vs measured\n"
-                       "(shaded: scheduled swing)" + log_title,
+                       f"{name} foot position (body frame): {what}"
+                       + swing_note + log_title,
                        [f"{a} [m]" for a in AXES],
                        out(f"foot_reference_{name}"), show, dpi,
-                       shade_contact=contact[:, leg])
+                       shade_contact=None if contact is None else contact[:, leg])
 
 
 def main():

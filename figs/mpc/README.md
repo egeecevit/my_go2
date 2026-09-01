@@ -36,14 +36,24 @@ The `body_reference` yaw panel shades `measured yaw +/- MdlTrot_bodyref[11]`,
 the clamp band the controller enforces, so it is visible directly on the plot
 whether the clamp is binding rather than having to cross-reference the config.
 
-The `foot_reference` figures shade intervals where `MdlTrot_contact` says the
-leg is scheduled to swing (`contact < 0.5`). That is the gait *schedule*, not
-measured ground contact, so the shading reads gait phase, useful for judging
-whether tracking lag concentrates at touchdown/liftoff.
+The `foot_reference` and `torque` figures shade intervals where
+`MdlTrot_contact` says the leg is scheduled to swing (`contact < 0.5`). That is
+the gait *schedule*, not measured ground contact, so the shading reads gait
+phase, useful for judging whether tracking lag concentrates at
+touchdown/liftoff. A log without `MdlTrot_contact` falls back to
+`MdlPosVelEstimator_contacts`, the estimator's contact trust ramp over the same
+footfalls; the subtitle then says so, since it is a different quantity.
 
-Every figure is skipped with a printed note, not a hard error, when the
-variables it needs are absent, so an older log recorded before a variable was
-added to `supervisor.log.vars` still plots everything else.
+## Logs missing a variable
+
+Nothing here is a hard error. A missing *command* -- `MdlTrot_torquereq`,
+`MdlTrot_bodyref`, `MdlTrot_footref` -- still produces the figure from the
+measured trace alone (applied torque against the limit, actual body velocity,
+measured foot position), annotated with mean and rms in place of a tracking
+error. Only a missing *measurement* -- `MdlSimDriver_ctrl`, `MdlSimDriver_qvel`,
+`MdlSimDriver_qpos`, `MdlPosVelEstimator_foottruth` -- drops a figure, and the
+printed note then names only the variable actually absent rather than every
+variable the figure could use.
 
 ## Recording a log
 

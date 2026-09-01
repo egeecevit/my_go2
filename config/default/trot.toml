@@ -22,7 +22,7 @@
 # enough that the swing foot never leaves the leg's comfortable workspace.
 # Raise it and raise period or duty along with it.
 
-forward_velocity = 1.05   # v_x [m/s], positive is forward
+forward_velocity = 0.55   # v_x [m/s], positive is forward
 lateral_velocity = 0.0    # v_y [m/s], positive is left
 yaw_rate         = 0.0    # [rad/s], positive turns left
 

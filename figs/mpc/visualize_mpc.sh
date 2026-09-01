@@ -33,8 +33,10 @@ filenames are used:
   foot_reference_FL.png  foot_reference_FR.png
   foot_reference_RL.png  foot_reference_RR.png
 
-Any figure whose log variables are missing is skipped with a printed note
-instead of aborting the run, so an older log still plots what it can.
+A missing variable is never fatal. A figure whose commanded trace is absent
+(MdlTrot_torquereq, MdlTrot_bodyref, MdlTrot_footref) is still written from the
+measured trace alone; only a missing measurement skips one, with a note naming
+the variable actually absent.
 
 With two logs, each filename gains a <LOG> suffix, using the corresponding log
 filename without its extension, for example torque_FL_mpcrun.png.

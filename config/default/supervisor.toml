@@ -17,7 +17,7 @@ log = {
   start = 3,
 
   # Log every nth module manager cycle (default: 1)
-  period = 1
+  period = 10
 
   # List of variables to log. The estimator entries pair the two stages'
   # output with MdlSimDriver_qpos/qvel ground truth in one time-aligned file,
@@ -36,6 +36,13 @@ log = {
   # failure mode when it overflows is a "Failed to add <name>" warning on the
   # *last* variable that fit, which reads as a misspelling.
   #
+  # Two sets below, and exactly one of them must be uncommented: both come to
+  # 125 doubles, so neither has room to absorb the other and swapping the
+  # comment markers is the only way to record the other one.
+  #
+  # (a) Estimator set, for figs/estimation/plot_estimation.py: both stages'
+  # output beside MdlSimDriver_qpos/qvel ground truth, time-aligned in one file.
+  #
   # Two entries were dropped to make room. MdlSimDriver_qacc: the acceleration
   # the estimator actually consumes is already in MdlOrientationEstimator_state,
   # and the generalized acceleration is of little use offline.
@@ -45,13 +52,25 @@ log = {
   # entry and exit ramp scales, is the same trade: two doubles, and the only
   # thing in the log that separates a command the robot failed to track from one
   # that was never given. Swap it in when a transition is what is being studied.
+  #
   vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
         "MdlOrientationEstimator_state", "MdlOrientationEstimator_filter",
         "MdlPosVelEstimator_state", "MdlPosVelEstimator_footholds",
         "MdlPosVelEstimator_error",
         "MdlPosVelEstimator_contacts", "MdlPosVelEstimator_footerr",
         "MdlPosVelEstimator_foottruth"],
-
+  #
+  # (b) MPC/trot set, for figs/mpc/plot_mpc.py: the commanded signals that
+  # script compares against ground truth -- torquereq against MdlSimDriver_ctrl,
+  # bodyref against qvel/qpos, footref against foottruth, plus MdlTrot_contact
+  # for the swing shading. MdlTrot_footref is 36 doubles by itself, which is
+  # what displaces the estimator entries. Recording set (a) instead does not
+  # break that script: it still writes every figure, but from the measured
+  # traces alone, with nothing commanded to compare them against.
+  # vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
+  #       "MdlTrot_torquereq", "MdlTrot_footref", "MdlTrot_contact",
+  #       "MdlTrot_bodyref", "MdlPosVelEstimator_foottruth"],
+  #
   # "ascii", "raw" or "matlab"
   file_format = "matlab",
   file_name   = "deneme.mat"

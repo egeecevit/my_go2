@@ -2,8 +2,12 @@
 
 Plots `MdlOrientationEstimator` and `MdlPosVelEstimator` against the simulator's
 own state for one or two logs. One figure per quantity and log, three subplots
-for x, y and z, ground truth in solid blue and the estimate in solid red on every
-one. When two logs are supplied, `<LOG>` is the corresponding log's filename
+for x, y and z, ground truth as a dashed blue line drawn over the estimate's
+solid vermillion one on every one -- the colourblind-safe palette
+`figs/mpc/plot_mpc.py` uses, with the dash pattern carrying the distinction so
+the two stay tellable apart where they agree, which is the normal case here.
+Where a figure also shows the unprocessed sensor reading it is orange and sits
+underneath both. When two logs are supplied, `<LOG>` is the corresponding log's filename
 without its `.mat` extension; with one log, the original unsuffixed filenames
 are retained.
 
