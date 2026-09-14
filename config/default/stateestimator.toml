@@ -46,7 +46,7 @@ zero_initial_yaw = false
 # the "cheater" estimator of the MIT sources. With a perfect attitude, whatever
 # error remains belongs to the position and velocity filter, which is the first
 # thing worth establishing when the estimate looks wrong.
-use_ground_truth = false
+use_ground_truth = true
 
 # ---- ATTITUDE SOURCE
 #
@@ -76,7 +76,7 @@ use_ground_truth = false
 # subsequent quaternions are ignored. Its implied gravity vector also seeds the
 # acceleration history, so a dynamic accelerometer sample at enable cannot be
 # preserved as false gravity for accel_filter_tau seconds.
-attitude_source = "filter"
+attitude_source = "imu"
 
 # Proportional gain, kappa in equation (19) [1/s]. The de-drifting time constant
 # is roughly its reciprocal. Larger tracks gravity harder and lets more of the
@@ -330,7 +330,7 @@ enable = true
 # Simulation only. Pair with orientationestimator.use_ground_truth to bisect a
 # problem: perfect attitude with the real filter tests the filter, and the
 # reverse tests everything downstream of it.
-use_ground_truth = false
+use_ground_truth = true
 
 # ---- KALMAN FILTER NOISE
 

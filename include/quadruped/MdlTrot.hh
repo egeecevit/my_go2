@@ -257,6 +257,26 @@ class MdlTrot : public rtcore::Module {
     this module has updated, and anything cached would always be one cycle old. */
   bool getStancePhase(double phase[NUM_LEGS]) const;
 
+  /** \brief Raibert velocity feedback plus the yaw centrifugal skew, the two
+      additive corrections to the symmetric touchdown point (paper Eq. 12,
+      terms 2 and 3; the shoulder projection of Eq. 13 is not included -- see
+      _startSwing). Body frame, horizontal only: both inputs' z is ignored.
+
+    vMeasured/vCommanded are the same filtered estimate and command the stance
+    sweep is built on, omega_z the commanded yaw rate, height the commanded
+    stance height (positive) and gravity the MPC's rigid body model constant,
+    so the centrifugal term stays consistent with the horizon the solver is
+    actually running. centrifugalEnable zeroes the third term, which has
+    nothing to contribute on a straight trot anyway.
+
+    Static and free of module state so a unit test can pin the formula without
+    a full MdlTrot instance. */
+  static Eigen::Vector3d touchdownFeedback(const Eigen::Vector3d& vMeasured,
+                                           const Eigen::Vector3d& vCommanded,
+                                           double raibertGain, double omega_z,
+                                           double height, double gravity,
+                                           bool centrifugalEnable);
+
  private:
   enum class _state_t { WAIT, PREP, TROT, STOPPING, CENTERING, DONE };
 
@@ -370,6 +390,11 @@ class MdlTrot : public rtcore::Module {
   Eigen::Vector3d _vfilt = Eigen::Vector3d::Zero();
   bool _vfiltValid = false;
   double _stanceVelocityFeedback = 0.25;
+
+  // Raibert touchdown feedback gain and the centrifugal term's on/off switch.
+  // See touchdownFeedback() and its call in _startSwing.
+  double _raibertGain = 0.03;
+  bool _centrifugalTerm = true;
 
   // -- MPC cadence and result ------------------------------------------------
   MdlConvexMPC::output_t _mpcOut;

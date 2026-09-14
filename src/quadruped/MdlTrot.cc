@@ -322,6 +322,10 @@ void MdlTrot::_readConfig() {
   if (!(_stanceVelocityFeedback >= 0.0)) _stanceVelocityFeedback = 0.0;
   if (_stanceVelocityFeedback > 1.0) _stanceVelocityFeedback = 1.0;
 
+  _raibertGain = config.getDouble("raibert_gain", _raibertGain);
+  if (!(_raibertGain >= 0.0)) _raibertGain = 0.0;
+  _centrifugalTerm = config.getBool("centrifugal_term", _centrifugalTerm);
+
   TrotGait::params_t gp;
   gp.period = config.getDouble("period", gp.period);
   gp.duty = config.getDouble("duty", gp.duty);
@@ -898,13 +902,44 @@ void MdlTrot::_updateGaitScales(double elapsed) {
   _liftScaleDDot = 0.0;
 }
 
+Eigen::Vector3d MdlTrot::touchdownFeedback(const Eigen::Vector3d& vMeasured,
+                                           const Eigen::Vector3d& vCommanded,
+                                           double raibertGain, double omega_z,
+                                           double height, double gravity,
+                                           bool centrifugalEnable) {
+  // Paper Eq. (12)/(14), k = 0.03 in Sec. III-C. Slower than commanded makes
+  // (v - v_cmd) negative, which plants the foot further back than the
+  // symmetric point; the stance that follows then sweeps a longer stride
+  // under the body and accelerates it toward the command. The opposite sign
+  // would plant further forward on a shortfall, braking it further -- a
+  // divergent runaway rather than a correction.
+  Eigen::Vector3d fb = raibertGain * (vMeasured - vCommanded);
+  fb.z() = 0.0;
+
+  if (centrifugalEnable) {
+    // Eq. (12)/(15): zero on a straight trot (omega_z == 0), and otherwise
+    // skews the footprint to anticipate the turn.
+    const Eigen::Vector3d omega(0.0, 0.0, omega_z);
+    fb += 0.5 * std::sqrt(height / gravity) * vMeasured.cross(omega);
+  }
+  return fb;
+}
+
 bool MdlTrot::_startSwing(int leg, double elapsed, double duration) {
   Eigen::Vector3d position, velocity;
   if (!_legs[leg]->getFootState(position, velocity)) return false;
   const Eigen::Vector3d stanceVelocity = _stanceVelocity(leg);
   const double stanceTime = _gait.getParams().duty * _gait.getParams().period;
+  // Eq. (13)'s shoulder projection is deliberately not added here: it
+  // reprojects the hip to the predicted world pose at touchdown, which only
+  // matters for a world-frame formulation. This touchdown point is expressed
+  // in the body frame and the swing controller tracks it there, so the foot
+  // lands at this offset relative to the body wherever the body has actually
+  // got to by touchdown -- the projection is already implicit.
   const Eigen::Vector3d touchdown =
-      _originFoot(leg) - 0.5 * stanceTime * stanceVelocity;
+      _originFoot(leg) - 0.5 * stanceTime * stanceVelocity +
+      touchdownFeedback(_vfilt, _twistCommand(), _raibertGain, _yawRateCommand(),
+                        std::fabs(_origin[2]), _mpc->getParams().gravity, _centrifugalTerm);
   if (!_swingTrajectory[leg].reset(position, velocity, touchdown, stanceVelocity,
                                    duration, _gait.getParams().swing_height))
     return false;

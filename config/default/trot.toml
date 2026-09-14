@@ -22,7 +22,7 @@
 # enough that the swing foot never leaves the leg's comfortable workspace.
 # Raise it and raise period or duty along with it.
 
-forward_velocity = 0.55   # v_x [m/s], positive is forward
+forward_velocity = 0.95   # v_x [m/s], positive is forward
 lateral_velocity = 0.0    # v_y [m/s], positive is left
 yaw_rate         = 0.0    # [rad/s], positive turns left
 
@@ -42,10 +42,24 @@ velocity_filter_tau = 0.1   # [s]
 # pure commanded stride and one restores pure estimated-velocity sweep.
 stance_velocity_feedback = 0.25
 
+# Raibert velocity feedback on the touchdown point (paper equation 12/14):
+# k * (v_measured - v_commanded), horizontal only. This is what actually closes
+# the speed loop through footstep placement; stance_velocity_feedback above
+# only changes how far the stance sweep itself is allowed to track the
+# estimate, it does not touch where the foot is planted. 0.03 is the value the
+# paper gives in Section III-C.
+raibert_gain = 0.03
+
+# Gates the centrifugal touchdown skew (equation 12/15), 0.5*sqrt(h/g)*(v x
+# omega_cmd). It only produces anything while turning, so leaving it on costs
+# nothing on a straight trot; the switch exists for isolating the Raibert term
+# above during tuning.
+centrifugal_term = true
+
 # ---- GAIT
 
 # Duration of one full cycle. Each leg spends duty of it planted.
-period = 0.5              # [s]
+period = 0.3              # [s]
 
 # Stance fraction. 0.5 is a pure trot, with one diagonal pair landing exactly
 # as the other lifts. Above 0.5 the pairs overlap, so there are brief intervals

@@ -62,9 +62,11 @@ dt = 0.01                 # [s]
 # Five times worse, saturating rather than continuing to degrade, and just as bad
 # on a perfect state estimate -- so this is the controller, not the estimator.
 #
-# Adjudicated in reports/mpc/horizon_adjudication.html with a per-solve
+# Adjudicated in reports/mpc/archive/horizon_adjudication.html with a per-solve
 # prediction audit (dump_path below): the reason is the MODEL, not the
-# reference. The assembly is verified consistent to 1e-7 by
+# reference. CAVEAT: that report's crossover metric is unsound and its
+# central conclusion is void -- see reports/mpc/README.md. The assembly is
+# verified consistent to 1e-7 by
 # test_discretization_consistency; what fails is prediction. The single rigid
 # body stops describing this robot at the next touchdown -- the legs are 55% of
 # the mass and the contact transient takes ~0.12 s to settle, neither of which
@@ -97,8 +99,52 @@ dt = 0.01                 # [s]
 # Raise max_working_set with this. At 600 variables the 250 recalculations below
 # will not be enough, and the symptom is MdlTrot aborting on failed solves rather
 # than anything that looks like a tuning problem.
-horizon = 20
-
+# MEASURED 2026-09-14 at 0.95 m/s, period 0.3 (stance 0.15 s), ground truth, 40 s autorun,
+# after correcting go2.xml's joint damping. Controlled two ways, because an earlier version
+# of this comment asserted a rule that was WRONG -- see the retraction below.
+#
+#   dt     horizon  lookahead  lookahead/stance  achieved v_x  pitch mean  solve p50
+#   0.01   15       0.15 s     1.0x               -3.9 %       -0.439 deg  0.141 ms
+#   0.01   20       0.20 s     1.3x               -3.9 %       -0.495 deg  0.294 ms
+#   0.01   50       0.50 s     3.3x               -3.7 %       -0.437 deg  4.748 ms
+#   0.05    3       0.15 s     1.0x              -10.4 %       +0.154 deg  0.011 ms
+#   0.05   15       0.75 s     5x                -10.4 %       +0.443 deg  0.851 ms
+#   0.05   30       1.50 s    10x                -10.4 %       +0.451 deg  7.673 ms
+#
+# All six completed 40 s without falling. Read it two ways:
+#
+#   Hold dt, vary lookahead: at dt=0.01, 0.15 -> 0.50 s moves v_x by 0.2 points, i.e. noise.
+#   At dt=0.05, 0.15 -> 0.75 -> 1.50 s gives -10.4 % three times, identical to the digit.
+#   LOOKAHEAD DOES NOT MATTER, even at ten times the stance duration.
+#
+#   Hold lookahead, vary dt: at a matched 0.15 s lookahead, dt 0.01 -> 0.05 costs 6.5 points
+#   of speed tracking. dt IS THE VARIABLE THAT MATTERS.
+#
+# The mechanism is the one the dt section above already gives: MdlTrot builds the contact
+# schedule at tk = elapsed + k*dt, so a touchdown is quantized to a dt cell -- at dt = 0.05
+# against a 150 ms stance that is 33 % timing error on the contact events, plus a coarser
+# ZOH of the dynamics. Choose dt for contact-timing resolution; choose horizon for what you
+# are willing to pay in solve time.
+#
+# NOTE ON THE CURRENT SETTING: dt = 0.05 is stable and cheap, but it tracks 10.4 % under the
+# commanded speed against 3.9 % at dt = 0.01. If speed tracking matters, that is the knob.
+#
+# RETRACTED: a previous version of this comment claimed "horizon * dt <= duty * period" --
+# that lookahead must not exceed the stance duration -- and cited a "model valid to" figure
+# from the mpc.dump_path prediction audit. Both are withdrawn. The rule is falsified by the
+# last two rows above. The metric behind it is unsound: the crossover step it reports tracks
+# the configured horizon (step 14 at H15, 19 at H20, 27 at H30, 37 at H40, all at dt=0.01)
+# rather than any property of the robot, because the QP minimizes deviation from the
+# reference and its plan therefore converges toward that reference across the horizon -- the
+# two error curves meet asymptotically, and where they meet is a property of the horizon. At
+# dt = 0.05 the same metric declares the plan invalid at step 0 for configurations that then
+# walk for 40 s. Do not read that number as a validity limit.
+#
+# What does still bound the horizon is solve cost. MdlTrot::_solveMPC() runs SYNCHRONOUSLY
+# inside the 1 kHz module loop, so 1 ms is the real budget, not the 10 ms replan period.
+# Headless runs set simulation.realtime = false and the clock reads sim time, so a late solve
+# is invisible here and would be a hard failure on hardware.
+horizon = 15
 # How often the QP is re-solved. Separate from dt so that the lookahead and the
 # reaction time can be chosen independently: before the split, dt was both, and
 # lengthening the horizon silently slowed the controller.
