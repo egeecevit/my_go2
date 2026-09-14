@@ -18,3 +18,14 @@ target_link_libraries(test_go2_leg_dynamics quadruped mujoco::mujoco rtcore rtcl
 add_test(NAME test_go2_leg_dynamics
          COMMAND test_go2_leg_dynamics
                  ${CMAKE_SOURCE_DIR}/models/unitree_go2/scene.xml)
+
+# Links mujocohw (for MdlSimDriver::getFootGRF()/setModelForTesting()) as well
+# as quadruped (for MdlLegControl/QuadrupedKinematics, used to build a real
+# standing feedforward torque, same as test_stance_force_sign.cc). mujocohw
+# already carries SimHW.o's HARDWARE_IMPL(ClockHW/MotorHW/IMUHW), so unlike
+# the mujoco-only tests above, this one must not declare them again.
+add_executable(test_sim_grf test_sim_grf.cc)
+target_link_libraries(test_sim_grf mujocohw quadruped mujoco::mujoco rtcore rtclient)
+add_test(NAME test_sim_grf
+         COMMAND test_sim_grf
+                 ${CMAKE_SOURCE_DIR}/models/unitree_go2/scene.xml)

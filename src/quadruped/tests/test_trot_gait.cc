@@ -686,6 +686,66 @@ void test_mpc_solve_schedule_uses_integer_deadlines() {
   std::cout << "  PASS" << std::endl;
 }
 
+// MdlTrot::touchdownFeedback adds the Raibert velocity term and the yaw
+// centrifugal skew (paper equation 12, terms 2 and 3) to the touchdown point
+// computed in _startSwing. It is static and independent of module state
+// precisely so it can be pinned here without standing up a full MdlTrot.
+void test_touchdown_feedback() {
+  std::cout << "test_touchdown_feedback..." << std::endl;
+
+  // Zero velocity error and zero yaw rate must give an exactly zero
+  // correction, so adding it to the pre-existing touchdown formula leaves
+  // that formula bit-identical to what it computed before this feedback
+  // existed.
+  {
+    const Eigen::Vector3d v(0.83, 0.02, 0.0);
+    const Eigen::Vector3d fb = MdlTrot::touchdownFeedback(v, v, 0.03, 0.0, 0.28, 9.81, true);
+    T_VEC_NEAR(fb, Eigen::Vector3d::Zero(), 0.0, "zero-error touchdown feedback");
+  }
+
+  // Raibert term alone (yaw rate zero keeps the centrifugal term zero
+  // regardless of centrifugalEnable). Travelling slower than commanded in x
+  // must pull the touchdown point backward (negative x correction): a stance
+  // that starts further back sweeps a longer stride under the body and
+  // accelerates it toward the command. The opposite sign would plant further
+  // forward on a shortfall, braking it further -- a divergent runaway.
+  {
+    const Eigen::Vector3d vMeasured(0.83, 0.0, 0.0);
+    const Eigen::Vector3d vCommanded(0.95, 0.0, 0.0);
+    const double k = 0.03;
+    const Eigen::Vector3d fb =
+        MdlTrot::touchdownFeedback(vMeasured, vCommanded, k, 0.0, 0.28, 9.81, true);
+    const Eigen::Vector3d want(k * (0.83 - 0.95), 0.0, 0.0);
+    T_VEC_NEAR(fb, want, 1e-12, "raibert-only touchdown feedback");
+    T_CHECK(fb.x() < 0.0);  // slower than commanded -> plant further back
+  }
+
+  // Centrifugal term alone (raibert gain zero isolates it): only the yaw rate
+  // and the velocity it couples with produce anything.
+  {
+    const Eigen::Vector3d v(1.0, 0.0, 0.0);
+    const double omega_z = 1.0;
+    const double h = 0.28, g = 9.81;
+    const Eigen::Vector3d fb =
+        MdlTrot::touchdownFeedback(v, Eigen::Vector3d::Zero(), 0.0, omega_z, h, g, true);
+    const Eigen::Vector3d omega(0.0, 0.0, omega_z);
+    const Eigen::Vector3d want = 0.5 * std::sqrt(h / g) * v.cross(omega);
+    T_VEC_NEAR(fb, want, 1e-12, "centrifugal-only touchdown feedback");
+    T_CHECK(fb.x() == 0.0);
+  }
+
+  // The gate actually gates: same turning inputs, disabled, must drop the
+  // centrifugal contribution to zero.
+  {
+    const Eigen::Vector3d v(1.0, 0.0, 0.0);
+    const Eigen::Vector3d fb =
+        MdlTrot::touchdownFeedback(v, Eigen::Vector3d::Zero(), 0.0, 1.0, 0.28, 9.81, false);
+    T_VEC_NEAR(fb, Eigen::Vector3d::Zero(), 0.0, "centrifugal term gated off");
+  }
+
+  std::cout << "  PASS" << std::endl;
+}
+
 int main() {
   std::cout << "=== Trot Gait Tests ===" << std::endl;
   test_phase_schedule();
@@ -701,6 +761,7 @@ int main() {
   test_future_horizon_samples();
   test_stateful_swing_is_c2_and_frozen();
   test_mpc_solve_schedule_uses_integer_deadlines();
+  test_touchdown_feedback();
   std::cout << "All trot gait tests passed." << std::endl;
   return 0;
 }

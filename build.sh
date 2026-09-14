@@ -29,7 +29,7 @@ simulation | go1 | robot)
   mkdir -p "$BUILD_DIR"
   cd "$BUILD_DIR"
   echo "Configuring for target: $1"
-  cmake .. -DHARDWARE_TARGET="$1" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CXX_FLAGS="-Wno-error=non-c-typedef-for-linkage"
+  cmake .. -DHARDWARE_TARGET="$1" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
   ln -sf build/compile_commands.json "$SCRIPT_DIR/compile_commands.json"
   echo "Building..."
   cmake --build .

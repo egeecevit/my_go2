@@ -14,3 +14,6 @@ docs/design/*.log
 docs/design/*.out
 docs/design/*.toc
 docs/design/*.synctex.gz
+
+# Headless experiment outputs from figs/mpc/run_cell.sh
+runs/
