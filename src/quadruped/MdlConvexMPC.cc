@@ -14,10 +14,7 @@
 #include <cmath>
 #include <cstdio>
 
-// Used by the zero-order-hold discretization in _discretizeDynamics(). Left in
-// deliberately: the augmented matrix exponential is the one place this module
-// needs anything beyond Eigen/Dense, and hunting for the header is not part of
-// the exercise.
+// Matrix exponential used for zero-order-hold discretization.
 #include <unsupported/Eigen/MatrixFunctions>
 
 #include "rtcore/ConfigTable.hh"
@@ -26,7 +23,7 @@
 
 using namespace rtcore;
 
-// Comment in/out beyond printf to enable/disable debug messages
+// Uncomment printf in DBGPRINT to enable debug messages.
 #define DBGPRINT(...)  // printf(__VA_ARGS__)
 
 MdlConvexMPC::MdlConvexMPC() : Module(MPCMODULE_NAME, 0, SINGLE_USER) {
@@ -62,10 +59,7 @@ void MdlConvexMPC::init() {
 
   _readConfig();
 
-  // Everything in [mpc] either describes the robot or changes the optimization
-  // problem, so there is no defensible fallback. A wrong mass or inertia does
-  // not fail loudly at run time; it produces confidently wrong forces, which is
-  // far harder to notice than a refusal to start.
+  // Validate the complete configuration before constructing the solver.
   if (!reset())
     _mgr->fatalError(MPCMODULE_NAME,
                      "[mpc] does not describe a usable robot; see mpc.toml");
@@ -101,10 +95,7 @@ void MdlConvexMPC::uninit() {
 void MdlConvexMPC::activate() {
   DBGPRINT("MdlConvexMPC::activate\n");
 
-  // A warm start is only worth having if the previous active set came from a
-  // problem resembling this one. Across an activation boundary the robot has
-  // been doing something else entirely, so the stored one is discarded and the
-  // next solve pays for a cold init().
+  // A new activation starts qpOASES without a previous active set.
   _qpInitialized = false;
   _last = output_t();
   _solveTime = 0.0;
@@ -115,9 +106,7 @@ void MdlConvexMPC::activate() {
 void MdlConvexMPC::deactivate() { DBGPRINT("MdlConvexMPC::deactivate\n"); }
 
 void MdlConvexMPC::update() {
-  // Deliberately empty. This is a service module: the owner calls solve()
-  // synchronously at its own cadence, so a scheduled update would only be able
-  // to hand back forces computed for the previous cycle's state.
+  // solve() is called synchronously by the owning controller.
 }
 
 // ---------------------------------------------------------------------------
@@ -131,8 +120,7 @@ void MdlConvexMPC::_readConfig() {
 
   params_t p;
   p.dt = config.getDouble("dt", -1.0);
-  // Zero is the documented "follow dt", so it cannot use the -1 sentinel that
-  // marks a key with no defensible fallback. reset() resolves it.
+  // Zero follows dt; reset() resolves it after loading all parameters.
   p.solve_period = config.getDouble("solve_period", 0.0);
   p.horizon = (int)config.getInt("horizon", p.horizon);
   p.mass = config.getDouble("mass", -1.0);
@@ -155,7 +143,7 @@ void MdlConvexMPC::_readConfig() {
 
   ConfigArray inertia;
   if (config.getArray("inertia_body", inertia) && inertia.size() == 9) {
-    // Row major, matching how it is written in the file.
+    // Config arrays use row-major order.
     for (int r = 0; r < 3; r++)
       for (int c = 0; c < 3; c++) p.inertia_body(r, c) = inertia.getDoubleAt(3 * r + c, 0.0);
   } else {
@@ -176,7 +164,7 @@ void MdlConvexMPC::_readConfig() {
 
 void MdlConvexMPC::setParams(const params_t& params) {
   _params = params;
-  // Nothing is usable until reset() has vetted these and sized the solver.
+  // Parameters take effect after reset() validates and sizes the solver.
   _ready = false;
 }
 
@@ -187,22 +175,14 @@ void MdlConvexMPC::setParams(const params_t& params) {
 bool MdlConvexMPC::reset() {
   _ready = false;
 
-  // Validation, in the order a mistake is likely to be made. Written so that
-  // NaN fails every test rather than sliding through a > comparison.
+  // Reject invalid values before allocating solver matrices.
   if (!(_params.dt > 0.0) || !std::isfinite(_params.dt)) return false;
-  // A horizon past MAX_HORIZON would run off the end of the input arrays and of
-  // _Ad/_Bd, so it is a refusal rather than a clamp: silently solving a shorter
-  // problem than the caller asked for is worse than not starting.
+  // Reject oversized horizons before indexing fixed-size arrays.
   if (_params.horizon < 1 || _params.horizon > MAX_HORIZON) return false;
-  // Resolved here rather than at the call site so getParams() always reports the
-  // period actually in force, and so a config that never mentions it behaves
-  // exactly as it did when the horizon step was also the solve interval.
+  // Resolve a nonpositive period to the model timestep.
   if (!(_params.solve_period > 0.0) || !std::isfinite(_params.solve_period))
     _params.solve_period = _params.dt;
-  // Accepted with a warning rather than refused: u_0 is planned as the force
-  // for exactly one dt, so holding it for n dt multiplies the intended impulse
-  // by n. Measured to break the gait, and expectedly so, but a deliberate
-  // experiment is allowed to do it on purpose.
+  // Warn when the command hold period exceeds the model interval.
   if (_params.solve_period > _params.dt && _mgr)
     _mgr->warning(MPCMODULE_NAME,
                   "solve_period %.4f > dt %.4f: u_0 will be held past the "
@@ -216,9 +196,7 @@ bool MdlConvexMPC::reset() {
   if (!(_params.force_min >= 0.0) || !std::isfinite(_params.force_min)) return false;
   if (!(_params.force_max > _params.force_min) || !std::isfinite(_params.force_max))
     return false;
-  // Strictly positive: alpha is the only thing making the condensed Hessian
-  // positive definite once a foot is airborne for the whole horizon, which
-  // zeroes its columns of B_qp.
+  // Positive force regularization keeps the condensed Hessian positive definite.
   if (!(_params.force_weight > 0.0) || !std::isfinite(_params.force_weight)) return false;
   if (!(_params.terminal_weight_scale > 0.0) ||
       !std::isfinite(_params.terminal_weight_scale))
@@ -228,9 +206,7 @@ bool MdlConvexMPC::reset() {
     if (!(_params.state_weights[i] >= 0.0) || !std::isfinite(_params.state_weights[i]))
       return false;
 
-  // An inertia that is not symmetric positive definite is not an inertia, and
-  // chunk A inverts it. Catching it here rather than at the first solve means
-  // the message names the config file.
+  // Require a finite symmetric positive-definite inertia matrix.
   const Eigen::Matrix3d& I = _params.inertia_body;
   if ((I - I.transpose()).cwiseAbs().maxCoeff() > 1e-9 * I.cwiseAbs().maxCoeff())
     return false;
@@ -265,25 +241,22 @@ bool MdlConvexMPC::reset() {
   _We.setZero(NX);
   _Xpred.setZero(NX);
 
-  // A dump left open across a reset would change record size mid-file whenever
-  // the horizon moved; close it and let the next solve reopen fresh.
+  // Reopen dumps with a fresh record size after horizon changes.
   if (_dumpFile) {
     std::fclose(_dumpFile);
     _dumpFile = nullptr;
   }
 
-  // State cost, repeated over the horizon, with the last step scaled by the
-  // terminal multiplier. The gravity state gets weight zero: it is a constant
-  // carried along to make the model affine, not something to track.
+  // Repeat state weights across the horizon and scale the terminal step.
+  // The affine gravity state has zero tracking weight.
   for (int k = 0; k < H; k++) {
     const double s = (k == H - 1) ? _params.terminal_weight_scale : 1.0;
     for (int i = 0; i < NS - 1; i++) _L[k * NS + i] = s * _params.state_weights[i];
     _L[k * NS + NS - 1] = 0.0;
   }
 
-  // Contact schedules determine the compact QP dimensions, so the solver is
-  // constructed on the first solve rather than here.  A reset deliberately
-  // discards the old active set even if the next dimensions happen to match.
+  // Build qpOASES lazily because contact schedules set the active dimensions.
+  // Reset invalidates the previous active set.
   delete _qp;
   _qp = nullptr;
   _qpVars = 0;
@@ -303,21 +276,8 @@ bool MdlConvexMPC::reset() {
 bool MdlConvexMPC::_discretizeDynamics(double yaw,
                                        const Eigen::Matrix<double, 3, NUM_LEGS>& moment_arms,
                                        StateMatrix& Ad, InputMatrix& Bd) const {
-  // TODO(ege): implement
-  //
-  // - Fill only the nonzero blocks of the continuous A_c (13x13): the
-  //   Theta_dot = Rz(yaw)^T * omega_W block, the p_dot = v identity block, and
-  //   the gravity column feeding v_dot.z from the 13th state. Everything else
-  //   is zero.
-  // - B_c (13x12), per leg i: I_W^-1 * [r_i]_x into the omega rows and
-  //   (1/m) * I3 into the v rows, with I_W = Rz(yaw) * I_B * Rz(yaw)^T and r_i
-  //   the corresponding column of moment_arms.
-  // - Discretize with the augmented matrix exponential
-  //   exp(dt * [A_c B_c; 0 0]) (Eigen's unsupported MatrixFunctions, .exp());
-  //   do not substitute forward Euler.
-  // - Gotchas: A_c is built once at the mean reference yaw but B_c is fresh for
-  //   every horizon step, and the gravity state carries the value -g, so the
-  //   column signs have to come out as v_dot.z = ... + g_z.
+  // Build yaw-linearized dynamics with gravity as the final affine state, then
+  // discretize them with a zero-order-hold matrix exponential.
   StateMatrix Ac = StateMatrix::Zero();
   Eigen::AngleAxisd rotation_vector(yaw, Eigen::Vector3d::UnitZ());
   Eigen::Matrix3d rot_mat = rotation_vector.toRotationMatrix();
@@ -358,9 +318,7 @@ void MdlConvexMPC::_buildCondensedDynamics() {
   const int NS = NUM_STATES;
   const int H = _params.horizon;
 
-  // X = [x_1 ... x_N] with x_{k+1} = Ad[k] x_k + Bd[k] u_k, so block row i of
-  // A_qp is Ad[i]...Ad[0] and block (i,j) of B_qp is Ad[i]...Ad[j+1] Bd[j].
-  // Both follow from the previous row by one multiplication.
+  // Propagate each state and input block through the horizon recursion.
   _Aqp.block(0, 0, NS, NS) = _Ad[0];
   for (int i = 1; i < H; i++)
     _Aqp.block(i * NS, 0, NS, NS).noalias() =
@@ -376,18 +334,13 @@ void MdlConvexMPC::_buildCondensedDynamics() {
 }
 
 void MdlConvexMPC::_buildCost() {
-  // H = 2 (B_a^T L B_a + alpha I),  g = 2 B_a^T L (A_qp x_0 - X_ref),
-  // where B_a contains only scheduled contact-force columns.
+  // Form the condensed quadratic cost over scheduled contact-force columns.
   _LB.noalias() = _L.asDiagonal() * _activeBqp;
   _H.noalias() = _activeBqp.transpose() * _LB;
   _H *= 2.0;
   _H.diagonal().array() += 2.0 * _params.force_weight;
 
-  // Symmetrize. The product above is symmetric in exact arithmetic but not bit
-  // for bit, and qpOASES reads the array as given: a Hessian that is asymmetric
-  // in the last few digits shows up as a Cholesky factorization that fails on
-  // one solve out of many, which is a miserable thing to debug. Done in place
-  // rather than through 0.5*(H + H^T) so nothing allocates here.
+  // Enforce a symmetric Hessian before passing it to qpOASES.
   const int nv = (int)_H.rows();
   for (int i = 0; i < nv; i++) {
     for (int j = 0; j < i; j++) {
@@ -433,9 +386,7 @@ bool MdlConvexMPC::_buildActiveProblem(const input_t& input) {
     }
   }
 
-  // A horizon with no support has no physically meaningful force QP.  Refuse
-  // it explicitly instead of asking qpOASES to construct a zero-variable
-  // problem whose result could be mistaken for a valid ballistic command.
+  // Reject a horizon with no active contact forces.
   if (_activeVars == 0) return false;
 
   const int activeFeet = _activeVars / 3;
@@ -494,9 +445,7 @@ bool MdlConvexMPC::_buildActiveProblem(const input_t& input) {
 }
 
 void MdlConvexMPC::_buildBounds(const input_t& input) {
-  // Horizontal components are bounded by the friction rows against the actual
-  // normal force; the box here only has to be wide enough not to cut into that,
-  // which mu*force_max is by construction.
+  // Use the maximum normal force for the horizontal friction bounds.
   const double flim = _params.friction * _params.force_max;
 
   for (int k = 0; k < _params.horizon; k++) {
@@ -510,9 +459,7 @@ void MdlConvexMPC::_buildBounds(const input_t& input) {
         _lb[col + 2] = _params.force_min;
         _ub[col + 2] = _params.force_max;
       } else {
-        // Exactly zero on both sides. An airborne foot pushes on nothing, and
-        // pinning the variable is cheaper than removing it and cheaper still
-        // than trusting the cost to drive it to zero.
+        // Pin unscheduled foot forces to zero.
         for (int c = 0; c < 3; c++) {
           _lb[col + c] = 0.0;
           _ub[col + c] = 0.0;
@@ -528,8 +475,7 @@ void MdlConvexMPC::_packState(const body_state_t& state,
   x.segment<3>(3) = state.com_position_world;
   x.segment<3>(6) = state.angular_velocity_world;
   x.segment<3>(9) = state.com_velocity_world;
-  // The affine gravity term, carried as a state so the model stays linear.
-  // Negative because the acceleration it produces is downwards.
+  // State layout: rpy, position, angular velocity, linear velocity, negative gravity.
   x[12] = -_params.gravity;
 }
 
@@ -543,10 +489,7 @@ bool MdlConvexMPC::_stateFinite(const body_state_t& state) {
 // ---------------------------------------------------------------------------
 
 bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
-  // Whatever happens below, the caller gets the last force that was actually
-  // solved for, with valid saying whether it belongs to the problem just posed.
-  // Holding the previous force through a hiccup is the owner's decision to make
-  // and it needs a whole vector to make it with, not a half written one.
+  // Start from the last complete output and mark this solve invalid.
   output = _last;
   output.valid = false;
 
@@ -560,8 +503,7 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
     if (!input.moment_arm_world[k].allFinite()) return false;
   }
 
-  // One A_c for the whole horizon, evaluated at the mean reference yaw, as in
-  // paper Section IV-C. B_c is rebuilt per step because the feet move.
+  // Use the mean reference yaw for A_c and rebuild B_c for each step.
   double yawMean = 0.0;
   for (int k = 0; k < H; k++) yawMean += input.reference[k].rpy.z();
   yawMean /= H;
@@ -605,9 +547,7 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
   _logSolver[1] = _solveTime;
 
   if (qpOASES::getSimpleStatus(ret) != 0) {
-    // A failed hotstart leaves the active set describing a problem that was
-    // never solved, so the next attempt starts cold rather than continuing from
-    // it.
+    // Discard the active set after a failed solve.
     _qpInitialized = false;
     return false;
   }
@@ -623,7 +563,7 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
   for (int col = 0; col < _activeVars; ++col)
     _solution[_activeFullIndex[col]] = _activeSolution[col];
 
-  // Only u_0 is used; the rest of the horizon exists to make u_0 right.
+  // Apply only the first force block; the horizon determines its value.
   if (!_solution.head(NUM_INPUTS).allFinite()) return false;
 
   for (int leg = 0; leg < NUM_LEGS; leg++)
@@ -638,7 +578,7 @@ bool MdlConvexMPC::solve(const input_t& input, output_t& output) {
 }
 
 // ---------------------------------------------------------------------------
-//  Prediction audit
+//  Prediction dump
 // ---------------------------------------------------------------------------
 
 void MdlConvexMPC::_dumpSolve(const input_t& input) {
@@ -660,9 +600,7 @@ void MdlConvexMPC::_dumpSolve(const input_t& input) {
     std::fwrite(header, sizeof(double), 8, _dumpFile);
   }
 
-  // The QP's own view of the future. _e already holds Aqp*x0 - xref from
-  // _buildCost(), so the reference cancels back out and only the input response
-  // costs a fresh product.
+  // Reconstruct the predicted state sequence from the stored error and input response.
   _Xpred = _e + _xref;
   _Xpred.noalias() += _Bqp * _solution;
 
@@ -679,8 +617,6 @@ void MdlConvexMPC::_dumpSolve(const input_t& input) {
       mask[k * NUM_LEGS + leg] = input.contact[k][leg] ? 1.0 : 0.0;
   std::fwrite(mask, sizeof(double), H * NUM_LEGS, _dumpFile);
 
-  // A fall ends the behavior, not the process; without a flush the tail of the
-  // record stream -- the part that describes the fall -- sits in a stdio buffer
-  // until exit_time, and a killed run loses exactly the data it was run for.
+  // Flush each record so diagnostic data is available immediately.
   std::fflush(_dumpFile);
 }

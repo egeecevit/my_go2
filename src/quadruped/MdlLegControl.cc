@@ -33,9 +33,8 @@ void MdlLegControl::init() {
   _motorhw = MotorHW::instance();
   for (int i = 0; i < 3; i++) _indices[i] = 3 * getIndex() + i;
 
-  // The _mgr guards let a unit test call init() on a bare instance to get the
-  // kinematics member, which is all computeCartesianForceCommand() needs. Under
-  // the ModuleManager _mgr is never null, so this costs nothing in operation.
+  // Read hardware settings when a module manager is available; bare instances
+  // use the default Go2 model.
   rtcore::ConfigTable hwConfig;
   std::string hwlib;
   std::string robotModel;
@@ -46,7 +45,7 @@ void MdlLegControl::init() {
     robotModel = hwConfig.getString(
         "robot_model", hwlib == "simhw" ? "go2" : (hwlib == "go1hw" ? "go1" : ""));
   else
-    robotModel = "go2";  // Bare unit-test instances exercise the populated model.
+    robotModel = "go2";  // Default to the populated Go2 model without a manager.
 
   if (robotModel == "go1" || hwlib == "go1hw")
     _kinematics = new QuadrupedKinematics(createGo1Config());
@@ -99,7 +98,7 @@ void MdlLegControl::activate() {
     _cmd[i].tau = 0.0;
     _cmd[i].kp = _default_kp[i];
     _cmd[i].kd = _default_kd[i];
-    // Stage command before enabling — no stale-command gap
+    // Stage the command before enabling the motor.
     _motorhw->setCommand(_indices[i], _cmd[i]);
     _motorhw->enable(_indices[i]);
   }
@@ -150,7 +149,7 @@ bool MdlLegControl::setFootCommand(const Eigen::Vector3d &p, const Eigen::Vector
   if (!_kinematics->jacobian(getIndex(), a, J))
     return false;
 
-  // Damped pseudoinverse: J^T (J J^T + lambda^2 I)^{-1}
+  // Use a damped Jacobian inverse for foot velocity commands.
   double lam2 = _jacobian_damping * _jacobian_damping;
   Eigen::Matrix3d JJT = J * J.transpose();
   JJT.diagonal().array() += lam2;
@@ -166,28 +165,16 @@ bool MdlLegControl::computeCartesianForceCommand(
     const Eigen::Vector3d &force_feedforward_body, Eigen::Vector3d &tau_ff) const {
   if (!_kinematics) return false;
 
-  // Reject bad input before touching the kinematics, so a NaN cannot reach the
-  // motors through some intermediate that happens to stay finite.
+  // Reject non-finite inputs before kinematics or command generation.
   if (!q.allFinite() || !qdot.allFinite() || !position_ref_body.allFinite() ||
       !velocity_ref_body.allFinite() || !kp_cartesian.allFinite() ||
       !kd_cartesian.allFinite() || !force_feedforward_body.allFinite())
     return false;
 
-  // TODO(ege): implement
-  //
-  // - From the measured q: forward kinematics gives the foot position p and
-  //   jacobian() gives J, and then v = J*qdot -- never the IK-desired joint
-  //   velocity, which is a command rather than a measurement. Use the unchecked
-  //   FK: measured angles can sit a little outside the configured limits and
-  //   must not be rejected for it.
-  // - f_cmd = kp.*(p_ref - p) + kd.*(v_ref - v) + f_feedforward, all in the
-  //   body frame, and tau_ff = J.transpose() * f_cmd.
-  // - Gotcha: f_feedforward is the force the *actuators apply at the foot*. The
-  //   caller has already negated and rotated the ground reaction force, so do
-  //   not flip the sign again here.
-  // - Reject a non-finite result -- an unreachable gain or a degenerate
-  //   configuration can produce one from finite inputs -- and return false
-  //   without writing anything the caller would emit.
+  // Evaluate unchecked FK and the Jacobian at measured q for the body-frame
+  // Cartesian force, then map that force to joint torque.
+  // The feedforward term already uses the actuator-force sign and body-frame
+  // coordinates.
 
   Eigen::Vector3d p;
   Eigen::Matrix3d J;
@@ -291,12 +278,8 @@ bool MdlLegControl::_readJointState(Eigen::Vector3d& q, Eigen::Vector3d& qdot) c
 
 bool MdlLegControl::_emitTorqueCommand(const Eigen::Vector3d& q, double joint_damping,
                                        const command_result_t& result) {
-  // A Cartesian torque command must remain safe even after a physical limit
-  // has moved a measured joint outside the software position window.  Calling
-  // setJointCommand() here would reject that sample and retain the previous
-  // motor command, possibly a larger torque.  The commanded position has zero
-  // gain, so it is informational only; retain physical limits in the motor
-  // interface and emit the bounded torque directly.
+  // Emit bounded torque directly even when measured joints exceed software limits.
+  // The commanded position is informational because its position gain is zero.
   if (!q.allFinite() || !result.motor_feedforward_torque.allFinite() ||
       !std::isfinite(joint_damping) || joint_damping <= 0.0)
     return false;
