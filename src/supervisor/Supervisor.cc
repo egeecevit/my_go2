@@ -23,6 +23,8 @@
 #include "quadruped/MdlStand.hh"
 #include "quadruped/MdlSit.hh"
 #include "quadruped/MdlPosVelEstimator.hh"
+#include "quadruped/GUIClient.hh"
+#include "quadruped/GUIModule.hh"
 
 #include "Supervisor.hh"
 
@@ -41,11 +43,6 @@ Supervisor::~Supervisor() {
   DBGPRINT("Supervisor::~Supervisor\n");
 
   terminate();
-
-  if (_logclient) {
-    delete _logclient;
-    _logclient = nullptr;
-  }
 };
 
 #define LOGTHREAD_USLEEP 10000
@@ -55,53 +52,53 @@ void Supervisor::threadEnter() {
   DBGPRINT("Supervisor::threadEnter\n");
 
   bool querydone = false;
+  bool gui_pulled = false;
+
+  GUIModule *gui = nullptr;
+  if (!_logctrl.autoStart()) {
+    gui = (GUIModule *)_mgr->findModule(GUIMODULE_NAME, 0);
+    if (!gui) {
+      _mgr->warning("Supervisor", "gui_control set but GUIModule not found -- falling back to config vars");
+    }
+  }
 
   // Try to successfully register all variables
   while (!querydone) {
+    if (_stopRequested.load()) {
+      DBGPRINT("Supervisor::threadEnter: stop requested, aborting registration wait\n");
+    return;
+    }
+
     double t = _mgr->readTime();
 
-    if (_logclient->query()) {
-      // Create a new log task if necessary
-      if (!_logtask) _logtask = _logclient->newLog();
-
-      // Attempt to add all the requested variables
-      bool alladded = true;
-      for (const auto& varname : _logvars) {
-        DBGPRINT("Supervisor: Registering variable %s for logging.\n", varname.c_str());
-        if (!_logtask->addVar(varname.c_str())) {
-          _mgr->warning("Supervisor", "Failed to add %s for logging.", varname.c_str());
-          alladded = false;
-          _logtask = nullptr;
-          _logretries++;
-          if (_logretries > LOGTHREAD_MAX_RETRY) {
-            _mgr->warning("Supervisor", "Too many retries to register logging variables (%d). Aborting.", _logretries);
-            _logenable = false; 
-            setFinish(true); // Stop the thread
-            querydone = true;
-            break;
-          }
-          _logclient->query();
-          break;
-        }
+    if (gui && !gui_pulled) {
+      if (!gui->isReady()) {
+        usleep(10000);
+        continue;
       }
-      if (alladded) {
-        if (_logformat == "ascii") {
-          _logwriter = new rtclient::WriteASCII(_logfile.c_str(), _logtask->varList(),
-                                                "Supervisor local data log");
-        } else if (_logformat == "raw") {
-          _logwriter = new rtclient::WriteRaw(_logfile.c_str(), _logtask->varList(),
-                                              "Supervisor local data log");
-        } else if (_logformat == "matlab") {
-          _logwriter = new rtclient::WriteML(_logfile.c_str(), _logtask->varList(),
-                                             "Supervisor local data log");
-        }
+      _logctrl.setLogVars(gui->selectedVars());
+      _logctrl.setLogFormat(gui->logFormat());
+      _logctrl.setLogFile(gui->outputFile());
+      gui_pulled = true;
+      _mgr->message("Supervisor: Pulled %d variable(s) from GUI", (int)gui->selectedVars().size());
+    }
+
+    if (_logctrl.registerVars(&_logtask)) {
+      if (_logctrl.createWriter(_logtask)) {
         t = _mgr->readTime();
         _mgr->message("Supervisor: Found all variables at t=%.3f s", t);
         querydone = true;
         break;
+      } else {
+        _mgr->warning("Supervisor", "Failed to create log writer for format '%s'.",
+                      _logctrl.logFormat().c_str());
+        _logenable = false;
+        setFinish(true); // Stop the thread
+        querydone = true;
+        break;
       }
     } else {
-      DBGPRINT("Supervisor: Unable to query LogServer\n");
+      DBGPRINT("Supervisor: registerVars() failed\n");
       _logretries++;
       if (_logretries > LOGTHREAD_MAX_RETRY) {
         _mgr->warning("Supervisor", "Too many retries to register logging variables (%d). Aborting.", _logretries);
@@ -110,7 +107,7 @@ void Supervisor::threadEnter() {
         querydone = true;
         break;
       }
-}
+    }
     if (!querydone) usleep(10000);
   }
 }
@@ -120,15 +117,15 @@ void Supervisor::threadLoop() {
 
   if (!_logstarted) {
     if (_logenable) {
-      if (t < _logstart) waitSync(); 
+      if (t < _logctrl.logStart()) waitSync(); 
       t = _mgr->readTime();
       _mgr->message("Supervisor: Starting logging at t=%.3f s", t);
-      _logtask->startLog(_logperiod, 0);
+      _logtask->startLog(_logctrl.logPeriod(), 0);
       _logstarted = true;
     }
   } else {
     log_line_t *d;
-    while(_logtask && _logwriter && (d = _logtask->getData(0))) _logwriter->appendLine(d);
+    while(_logtask && _logctrl.writer() && (d = _logtask->getData(0))) _logctrl.writer()->appendLine(d);
     if (_logtask->isDone()) {
       _logstarted = false;
       _logtask = nullptr;
@@ -146,15 +143,7 @@ void Supervisor::threadExit() {
     _logtask = nullptr;
   }
 
-  if (_logwriter) {
-    delete _logwriter;
-    _logwriter = nullptr;
-  }
-
-  if (_logclient) {
-    delete _logclient;
-    _logclient = nullptr;
-  }
+  _logctrl.disconnect();
 }
 // Defined in MdlSimDriver.cc (sim target only)
 extern int simPollKey() __attribute__((weak));
@@ -204,54 +193,21 @@ void Supervisor::init() {
       _autorunTrotDuration = 0.0;
     }
 
-    // Process logging configuration
-    ConfigTable logconfig;
-    bool hasLog = config.getTable("log", logconfig);
-    if (hasLog) {
-      bool logenable_config = logconfig.getBool("enable", false);
-      _logstart = logconfig.getDouble("start", 0.0);
-      _logfile = logconfig.getString("file_name", "supervisor.log");
-      _logperiod = logconfig.getInt("period", 1);
-      _logformat = logconfig.getString("file_format", "ascii");
-      if (_logformat != "ascii" && _logformat != "raw" && _logformat != "matlab") {
-        DBGPRINT("Supervisor: Unknown log format '%s'. Using 'ascii'.\n", _logformat.c_str());
-        _logformat = "ascii";
-      }
-
-      _logvars.clear();
-
-      // Read and process list of variables to log
-      ConfigArray logvars;
-      if (logconfig.getArray("vars", logvars)) {
-        for (int i = 0; i < logvars.size(); i++) {
-          std::string varname = logvars.getStringAt(i);
-          if (!varname.empty()) {
-            DBGPRINT("Supervisor: Adding variable %s to logging task.\n", varname.c_str());
-            _logvars.push_back(varname);
-          } else {
-            DBGPRINT("Supervisor: Empty variable name at index %d\n", i);
-          }
-        }
-      } else {
-        DBGPRINT("Supervisor: No variables specified for logging.\n");
-      }
-
+      _logctrl.configureFromToml(config);
       _logenable = false; // Disable until all parameters check out
-      if (logenable_config && _logvars.size() != 0) {
-        _mgr->message("Supervisor: Logging enabled to %s with %d variables", _logfile.c_str(), 
-                      (int)_logvars.size());
-        _logclient = new rtclient::LogClient("localhost", _logserver->getPort(), _logserver->getChannel());
-        if (_logclient) {
-          _logenable = true;
-          _logstarted = false;
-          start( "locallog", 0 ); // Start logging at low priority
-        }
-      }
-    } else {
-      DBGPRINT("Supervisor: No logging configuration found.\n");
+      if (_logctrl.loggingEnabled()) {
+            _mgr->message("Supervisor: Logging enabled to %s with %d variables",
+                          _logctrl.logFile().c_str(), (int)_logctrl.logVars().size());
+            if (_logctrl.connect(*_logserver)) {
+              _logenable = true;
+              _logstarted = false;
+              start( "locallog", 0 ); // Start logging at low priority
+            }
+          } else {
+            DBGPRINT("Supervisor: Logging not enabled or no variables configured.\n");
+          }
     }
   }
-}
 
 void Supervisor::uninit() {
   DBGPRINT("Supervisor::uninit\n");
@@ -311,7 +267,7 @@ void Supervisor::update() {
     return;
   }
 
-  if (_logenable && !_logstarted && t >= _logstart) sendSync();
+  if (_logenable && !_logstarted && t >= _logctrl.logStart()) sendSync();
 
   int key = _readKey();
 
@@ -433,8 +389,22 @@ void Supervisor::update() {
                     _trotStopToStand ? "stand" : "sit");
       _trot->stopTrotting();
       if (_autorunStarted) _autorunStopIssued = true;
-      _state = S_TROT_STOPPING;
+      _state = S_TROT_STOPPING; 
+    } else if (key == 'z' || key == 'Z') {
+      _mgr->message("Supervisor: increasing yaw rate to %.2f rad/s", _trot->getYawRate() + 0.1);
+      _trot->increaseYawRate(0.1);
+    } else if (key == 'x' || key == 'X') {
+      _mgr->message("Supervisor: decreasing yaw rate to %.2f rad/s", _trot->getYawRate() - 0.1);
+      _trot->decreaseYawRate(0.1);
+    }  else if (key == 'c' || key == 'C') {
+      _mgr->message("Supervisor: increasing yaw rate to %.2f rad/s", _trot->getForwardVel() + 0.1);
+      _trot->increaseForwardVel(0.1);
+    } else if (key == 'v' || key == 'V') {
+      _mgr->message("Supervisor: decreasing yaw rate to %.2f rad/s", _trot->getForwardVel() - 0.1);
+      _trot->decreaseForwardVel(0.1);
     }
+
+
     break;
 
   case S_TROT_STOPPING:

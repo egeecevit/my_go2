@@ -51,6 +51,9 @@ else()
   message("Configuring WITHOUT ASAN")
 endif()
 
+find_package(FLTK REQUIRED)
+include_directories(${FLTK_INCLUDE_DIRS})
+
 # Find Eigen3 for kinematics calculations
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(EIGEN3 REQUIRED eigen3)

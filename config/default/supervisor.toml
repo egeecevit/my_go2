@@ -11,7 +11,9 @@ autorun_trot_duration = 0
 
 log = {
   # Enable/disable automatic local logging
-  enable = false
+    enable = true
+
+    gui_control = true
 
   # Start logging at this time
   start = 3,
@@ -53,12 +55,12 @@ log = {
   # thing in the log that separates a command the robot failed to track from one
   # that was never given. Swap it in when a transition is what is being studied.
   #
-  vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
-        "MdlOrientationEstimator_state", "MdlOrientationEstimator_filter",
-        "MdlPosVelEstimator_state", "MdlPosVelEstimator_footholds",
-        "MdlPosVelEstimator_error",
-        "MdlPosVelEstimator_contacts", "MdlPosVelEstimator_footerr",
-        "MdlPosVelEstimator_foottruth"],
+  #vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
+  #      "MdlOrientationEstimator_state", "MdlOrientationEstimator_filter",
+  #      "MdlPosVelEstimator_state", "MdlPosVelEstimator_footholds",
+  #      "MdlPosVelEstimator_error",
+  #      "MdlPosVelEstimator_contacts", "MdlPosVelEstimator_footerr",
+  #      "MdlPosVelEstimator_foottruth"],
   #
   # (b) MPC/trot set, for figs/mpc/plot_mpc.py: the commanded signals that
   # script compares against ground truth -- torquereq against MdlSimDriver_ctrl,
@@ -67,9 +69,9 @@ log = {
   # what displaces the estimator entries. Recording set (a) instead does not
   # break that script: it still writes every figure, but from the measured
   # traces alone, with nothing commanded to compare them against.
-  # vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
-  #       "MdlTrot_torquereq", "MdlTrot_footref", "MdlTrot_contact",
-  #       "MdlTrot_bodyref", "MdlPosVelEstimator_foottruth"],
+  vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
+        "MdlTrot_torquereq", "MdlTrot_footref", "MdlTrot_contact",
+        "MdlTrot_bodyref", "MdlPosVelEstimator_foottruth"],
   #
   # "ascii", "raw" or "matlab"
   file_format = "matlab",

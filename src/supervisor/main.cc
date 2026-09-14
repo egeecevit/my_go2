@@ -12,6 +12,7 @@
 
 #include "hardware/MotorHW.hh"
 #include "quadruped/CoreModules.hh"
+#include "quadruped/GUIModule.hh"
 
 #include "app_common.hh"
 #include "Supervisor.hh"
@@ -33,6 +34,10 @@ int main(int argc, char **argv) {
   AddCoreModules(&mm);
   ActivateCoreModules(&mm);
 
+  GUIModule *gui = new GUIModule;
+  mm.addModule(gui, 1, 0, USER_CONTROLLERS);
+  mm.activateModule(gui);
+
   // Keyboard input is handled by Supervisor; Ctrl-C by the signal handler
   Supervisor *sm = new Supervisor;
   mm.addModule(sm, 1, 0, USER_CONTROLLERS);
@@ -47,9 +52,14 @@ int main(int argc, char **argv) {
   mm.mainLoop();
   mm.message("\n** Main loop exited...");
 
+  sm->requestStop();
   mm.deactivateModule(sm);
   mm.removeModule(sm);
   delete sm;
+
+  mm.deactivateModule(gui);
+  mm.removeModule(gui);
+  delete gui;
 
   DeactivateCoreModules(&mm);
   RemoveCoreModules(&mm);

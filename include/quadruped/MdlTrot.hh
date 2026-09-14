@@ -238,6 +238,14 @@ class MdlTrot : public rtcore::Module {
       nominal footprint with zero velocity. Safe to call from any state. */
   void stopTrotting();
 
+  void increaseYawRate(double delta){_yawRate += delta; }
+  void decreaseYawRate(double delta){_yawRate -= delta; }
+  double getYawRate() const { return _yawRate; }
+
+  void increaseForwardVel(double vx){ _vcmd.x() += vx; }
+  void decreaseForwardVel(double vx){ _vcmd.x() -= vx; }
+  double getForwardVel() const {return _vcmd.x(); }
+
   /** \brief True once centering is complete and motion has come to rest. */
   bool isStopped() const { return _state == _state_t::DONE; }
 

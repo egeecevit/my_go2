@@ -13,8 +13,7 @@
 #include "rtcore/LogServer.hh"
 #include "rtcore/ThreadedLoop.hh"
 
-#include "rtclient/LogClient.hh"
-#include "rtclient/LogWriter.hh"
+#include "quadruped/GUIClient.hh"
 
 class MdlDrawSquare;
 class MdlTrot;
@@ -53,6 +52,8 @@ public:
   void threadEnter();
   void threadLoop();
   void threadExit();
+
+  void requestStop() { _stopRequested.store(true); }
 
 private:
   typedef enum { S_IDLE, S_STAND, S_DRAW, S_DRAW_STOPPING, S_TROT, S_TROT_STOPPING,
@@ -94,19 +95,10 @@ private:
   bool _logenable = false;
   bool _logstarted = false;
   int _logretries = 0;
-  // Starting time in seconds for logging. 0 means start immediately
-  double _logstart = 0;
-  unsigned int _logperiod = 1; // Default log period in milliseconds
-  // Name of the log file to write to
-  std::string _logfile;
-  // Log format to use, can be "ascii", "raw", or "matlab"
-  std::string _logformat = "ascii";
-  // List of variables configured through supervisor.log.vars
-  std::vector<std::string> _logvars;
 
-  rtclient::LogClient *_logclient = nullptr;
+  loggui::GUIClient _logctrl;
   rtclient::LogTask   *_logtask = nullptr;
-  rtclient::LogWriter *_logwriter = nullptr;
+  std::atomic<bool> _stopRequested{false};
 };
 
 #endif
