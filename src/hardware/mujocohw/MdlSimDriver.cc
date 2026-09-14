@@ -278,6 +278,64 @@ bool MdlSimDriver::getFootContacts(bool contacts[4], double forces[4]) {
   return true;
 }
 
+bool MdlSimDriver::getFootGRF(double grf[4][3]) {
+  if (!_model || !_data || !grf) return false;
+
+  for (int i = 0; i < 4; i++) grf[i][0] = grf[i][1] = grf[i][2] = 0.0;
+
+  bool resolved = false;
+  for (int i = 0; i < 4; i++)
+    if (_footGeomId[i] >= 0) resolved = true;
+  if (!resolved) return false;
+
+  for (int c = 0; c < _data->ncon; c++) {
+    const mjContact& con = _data->contact[c];
+
+    // Unlike getFootContacts() above, this does NOT also skip con.dist > 0.0.
+    // go2.xml's geom class carries margin="0.001", so MuJoCo activates (and
+    // solves for) contacts anywhere within that 1mm gap, not only at dist<=0
+    // -- per the engine source (engine_collision_driver.c: "con->exclude =
+    // (con->dist >= includemargin) && !adhesion", with includemargin =
+    // margin - gap), a contact stays in the constraint set, and can be
+    // carrying full load, right up to dist == includemargin. Filtering on
+    // dist here throws away real newtons and shows up as the foot force
+    // dropping to exact 0 while still solidly planted. con.exclude != 0 is
+    // the actual activity test the solver itself uses, and mj_contactForce()
+    // already reports zero for any contact that isn't in the constraint set
+    // (efc_address < 0), so nothing further is needed to zero out inactive
+    // contacts.
+    if (con.exclude != 0) continue;
+
+    for (int i = 0; i < 4; i++) {
+      if (_footGeomId[i] < 0) continue;
+
+      // MuJoCo applies mj_contactForce's wrench to con.geom2, with con.geom1
+      // getting the equal-and-opposite reaction (verified against the engine
+      // source: mj_contactJacobian's Jacobian difference is body(geom2) -
+      // body(geom1), and con.frame's row 0 -- the world-frame normal -- points
+      // from geom1 to geom2). Skip contacts that don't touch this foot at all.
+      double sign;
+      if (con.geom2 == _footGeomId[i]) sign = 1.0;
+      else if (con.geom1 == _footGeomId[i]) sign = -1.0;
+      else continue;
+
+      mjtNum wrench[6];
+      mj_contactForce(_model, _data, c, wrench);
+
+      // con.frame stores the contact axes as rows (normal, tangent1, tangent2)
+      // in world coordinates, so rotating the contact-frame force wrench[0:3]
+      // into world coordinates is frame^T * wrench, i.e. mju_mulMatTVec with
+      // frame treated as the 3x3 (row-major) matrix.
+      double f_world[3];
+      mju_mulMatTVec(f_world, con.frame, wrench, 3, 3);
+
+      for (int k = 0; k < 3; k++) grf[i][k] += sign * f_world[k];
+    }
+  }
+
+  return true;
+}
+
 bool MdlSimDriver::getFootPositions(double pos[4][3]) {
   if (!_model || !_data || !pos) return false;
 
@@ -291,6 +349,18 @@ bool MdlSimDriver::getFootPositions(double pos[4][3]) {
     for (int j = 0; j < 3; j++) pos[i][j] = _data->geom_xpos[3 * _footGeomId[i] + j];
   }
   return resolved;
+}
+
+void MdlSimDriver::setModelForTesting(mjModel* model, mjData* data) {
+  _model = model;
+  _data = data;
+
+  // Same lookup as _createSimulation(); duplicated rather than shared because
+  // that method also owns a warning() call that requires a live _mgr, which a
+  // test driving MuJoCo directly does not have.
+  static const char* footGeomNames[4] = {"FL", "FR", "RL", "RR"};
+  for (int i = 0; _model && i < 4; i++)
+    _footGeomId[i] = mj_name2id(_model, mjOBJ_GEOM, footGeomNames[i]);
 }
 
 // Static callback function for GLFW keyboard interaction
@@ -399,6 +469,26 @@ class MujocoControlAccessor : public MujocoStateAccessor {
   }
 };
 
+// Ground reaction force accessor. Unlike the accessors above, this cannot
+// memcpy straight out of mjData: the per-foot world-frame wrench has to be
+// assembled from the raw contact list on every read, via
+// MdlSimDriver::getFootGRF() (see there for the frame/sign convention). 12
+// doubles, leg order FL, FR, RL, RR, 3 world-frame components each.
+class MujocoGRFAccessor : public LogAccessor {
+ public:
+  MujocoGRFAccessor(MdlSimDriver* driver) : LogAccessor(LOG_DOUBLE, 12), _driver(driver) {}
+  virtual ~MujocoGRFAccessor() {}
+
+  void getVar(int size, unsigned char* p) override {
+    double grf[4][3] = {{0.0}};
+    _driver->getFootGRF(grf);
+    memcpy(p, grf, 12 * sizeof(double));
+  }
+
+ private:
+  MdlSimDriver* _driver;
+};
+
 void MdlSimDriver::update() {
   // DBGPRINT("MdlSimDriver::update %lf\n", _mgr->readTime());
 
@@ -412,6 +502,8 @@ void MdlSimDriver::update() {
     _logserver->registerVar("MdlSimDriver", "qacc", _qacc_a);
     _ctrl_a = new MujocoControlAccessor(_model, _data);
     _logserver->registerVar("MdlSimDriver", "ctrl", _ctrl_a);
+    _grf_a = new MujocoGRFAccessor(this);
+    _logserver->registerVar("MdlSimDriver", "grf", _grf_a);
   }
 
   _integrate(CLOCK_TO_SEC(_mgr->getStepPeriod()));

@@ -84,6 +84,31 @@ public:
     be resolved in the loaded model. */
   bool getFootContacts( bool contacts[4], double forces[4] );
 
+  /** \brief Retrieves the true world-frame ground reaction force acting on
+      each foot, indexed by QuadrupedKinematics::LegIndex (FL, FR, RL, RR).
+
+    grf[i] is the full 3-D force (normal + both tangential/friction components)
+    that the ground applies to the robot at foot i, expressed in world
+    coordinates; a foot in the air reads exactly (0,0,0). This is the
+    ground-truth counterpart to MdlConvexMPC_forces (the MPC's *commanded*
+    world-frame GRF), which also has positive z for a standing robot -- the two
+    are directly comparable with no sign flip.
+
+    mj_contactForce() returns the wrench in the contact frame (mjContact::frame,
+    row-major, row 0 the normal) and, per MuJoCo's own convention verified
+    against the engine source (mj_contactJacobian builds the constraint
+    Jacobian as body(geom2) - body(geom1)), applies it to con.geom2, with the
+    equal-and-opposite reaction going to con.geom1. Each contact touching a
+    foot is rotated into world frame and added in with the sign appropriate to
+    whether that foot is geom1 or geom2 in the record. Returns false if the
+    foot geoms could not be resolved.
+
+    Deliberately does not apply getFootContacts()'s con.dist > 0.0 filter: a
+    contact within go2.xml's 1mm margin is still solved for and can be
+    carrying full load, so filtering on dist here would zero out real force.
+    Only con.exclude != 0 (the solver's own activity flag) is skipped. */
+  bool getFootGRF( double grf[4][3] );
+
   /** \brief Retrieves the true world position of each foot geom's centre,
       indexed by QuadrupedKinematics::LegIndex.
 
@@ -92,6 +117,14 @@ public:
     represents, so the two are directly comparable with no offset. Returns false
     if the foot geoms could not be resolved. */
   bool getFootPositions( double pos[4][3] );
+
+  /** \brief Test-only hook: injects an already-loaded model/data pair and
+      resolves the foot geom ids from it, without going through
+      _createSimulation()'s TOML/ModuleManager path (which needs a live
+      ModuleManager this driver was never added to). Lets a test step MuJoCo
+      directly and still exercise getFootGRF()/getFootContacts() against the
+      real model. Ownership of model/data stays with the caller. */
+  void setModelForTesting( mjModel* model, mjData* data );
 
   // Returns current simulation time in microseconds
   rtcore::CLOCK readClock() { return _now; };
@@ -189,6 +222,7 @@ private:
   rtcore::LogAccessor *_qvel_a = nullptr;
   rtcore::LogAccessor *_qacc_a = nullptr;
   rtcore::LogAccessor *_ctrl_a = nullptr;
+  rtcore::LogAccessor *_grf_a = nullptr;
 
 };
 
