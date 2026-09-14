@@ -1,5 +1,15 @@
 # Stage A: envelope and horizon measurement with the torque tripwire disabled
 
+> **Status: QUANTITATIVELY VOID.** Archived 2026-09-14. Measured at joint
+> damping 2.0 (20x the corrected value); at the corrected damping the gait
+> that this report says falls above 0.55 m/s in fact trots at 0.95 m/s with
+> zero torque clipping. Every number in it describes the old plant. What
+> survives: its methodology of detecting falls kinematically from
+> `MdlSimDriver_qpos[:,2] < 0.20 m` rather than from the console, because a
+> robot that has been on the ground for two minutes still prints "autorun
+> complete" with no error — that finding is independent of the plant. Read
+> `reports/mpc/README.md` instead.
+
 > **Superseded in part.** [`reports/mpc/swing_gain_audit.md`](swing_gain_audit.md)
 > disproves this report's causal attribution of the systematic longitudinal
 > swing lag (Section "Swing-lag prediction vs. measurement") to the disabled

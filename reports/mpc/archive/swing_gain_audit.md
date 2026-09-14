@@ -1,3 +1,18 @@
+> **Status: SIGNS INVERTED, QUANTITATIVELY VOID.** Archived 2026-09-14. Two
+> independent problems. First, this report declares "negative = nose down",
+> but the code's `rpyFromQuat` builds `R_bw = Rz·Ry·Rx` body-to-world in a
+> +X-forward/+Y-left/+Z-up frame, so positive pitch is nose down — confirmed
+> against the simulator and by eye. Every pitch sign below is therefore
+> suspect. Second, it was measured at joint damping 2.0 (20x the corrected
+> value). What survives: the resonance argument in Section 2 — the swing
+> trajectory's own fundamental is `2π/T_sw`, and setting
+> `swing_natural_frequency` near it puts the swing loop on resonance with the
+> very trajectory it is tracking. That reasoning is sound and independent of
+> the damping value, and its recommendation was adopted: `trot.toml` now
+> ships `swing_natural_frequency = 50`, up from the 28 this report found
+> sitting at 0.90 of the swing fundamental. Read `reports/mpc/README.md`
+> instead.
+
 # Swing gain audit: `swing_inverse_dynamics`, horizon, and yaw weight
 
 Read-only measurement. No file under `src/`, `include/`, `config/`, or `bin/`

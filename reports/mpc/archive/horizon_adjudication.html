@@ -207,9 +207,38 @@
     margin-top: 2.5rem; padding-top: 1.1rem; border-top: 1px solid var(--rule);
     font-size: .8rem; color: var(--faint);
   }
+
+  .archive-banner {
+    background: var(--warn-sw); border: 1px solid var(--warn);
+    border-left: 5px solid var(--warn); border-radius: 0 6px 6px 0;
+    padding: 1rem 1.3rem; margin-bottom: 2rem;
+  }
+  .archive-banner .eyebrow { color: var(--warn); }
+  .archive-banner p { color: var(--ink); }
+  .archive-banner p:last-child { margin-bottom: 0; }
 </style>
 
 <div class="wrap">
+
+<div class="archive-banner">
+  <span class="eyebrow">Archived &middot; central conclusion void &middot; 2026-09-14</span>
+  <p>This report's finding that the single-rigid-body model stops being
+  predictive past ~0.1&nbsp;s of lookahead rests entirely on an unsound
+  crossover metric: it reports the horizon step where the QP's prediction
+  error exceeds the error of believing the reference, but that crossover
+  tracks the configured horizon (step 14 at H15, 19 at H20, 27 at H30, 37 at
+  H40, all at <code>dt=0.01</code>) rather than the robot, because the QP
+  minimises deviation from the reference and its plan converges toward that
+  reference across the horizon. At <code>dt=0.05</code> the metric reports a
+  crossover at step 0 for configurations that then walk 40&nbsp;s. It was
+  also measured at joint damping 2.0 (20x the corrected value). What
+  survives: <code>test_discretization_consistency</code> (Section 01) &mdash;
+  the QP's condensed prediction verified against an independent RK4
+  integrator to 10<sup>&minus;7</sup> &mdash; is a real result and that test
+  still passes. Section 05's estimator-in-loop yaw-drift finding concerns the
+  estimator rather than the MPC metric and has not been re-examined; treat it
+  as unreviewed, not void. Read <code>reports/mpc/README.md</code> instead.</p>
+</div>
 
 <header class="masthead">
   <span class="eyebrow">quadcontrol &middot; convex mpc</span>

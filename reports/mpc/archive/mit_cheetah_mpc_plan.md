@@ -1,3 +1,13 @@
+> **Status: COMPLETED, SUPERSEDED AS GUIDANCE.** Archived 2026-09-14. The convex
+> MPC this plan specifies was built and works; it is kept as the design record
+> for that implementation, not as forward-looking guidance — `WBIC_PLAN.md` at
+> the repo root supersedes it for what to do next. In particular, its
+> prohibition on adding whole-body control to `MdlTrot` (around lines 40 and
+> 755 below) no longer applies: WBIC is now the intended next step. Where this
+> plan has measurements, they predate the joint-damping correction described in
+> `reports/mpc/README.md` and describe a different robot. Read
+> `reports/mpc/README.md` first.
+
 # Minimal MIT Cheetah 3 convex MPC implementation plan
 
 Date: 2026-08-20

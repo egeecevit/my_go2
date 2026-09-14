@@ -6,7 +6,17 @@
   <default>
     <default class="go2">
       <geom friction="0.6" margin="0.001" condim="1"/>
-      <joint axis="0 1 0" damping="2" armature="0.01" frictionloss="0.2"/>
+      <!-- damping was 2.0 in the upstream mujoco_menagerie model, which is a house
+           default shared with go1.xml and go2_mjx.xml rather than a measured Go2
+           property (the README's derivation steps do not mention it). Unitree's own
+           go2_description URDF gives 0.1. At 2.0 this model dissipated 153.5 W in
+           joint damping against 179.2 W of positive motor work 86% of the
+           actuators' output, a mechanical cost of transport of 1.45, and an
+           equivalent drag of 190 N at 0.83 m/s, more than the robot weighs. The MPC's
+           single-rigid-body model carries no term for any of it, so it showed up as a
+           12% velocity shortfall and a nose-down pitch bias that were being mistaken
+           for controller faults. 0.2 keeps a margin over Unitree's 0.1. -->
+      <joint axis="0 1 0" damping="0.2" armature="0.01" frictionloss="0.2"/>
       <motor ctrlrange="-23.7 23.7"/>
       <default class="abduction">
         <joint axis="1 0 0" range="-1.0472 1.0472"/>

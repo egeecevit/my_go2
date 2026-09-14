@@ -1,5 +1,13 @@
 # B3 — Magnitude of base-motion terms neglected by the fixed-base swing feedforward
 
+> **Status: QUANTITATIVELY VOID.** Archived 2026-09-14. Term magnitudes were
+> measured at joint damping 2.0 (20x the corrected value), on motion that no
+> longer occurs at the corrected damping. What survives: the verification,
+> by hypothesis test rather than assumption, that `MdlSimDriver_qvel[0:3]`
+> is WORLD-frame linear velocity and `qvel[3:6]` is BODY-LOCAL angular
+> velocity — a permanent fact about the log format, independent of the
+> damping value. Read `reports/mpc/README.md` instead.
+
 > **Superseded in part.** [`reports/mpc/swing_gain_audit.md`](swing_gain_audit.md)
 > disproves the framing that motivates this report — that the neglected
 > fixed-base terms explain the measured swing lag via the missing
