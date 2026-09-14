@@ -142,17 +142,14 @@ bool QuadrupedLegDynamics::compute(int leg, const Eigen::Vector3d& q,
   terms.foot_position = kin.foot_position;
   terms.foot_jacobian = kin.foot_jacobian;
 
-  // Gravity generalized force. With gravity_body pointing down, the equation
-  // M*qdd + C*qdot + G = tau has G = -sum(Jcom^T*m*g).
+  // Add the gravity generalized force; gravity_body points down in body axes.
   terms.bias.setZero();
   const leg_t& lp = _params.leg[leg];
   for (int i = 0; i < NUM_JOINTS; ++i)
     terms.bias.noalias() -=
         kin.com_linear_jacobian[i].transpose() * lp.joint[i].link.mass * gravity_body;
 
-  // For a three-joint leg, differentiating the analytic mass matrix is both
-  // inexpensive and less convention-prone than duplicating a spatial-algebra
-  // implementation. Central differences feed the exact Christoffel identity.
+  // Differentiate the mass matrix by central differences for the Coriolis term.
   Eigen::Matrix3d dmass[NUM_JOINTS];
   const double eps = _params.derivative_step;
   for (int k = 0; k < NUM_JOINTS; ++k) {

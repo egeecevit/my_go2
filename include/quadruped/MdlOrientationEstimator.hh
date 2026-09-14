@@ -23,162 +23,49 @@ class LogServer;
 
 /** \brief First stage of the state estimator: body attitude.
 
-  Ported from the orientation estimator of MIT Cheetah-Software
-  (common/src/Controllers/OrientationEstimator.cpp). The approach is
-  deliberately not a filter. The IMU already runs an attitude filter of its own,
-  fusing its gyroscope against gravity, and it does so with far more information
-  about its own noise characteristics than anything downstream could
-  reconstruct. So this module takes that quaternion as given and spends its
-  effort on deriving the quantities the rest of the estimator needs from it.
+  The module either passes through the IMU quaternion, uses simulator ground
+  truth, or runs the configured complementary filter. It publishes a
+  body-to-world quaternion, its body-to-world rotation matrix, ZYX roll/pitch/yaw,
+  body and world angular velocity, and body and world specific force.
 
-  That is the substantive difference from the EKF this replaces, which estimated
-  attitude jointly with position and carried gyroscope bias states to do it.
-  Splitting the two apart is what makes the second stage a plain linear Kalman
-  filter rather than an extended one: with the rotation known, the relationship
-  between body position, foot positions and their velocities is linear.
-
-  Outputs, all in the conventions of this code base rather than MIT's:
-
-    - orientation, an Eigen quaternion mapping body to inertial
-    - _Rbw = q.toRotationMatrix(), which takes a body frame vector to the world
-    - rpy, in ZYX order, returned as (roll, pitch, yaw)
-    - angular velocity and specific force, in both the body and world frames
-
-  On the rotation convention: MIT's StateEstimate::rBody is world to body, since
-  their ori::quaternionToRotationMatrix transposes before returning. Ours is the
-  opposite, which is what Eigen gives. Anywhere MIT writes rBody we write
-  _Rbw.transpose() and anywhere they write rBody.transpose() we write _Rbw. The
-  member is named _Rbw rather than rBody precisely so that reading this file
-  next to theirs does not quietly suggest the two are the same thing.
-
-  Configuration lives in the [orientationestimator] table; see
-  stateestimator.toml.
+  Configuration lives in the [orientationestimator] table in stateestimator.toml.
  */
 class MdlOrientationEstimator : public rtcore::Module {
  public:
-  /** \brief Tunable parameters, settable without a ModuleManager so the module
-      can be exercised from a unit test. */
+  /** \brief Runtime estimator parameters. */
   struct params_t {
-    /** \brief Rotate the estimate so the initial yaw reads zero.
-
-      MIT does this unconditionally, and on real hardware it is right: the IMU's
-      yaw origin is whatever it happened to be at power-on and carries no
-      meaning. In simulation it is wrong by default, because it puts the
-      estimator's world frame at an angle to the simulator's and would make the
-      ground truth comparison in MdlPosVelEstimator report a large error for a
-      filter that is tracking perfectly. */
+    /** \brief Apply a one-time inverse initial yaw to the published attitude. */
     bool zero_initial_yaw = false;
 
-    /** \brief Take attitude from the simulator instead of the IMU.
-
-      Simulation only. This is the "cheater" estimator of the MIT sources,
-      reduced to a flag: with a perfect attitude, any remaining error belongs to
-      the position and velocity filter, which is the first thing worth knowing
-      when the estimate looks wrong. */
+    /** \brief Use simulator attitude when ground truth is available. */
     bool use_ground_truth = false;
 
-    /** \brief Estimate attitude here rather than taking the IMU's quaternion.
-
-      Off by default, which is what Cheetah-Software does: its
-      VectorNavOrientationEstimator copies the quaternion straight out of the
-      sensor, on the reasoning that the VN-100's own EKF has far better
-      knowledge of its noise than anything downstream could reconstruct.
-
-      Turned on, this runs the filter of equation (19) of the Cheetah 3 paper --
-      a Mahony nonlinear complementary filter on SO(3) -- which is what the
-      VN-100 is doing internally. Wanted when the IMU supplies a usable startup
-      quaternion but its continuing attitude is not trusted, and in simulation,
-      where passing the simulator's own quaternion through would test nothing.
-      The first quaternion is trusted as the startup datum; continuing
-      quaternions are ignored. See _filterAttitude(). */
+    /** \brief Run the complementary attitude filter after seeding from the first quaternion. */
     bool filter_attitude = false;
 
-    /** \brief Proportional gain of the attitude filter, kappa in eq (19) [1/s].
-        The de-drifting time constant is roughly its reciprocal. Larger pulls
-        roll and pitch back to gravity faster and lets more of the gait's own
-        acceleration into the estimate. Bounded above by the gait: the trunk
-        genuinely rolls and pitches through a stride, and a loop fast enough to
-        argue with that leaves a gait locked attitude error. Choose it against
-        mahony_ki by damping rather than alone; see there and the config. */
+    /** \brief Proportional complementary-filter gain [1/s]. */
     double mahony_kp = 0.1;
 
-    /** \brief Integral gain of the attitude filter [1/s^2], zero for eq (19)
-        exactly.
-
-      Equation (19) is proportional only, so a constant gyro bias leaves a
-      standing orientation error: the estimate settles wherever k_P * w_corr
-      happens to cancel the bias, and the bias is never identified. This is the
-      second state of Mahony's explicit complementary filter, bdot = -k_I w_corr,
-      which absorbs the constant exactly as the integral term of a PI loop does.
-      What it buys beyond a truer attitude is a gyro bias estimate to subtract
-      before the rate is handed on, and that rate drives the position filter's
-      foot velocity transport term, where an uncorrected bias becomes a lateral
-      velocity error of the order of bias times leg length.
-
-      Only roll and pitch converge. w_corr is a cross product with the vertical
-      so it never has a component along it, leaving the yaw bias unobservable --
-      the same reason heading drifts, and not a defect. The heading error that
-      follows is accepted here; nothing in this module tries to remove it.
-
-      Pick this against mahony_kp by the damping of the pair, zeta =
-      mahony_kp / (2 sqrt(mahony_ki)), rather than either alone: the settling
-      time of the bias estimate is what shows up downstream, because everything
-      before it settles is a transient the position filter integrates. */
+    /** \brief Integral complementary-filter gain [1/s^2]; zero disables bias learning. */
     double mahony_ki = 0.0025;
 
-    /** \brief Time constant for low passing the specific force before it is
-        used as a gravity reference [s]. Should span at least one gait period.
-
-      This, not the gate, is what makes the accelerometer usable on a legged
-      robot. There is no instant at which it reads gravity alone, but over a
-      whole gait cycle the trunk's own acceleration averages to nearly nothing.
-      The stored vector is transported by the gyro increment before every
-      blend, so every sample is expressed in the latest body frame. Without
-      that transport the low pass would also delay real roll and pitch motion.
-      See _filterAttitude() for why gating cannot substitute. */
+    /** \brief Time constant for the specific-force low-pass gravity reference [s]. */
     double accel_filter_tau = 0.5;
 
-    /** \brief Symmetric per-axis clamp on the bias estimate [rad/s], zero or
-        negative to leave it unbounded.
-
-      Bounds one failure, and only one: a sustained acceleration that averaging
-      does not remove -- a long fall, a shove held for seconds, a run down a
-      slope -- tilts the filtered gravity reference for as long as it lasts, and
-      the integrator, having no way to tell that from a gyroscope drifting, walks
-      off to a value no real gyro bias could have. Since the bias is subtracted
-      from the rate handed to the position filter, that walk outlives the event
-      that caused it. The clamp costs nothing in normal operation, where the
-      estimate sits near the true 0.002 rad/s, two orders below the default. */
+    /** \brief Symmetric per-axis gyro-bias clamp [rad/s]; nonpositive disables it. */
     double mahony_bias_limit = 0.02;
 
-    /** \brief Magnitude of gravity [m/s^2].
-
-      Doubles as the width of the band around g over which the gravity
-      correction is believed: both gains fade linearly to zero as the filtered
-      specific force magnitude departs from g by this much. A backstop against
-      a sustained acceleration that averaging will not remove, not the main
-      defence, which is accel_filter_tau. The paper's note that kappa is
-      "heuristically decreased during highly-dynamic portions of the gait where
-      |a_b| >> g". */
+    /** \brief Gravity magnitude and center of the correction-weight band [m/s^2]. */
     double gravity_magnitude = 9.81;
 
-    // Synthetic IMU corruption. The simulated IMU has no noise and no bias and
-    // its orientation comes straight from the simulator state, so an estimator
-    // fed that data is never tested. These inject a plausible IMU instead.
-    // Never enabled on real hardware, which supplies its own imperfections.
+    // Synthetic IMU noise and bias parameters for simulation tests.
     bool noise_enable = false;
     double acc_noise_std = 0.05;      // [m/s^2]
     double gyro_noise_std = 0.005;    // [rad/s]
     double acc_bias_walk = 0.001;     // [m/s^2 / sqrt(s)]
     double gyro_bias_walk = 0.0001;   // [rad/s / sqrt(s)]
     double acc_bias_init = 0.02;      // constant initial bias, every axis
-    // Applied on all three axes, which is what a raw gyroscope looks like. Note
-    // that this is only realistic alongside filter_attitude: an IMU reporting a
-    // trustworthy quaternion has necessarily found its own roll and pitch bias,
-    // since that is how it holds attitude, and would report rates with that part
-    // already removed. Injecting it here while passing the quaternion through
-    // models a unit that knows its attitude perfectly and has made no attempt to
-    // correct its rates, which is not a device that exists.
+    // Applied on all three axes.
     double gyro_bias_init = 0.002;
     unsigned int seed = 12345;
   };
@@ -213,9 +100,9 @@ class MdlOrientationEstimator : public rtcore::Module {
   void step(const Eigen::Quaterniond& q, const Eigen::Vector3d& gyro,
             const Eigen::Vector3d& acc, double dt);
 
-  // Estimate accessors. All return zero-ish defaults until the first step().
+  // Estimate accessors return initialized defaults until the first step().
   const Eigen::Quaterniond& getOrientation() const { return _q; }
-  /** \brief Body to world rotation. MIT's rBody is this transposed. */
+  /** \brief Body-to-world rotation matrix. */
   const Eigen::Matrix3d& getRotation() const { return _Rbw; }
   /** \brief Roll, pitch and yaw in ZYX order [rad]. */
   const Eigen::Vector3d& getRPY() const { return _rpy; }
@@ -230,35 +117,19 @@ class MdlOrientationEstimator : public rtcore::Module {
   /** \brief True once at least one IMU sample has been processed. */
   bool isReady() const { return _ready; }
 
-  /** \brief Gyroscope bias the attitude filter has found [rad/s].
-
-    Zero unless filter_attitude is set. Roll and pitch are the axes gravity
-    observes and the only ones that converge; the z component is not pinned to
-    zero, because wcorr is perpendicular to the *measured* gravity direction
-    rather than to body z, so any tilt cross-couples a little of the correction
-    onto that axis. It stays small and means nothing: global yaw is unobservable
-    from gravity whatever lands there. Already subtracted from
-    getAngularVelocity(). */
+  /** \brief Estimated gyro bias [rad/s], already subtracted from angular velocity. */
   const Eigen::Vector3d& getGyroBias() const { return _gyroBias; }
 
-  /** \brief Roll, pitch and yaw of a quaternion, ZYX order.
-
-    Static because MdlPosVelEstimator needs the same conversion for its ground
-    truth comparison, and because a test can then check it against known
-    angles without constructing a module. */
+  /** \brief Return roll, pitch, and yaw from a quaternion in ZYX order. */
   static Eigen::Vector3d rpyFromQuat(const Eigen::Quaterniond& q);
 
  private:
   params_t _params;
 
-  // Recursive attitude state in the IMU/world frame.  It must remain separate
-  // from _q: zero_initial_yaw is an output-frame convention, and feeding that
-  // fixed datum rotation back into this state would apply it again every step.
+  // Recursive attitude state; keep it separate from the published yaw-adjusted output.
   Eigen::Quaterniond _qFilter = Eigen::Quaterniond::Identity();
 
-  // Published attitude in the configured output frame.  This is either
-  // _qFilter directly or the same attitude left-multiplied by the one-time yaw
-  // datum; all public accessors and downstream rotations use this quaternion.
+  // Published attitude, optionally left-multiplied by the one-time yaw datum.
   Eigen::Quaterniond _q = Eigen::Quaterniond::Identity();
   Eigen::Matrix3d _Rbw = Eigen::Matrix3d::Identity();
   Eigen::Vector3d _rpy = Eigen::Vector3d::Zero();
@@ -272,33 +143,23 @@ class MdlOrientationEstimator : public rtcore::Module {
   bool _haveYawDatum = false;
   Eigen::Quaterniond _qYawInv = Eigen::Quaterniond::Identity();
 
-  // Attitude filter state. _gyroBias is the integral term of the complementary
-  // filter and stays at zero unless filter_attitude is set, so the subtraction
-  // in step() is a no-op on the passthrough path and needs no branch. _accFilt
-  // is expressed in the body frame of the latest processed sample; the filter
-  // transports it whenever that frame rotates before blending a new sample.
+  // Filter state; _accFilt is transported into the latest body frame before blending.
   Eigen::Vector3d _gyroBias = Eigen::Vector3d::Zero();
   Eigen::Vector3d _accFilt = Eigen::Vector3d::Zero();
   bool _haveAttitude = false;
 
-  // The last step's correction and its weight. Members rather than locals only
-  // so they can be logged: they are the whole correction path, and without them
-  // a bias estimate going somewhere unexpected can only be reasoned about
-  // backwards from the attitude it produced.
+  // Last correction and its weight, retained for logging.
   Eigen::Vector3d _wcorr = Eigen::Vector3d::Zero();
   double _gain = 0.0;
 
-  // Persistent, because IMUHW::getLastReading() is edge triggered: it reports
-  // no new data when the timestamp it is handed matches the one it holds. A
-  // stack local would be zeroed each cycle and would therefore always appear to
-  // succeed, silently reprocessing stale samples.
+  // Persistent IMU sample state for the edge-triggered getLastReading() API.
   IMUHW::imudata_t _imu;
   bool _haveImu = false;
 
   bool _enable = true;
   double _dt = 0.001;
 
-  // Injected corruption, integrated across cycles.
+  // Injected bias state, integrated across cycles.
   Eigen::Vector3d _injectedAccBias = Eigen::Vector3d::Zero();
   Eigen::Vector3d _injectedGyroBias = Eigen::Vector3d::Zero();
   std::mt19937 _rng;
@@ -307,9 +168,7 @@ class MdlOrientationEstimator : public rtcore::Module {
   rtcore::LogServer* _logserver = nullptr;
   // quat(w,x,y,z), rpy, omegaBody, aWorld, gyroBias
   double _logState[16] = {0};
-  // Attitude filter internals: wcorr, gain, accFilt, injectedGyroBias. Kept in
-  // a second variable rather than appended to the one above, whose width the
-  // offline plotting scripts index into by hand.
+  // Filter internals: wcorr, gain, accFilt, and injectedGyroBias.
   double _logFilter[10] = {0};
 
   void _readConfig();

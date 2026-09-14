@@ -25,11 +25,8 @@ class QuadrupedKinematics;
 
 /** Integer-clock schedule for MPC solve deadlines.
 
-  Module time is represented in integer microseconds. Keeping the cadence in
-  that representation avoids the repeated floating comparison which made a
-  nominal 10 ms solve slip to 11 ms. Contact changes may trigger an early solve;
-  that event starts a fresh exact period so it is not followed immediately by
-  the obsolete deadline. */
+  Deadlines use integer microseconds. Contact changes may trigger an early solve;
+  that event starts a fresh period. */
 class PeriodicSolveSchedule {
  public:
   bool reset(rtcore::CLOCK now, double period_seconds);
@@ -47,10 +44,8 @@ class PeriodicSolveSchedule {
 
 /** One immutable, acceleration-continuous swing segment in body coordinates.
 
-  A segment is reset exactly once at liftoff and sampled until touchdown. This
-  prevents the current velocity estimate from moving both endpoints every
-  control cycle, which would make an analytic acceleration feedforward describe
-  a different trajectory from the position command. */
+  Reset once at liftoff and sample until touchdown. The endpoint states remain
+  fixed while the segment is active. */
 class SwingTrajectory {
  public:
   bool reset(const Eigen::Vector3d& position0, const Eigen::Vector3d& velocity0,
@@ -59,8 +54,8 @@ class SwingTrajectory {
 
   /** Sample with a possibly time-varying clearance scale.
 
-    scale_dot and scale_ddot are included so STOPPING can fade clearance without
-    breaking the derivative relationship between the returned p, v and a. */
+    scale_dot and scale_ddot preserve the derivative relationship between the
+    returned position, velocity, and acceleration while clearance changes. */
   void sample(double time, double scale, double scale_dot, double scale_ddot,
               Eigen::Vector3d& position, Eigen::Vector3d& velocity,
               Eigen::Vector3d& acceleration) const;
@@ -86,32 +81,13 @@ class SwingTrajectory {
 
 /** \brief Foot trajectory scheduler for a periodic diagonal gait.
 
-  Pure geometry with no hardware or framework dependency, so it can be
-  exercised directly from a unit test. MdlTrot owns one and adds the robot.
-
-  The scheduler answers a single question: given a time and a leg, where should
-  that foot be relative to its nominal resting place, and how fast is it moving
-  there. It knows nothing about where the nominal footprint is, which is what
-  lets the caller decide the stance height and stance width.
-
-  The caller supplies the leg's stance velocity u, the velocity of the foot in
-  the body frame while it is planted. For a body advancing at v with no turn,
-  u is simply -v for every leg. The gait is parameterized this way rather than
-  by a stride length because it is the velocity that has to be right: a planted
-  foot which does not translate at exactly the negated body velocity scrapes
-  along the ground. Stride length then falls out as u * duty * period.
-
-  Phase runs 0 to 1 over one cycle. A leg is in stance while its phase is below
-  the duty factor and in swing above it. Stance sweeps the foot backwards at
-  constant velocity. Swing returns it along a cubic Hermite whose end tangents
-  both equal u, so the foot leaves the ground at the velocity stance ended with
-  and lands at the velocity stance is about to resume, and lifts it along a
-  raised cosine which is zero in both value and slope at either end. The result
-  is continuous in position and velocity everywhere around the cycle, including
-  across both transitions.
-
-  The phase offsets select the gait. Diagonal pairs a half cycle apart is a
-  trot; the same code gives a pace, a bound or a static walk for other offsets.
+  Pure geometry with no hardware or framework dependency; MdlTrot supplies the
+  nominal footprint. Given a leg, time, and planted-foot velocity u in body
+  coordinates, it returns the body-frame offset and velocity. Phase runs in
+  [0, 1); stance is phase < duty with constant velocity u, while swing uses a
+  cubic Hermite segment with matching end tangents and a raised-cosine lift.
+  Position and velocity are continuous at both transitions. Phase offsets select
+  the gait pattern.
  */
 struct TrotGait {
   /** \brief Leg count, indexed as QuadrupedKinematics::LegIndex. */
@@ -120,9 +96,8 @@ struct TrotGait {
   struct params_t {
     /** \brief Duration of one full gait cycle [s]. */
     double period = 0.5;
-    /** \brief Fraction of the cycle a leg spends in stance. 0.5 is a pure
-        trot; above that the diagonal pairs overlap, which is slower but keeps
-        more feet on the ground and is markedly easier to balance. */
+    /** \brief Fraction of the cycle a leg spends in stance. Values at least
+        0.5 make diagonal support intervals overlap. */
     double duty = 0.5;
     /** \brief Peak foot clearance at mid swing [m]. */
     double swing_height = 0.05;
@@ -142,18 +117,8 @@ struct TrotGait {
   /** \brief True while the leg is scheduled to be on the ground. */
   bool inStance(int leg, double t) const;
 
-  /** \brief Progress through the stance phase, in [0, 1), and exactly 0 while
-      swinging.
-
-    Distinct from legPhase(), which runs over the whole cycle: a leg at phase
-    0.6 with a duty of 0.5 is airborne, and reports 0 here.
-
-    This is the form the state estimator's contact trust ramp is written
-    against, and it matches MIT Cheetah's Gait::getContactState(). Note that a
-    leg entering stance reports 0, the same value a swinging leg reports. That
-    is deliberate rather than an edge case to paper over: the first instant of
-    stance is the least trustworthy moment of the whole cycle, because the foot
-    is still arriving. */
+  /** \brief Progress through stance in [0, 1); returns 0 while swinging and
+      at the instant stance begins. */
   double stanceProgress(int leg, double t) const;
 
   /** \brief Foot offset from the nominal footprint and its time derivative.
@@ -168,51 +133,16 @@ struct TrotGait {
 /** \brief Behavioral module that walks the robot with a diagonal trot, with
     stance carried by a convex MPC ground reaction force.
 
-  MdlTrot is the coordinator. It owns gait phase, future contact timing, the
-  body reference and the swing foot references; MdlConvexMPC turns those plus
-  the estimated body state into four world frame ground reaction forces; and
-  MdlLegControl turns those into motor torque. The division follows the block
-  diagram of Di Carlo et al., *Dynamic Locomotion in the MIT Cheetah 3 through
-  Convex Model-Predictive Control* (IROS 2018).
+  MdlTrot owns state transitions, gait timing, contact timing, body references,
+  and swing references. MdlConvexMPC supplies world-frame ground reaction
+  forces; MdlLegControl converts those forces and swing trajectories to motor
+  torques. Swing uses a frozen body-frame C2 segment; stance uses zero Cartesian
+  gains and the MPC force rotated into the body frame.
 
-  Both control modes end at MdlLegControl's Cartesian torque boundary:
-
-    - swing: a frozen C2 foot segment with configuration-dependent
-      apparent-mass kp/kd and an explicitly gated inverse-dynamics term
-    - stance: zero Cartesian gains, the MPC force rotated into the body frame
-
-  This is what the module could not do before. Its earlier revision commanded
-  stance through IK and joint PD, which caps the speed the robot can make good:
-  a planted foot swept by a position controlled leg turns the tracking error
-  into leg deflection rather than body motion, and the robot realized about a
-  tenth of the commanded velocity whatever the gains were. Stance is now a force
-  command and there is no position loop on a planted foot at all.
-
-  Only the TROT state changed. WAIT holds the pose the module was activated in,
-  PREP blends from there to the nominal footprint, and CENTERING decelerates
-  back to the footprint with zero velocity so the handoff to whatever comes next
-  has no discontinuity; all three keep four feet planted and stay on the
-  IK/joint-PD path, which is the right controller for holding a pose.
-
-  Entry and exit are ramped, and the ramp is on the *command* rather than on the
-  foot trajectory. A speed scale rising over rampup_duration multiplies the
-  commanded twist wherever it is consumed -- the body reference, the MPC's
-  reference trajectory and the stance sweep's turn term -- so the feet step in
-  place at full clearance from the first cycle and the solver is only asked for
-  acceleration once the gait is actually running. Scaling the foot offsets
-  instead, which is what this did before, breaks the one invariant stance rests
-  on: the sweep is built on the estimated body velocity precisely so a planted
-  foot translates at -v_actual, and a factor in front of it is scrub.
-
-  stopTrotting() runs the same scale back down over rampdown_duration in the
-  STOPPING state, fading the swing clearance with it. Both diagonal pairs end up
-  on the nominal footprint at rest, which is what makes the handoff to CENTERING,
-  and from there to a pose controller, free of a step.
-
-  There is no silent fallback. If either estimator is not ready, or the first
-  MPC solve fails, or solves keep failing, the module goes to ERROR rather than
-  quietly reverting to position controlled stance -- a robot trotting on the old
-  controller while the log says MPC is the thing nobody would notice.
+  WAIT and PREP hold or blend a pose, TROT runs swing/stance control, STOPPING
+  ramps speed and clearance down, and CENTERING returns to the nominal footprint.
+  Estimator, MPC, and command failures transition to ERROR; stance has no
+  position-control fallback.
 
   Configuration lives in the [trot] table; see trot.toml, and in [mpc] for the
   solver; see mpc.toml.
@@ -221,8 +151,7 @@ class MdlTrot : public rtcore::Module {
  public:
   static constexpr int NUM_LEGS = TrotGait::NUM_LEGS;
 
-  /** \brief Same shape as MdlStand and MdlSit, so the Supervisor can treat all
-      three alike. SETTLED means centering finished and motion has come to rest. */
+  /** \brief SETTLED means centering finished and motion has come to rest. */
   enum Status { IDLE, ACTIVE, SETTLED, ERROR };
 
   MdlTrot();
@@ -243,34 +172,17 @@ class MdlTrot : public rtcore::Module {
 
   Status getStatus() const { return _status; }
 
-  /** \brief Per-leg stance progress, for the state estimator's contact trust.
+  /** \brief Per-leg stance progress for the state estimator.
 
-    Returns false and leaves phase untouched unless the gait is actually
-    running. A false return means "no schedule to report", not "no contact":
-    WAIT, PREP, CENTERING and DONE all hold four feet on the ground, as does
-    every other behavior on this platform, so the caller should fall back to
-    treating the robot as fully planted.
-
-    Recomputed from the gait datum on every call rather than served from the
-    cached _stance array, because the estimator runs at SENSING_MODULES and
-    this module at BEHAVIORAL_CONTROLLERS. The estimator therefore asks before
-    this module has updated, and anything cached would always be one cycle old. */
+    Returns false and leaves phase untouched outside TROT and STOPPING. False
+    means no gait schedule is active; the caller should treat the robot as fully
+    planted. Values are recomputed from the gait datum rather than cached state. */
   bool getStancePhase(double phase[NUM_LEGS]) const;
 
-  /** \brief Raibert velocity feedback plus the yaw centrifugal skew, the two
-      additive corrections to the symmetric touchdown point (paper Eq. 12,
-      terms 2 and 3; the shoulder projection of Eq. 13 is not included -- see
-      _startSwing). Body frame, horizontal only: both inputs' z is ignored.
+  /** \brief Horizontal body-frame touchdown correction from velocity error and
+      optional yaw-rate skew. Both input z components are ignored.
 
-    vMeasured/vCommanded are the same filtered estimate and command the stance
-    sweep is built on, omega_z the commanded yaw rate, height the commanded
-    stance height (positive) and gravity the MPC's rigid body model constant,
-    so the centrifugal term stays consistent with the horizon the solver is
-    actually running. centrifugalEnable zeroes the third term, which has
-    nothing to contribute on a straight trot anyway.
-
-    Static and free of module state so a unit test can pin the formula without
-    a full MdlTrot instance. */
+    centrifugalEnable disables the yaw-rate term. */
   static Eigen::Vector3d touchdownFeedback(const Eigen::Vector3d& vMeasured,
                                            const Eigen::Vector3d& vCommanded,
                                            double raibertGain, double omega_z,
@@ -290,7 +202,7 @@ class MdlTrot : public rtcore::Module {
   _state_t _state = _state_t::WAIT;
   Status _status = IDLE;
 
-  // Reference trajectory for the current cycle, in the body frame
+  // Current per-leg reference trajectory, in the body frame.
   Eigen::Vector3d _footpos[NUM_LEGS];
   Eigen::Vector3d _footvel[NUM_LEGS];
   Eigen::Vector3d _footacc[NUM_LEGS];
@@ -300,12 +212,12 @@ class MdlTrot : public rtcore::Module {
   double _swingStart[NUM_LEGS] = {0};
   double _swingEnd[NUM_LEGS] = {0};
 
-  // Pose captured at activation, and the PREP blend target
+  // Pose captured at activation and the PREP blend target.
   Eigen::Vector3d _footpos_start[NUM_LEGS];
   Eigen::Vector3d _footpos_end[NUM_LEGS];
 
-  // Snapshot at stop time. Holding the velocity too lets CENTERING decelerate
-  // smoothly through a cubic Hermite instead of snapping to zero.
+  // Snapshot at stop time; CENTERING uses the position and velocity as its
+  // cubic-Hermite initial state.
   Eigen::Vector3d _center_pos0[NUM_LEGS];
   Eigen::Vector3d _center_vel0[NUM_LEGS];
   Eigen::Vector3d _center_pos1[NUM_LEGS];
@@ -316,53 +228,39 @@ class MdlTrot : public rtcore::Module {
 
   // -- Command ramp ----------------------------------------------------------
   //
-  // _speedScale multiplies the commanded twist; _liftScale multiplies the swing
-  // clearance. They are deliberately not the same number. On the way up the lift
-  // stays at one, so the gait, the contact schedule and the MPC's contact mask
-  // are all real before any acceleration is demanded; on the way down it fades
-  // with the speed, so every foot settles onto the nominal footprint before a
-  // pose controller takes over.
+  // _speedScale scales commanded twist; _liftScale scales swing clearance.
+  // Clearance stays full during ramp-up and fades with speed during ramp-down.
   double _speedScale = 0.0;
   double _liftScale = 1.0;
   double _liftScaleDot = 0.0;  // d/dt, for the swing velocity's product rule
   double _liftScaleDDot = 0.0;
-  // Speed scale at the moment the stop was asked for, so a stop during the
-  // ramp-up decelerates from where it had got to instead of stepping up first.
+  // Speed scale captured when STOPPING begins.
   double _stopSpeedScale0 = 0.0;
 
   int _cmdFailures[NUM_LEGS] = {0, 0, 0, 0};
 
-  // The two ramp scales, which are otherwise invisible offline: nothing else in
-  // the log distinguishes a command the robot is failing to track from one that
-  // was never given. Two doubles and no more -- see the size budget in
-  // supervisor.toml, which the full body reference would overflow.
+  // Logged ramp scales: speed and lift.
   rtcore::LogServer* _logserver = nullptr;
   double _logScales[2] = {0};  // speed scale, lift scale
   double _logFootReference[NUM_LEGS * 9] = {0};  // per-leg p, v, a
   double _logContact[NUM_LEGS] = {0};
   double _logTorqueScale[NUM_LEGS] = {1, 1, 1, 1};
-  // Torque _limitTorque() asked for, before the saturation scale above is
-  // applied to it -- MdlSimDriver_ctrl only logs what the motor actually got,
-  // so "commanded vs applied" is otherwise unplottable. Same 3*leg+joint
-  // layout as MotorHW.
+  // Requested torque before the per-leg saturation scale, in the same
+  // leg-major layout as MotorHW.
   double _logTorqueRequest[NUM_LEGS * 3] = {0};
-  // Body reference and the ramp/clamp state around it, laid out as:
+  // Body reference and ramp/clamp state, laid out as:
   //   [0] _desPos.x()      [4] desVel_world.x()   [8]  _yawUnwrapped
   //   [1] _desPos.y()      [5] desVel_world.y()   [9]  _speedScale
   //   [2] _desPos.z()      [6] desVel_world.z()   [10] _liftScale
   //   [3] _desYaw          [7] _yawRateCommand()  [11] _yawClamp
-  // _yawClamp rides along so an offline plot can draw the clamp band without
-  // hard-coding a number that may change; everything else here was previously
-  // dead reckonable only from the command config, which a ramp or a clamp
-  // silently overrides.
+  // Entries are world position/velocity, desired yaw/yaw rate, unwrapped yaw,
+  // ramp scales, and the yaw clamp.
   double _logBodyReference[12] = {0};
 
   // -- Measured body state, refreshed once per TROT cycle --------------------
   //
-  // At the whole-robot centre of mass, not the body frame origin: that is the
-  // point the paper's rigid body model and mpc.inertia_body are both about, and
-  // MdlPosVelEstimator estimates the other one. Mixing them puts a fixed lever
-  // arm error into every predicted moment.
+  // COM state in world coordinates; the position estimator reports the body
+  // origin and _readBodyState converts it using the configured COM offset.
   Eigen::Matrix3d _Rbw = Eigen::Matrix3d::Identity();
   Eigen::Vector3d _comPos = Eigen::Vector3d::Zero();
   Eigen::Vector3d _comVel = Eigen::Vector3d::Zero();
@@ -381,12 +279,8 @@ class MdlTrot : public rtcore::Module {
   Eigen::Vector3d _desPos = Eigen::Vector3d::Zero();  // world x, y and hold height
   double _desYaw = 0.0;
 
-  // Filtered body-frame velocity estimate, refreshed once per cycle in TROT.
-  // The touchdown geometry is built on the estimate rather than the command,
-  // Low-passed body-frame velocity used as a bounded correction to the commanded
-  // stance sweep. Pure estimated-velocity sweep turns a small persistent KF
-  // bias into continuous foot scrubbing, while a pure command cannot recover
-  // from a real disturbance.
+  // Filtered body-frame velocity used as a bounded correction to the commanded
+  // stance sweep and touchdown geometry.
   Eigen::Vector3d _vfilt = Eigen::Vector3d::Zero();
   bool _vfiltValid = false;
   double _stanceVelocityFeedback = 0.25;
@@ -421,9 +315,8 @@ class MdlTrot : public rtcore::Module {
   Eigen::Vector3d _prep_kp = Eigen::Vector3d::Constant(150.0);
   Eigen::Vector3d _prep_kd = Eigen::Vector3d::Constant(4.0);
 
-  // Cartesian swing gains [N/m] and [N/(m/s)], and the joint damping that rides
-  // along with every TROT command. Not the old joint-space numbers under new
-  // names: the units changed with the control law.
+  // Cartesian swing gains [N/m] and [N/(m/s)]; joint damping is applied to every
+  // TROT command.
   Eigen::Vector3d _swing_kp = Eigen::Vector3d::Constant(500.0);
   Eigen::Vector3d _swing_kd = Eigen::Vector3d::Constant(8.0);
   Eigen::Vector3d _swingNaturalFrequency = Eigen::Vector3d::Constant(28.0);
@@ -459,12 +352,9 @@ class MdlTrot : public rtcore::Module {
   /** \brief Builds one horizon from the gait and runs the solver. */
   bool _solveMPC(double elapsed);
 
-  /** \brief Body velocity the stance sweep is built on: the filtered estimate,
-      or the command when no estimate is available.
-
-    Deliberately not scaled by the command ramp. A planted foot has to translate
-    at the negated velocity the body actually has, whatever the command is doing;
-    scaling this is what makes a stance foot scrub. */
+  /** \brief Body velocity used for the stance sweep: filtered estimate, or
+      command when no estimate is available. It is independent of the command
+      ramp so planted feet follow the measured body motion. */
   Eigen::Vector3d _sweepVelocity() const;
 
   /** \brief Commanded body twist and yaw rate, scaled by the entry/exit ramp.
