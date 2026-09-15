@@ -370,9 +370,9 @@ inference:
 - **`wcorr`** separates "the reference was wrong" from "the correction was not
   applied", which are indistinguishable from the attitude output alone.
 
-`figs/estimation/plot_estimation.py` now renders the first two of these as
+`figs/plot_log.py` now renders the first two of these as
 `gyro_bias.png` (estimated against injected bias, per axis) and
-`filtered_acceleration.png` (filtered reference against the ideal
+`gravity_reference.png` (filtered reference against the ideal
 `R_trueᵀ·(0,0,9.81)`, with the raw specific force overlaid so the low-pass's
 effect is visible directly).
 

@@ -36,13 +36,17 @@ import sys
 
 import numpy as np
 
-from plot_mpc import load_log, quat_rotate, JOINT_DIRECTION, TORQUE_LIMIT, \
-    JOINT_NAMES, LEG_NAMES
+# The plotter one directory up owns the log reader, the leg/joint naming and
+# the sign and limit constants; this only scores, so it imports rather than
+# re-deriving them. sys.path[0] is still figs/mpc, so mpcdump still resolves.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from plot_log import load_log, quat_rotate, JOINT_DIRECTION, TORQUE_LIMIT, \
+    JOINT_NAMES, LEG_NAMES  # noqa: E402
 from mpcdump import read_dump
 
 # Compile-time hip positions in body frame, (x, y, z), Go2. From
 # createGo2Config() in src/quadruped/QuadrupedConfigs.cc. Not logged, same
-# reasoning as plot_mpc.py's TORQUE_LIMIT: cheaper to hard-code than to spend
+# reasoning as plot_log.py's TORQUE_LIMIT: cheaper to hard-code than to spend
 # log budget on a constant.
 HIP_POS = np.array([
     [0.1934, 0.0465, 0.0],    # FL
@@ -311,7 +315,7 @@ def duty_from_stances(t, pairs):
 def foot_body_frame(data):
     """(N,4,3) foot position per leg (body frame), foottruth (world), qpos.
 
-    Same rotation plot_mpc.py uses for its foot_reference_<LEG> figures:
+    Same rotation plot_log.py uses for its foot_reference_<LEG> figures:
     world-frame foot minus base position, rotated into the body frame with
     R_bw = R_wb^T via quat_rotate(..., inverse=True). qpos is returned
     alongside since callers doing an exact per-stance body-travel

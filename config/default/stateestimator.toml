@@ -11,10 +11,10 @@ enable = true
 zero_initial_yaw = false
 
 # Use simulator attitude instead of IMU attitude; this option is for simulation-only estimator isolation.
-use_ground_truth = true
+use_ground_truth = false
 
 # "imu" uses the reported quaternion, while "filter" estimates roll and pitch from gyro integration and gravity correction; the first quaternion seeds the filter.
-attitude_source = "imu"
+attitude_source = "filter"
 
 # Mahony proportional gain [1/s] controls roll and pitch correction toward gravity.
 mahony_kp = 0.1
@@ -55,7 +55,7 @@ simnoise = {
 enable = true
 
 # Use simulator position and velocity instead of the Kalman filter; this option is simulation-only and supports estimator isolation.
-use_ground_truth = true
+use_ground_truth = false
 
 # ---- KALMAN FILTER NOISE
 
