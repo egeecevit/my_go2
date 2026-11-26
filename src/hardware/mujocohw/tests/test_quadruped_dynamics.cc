@@ -146,7 +146,13 @@ int main(int argc, char **argv) {
     QD::terms_t t;
     T_CHECK(dyn.compute(st, t));
 
-    mj_fullM(m, Mmj, d->qM);
+    // Dense M one column at a time. mj_fullM's signature and mjData's inertia
+    // fields differ between MuJoCo releases; mj_mulM is the same in all of them.
+    for (int k = 0; k < NV; k++) {
+      mjtNum e[NV] = {0};
+      e[k] = 1;
+      mj_mulM(m, d, Mmj + k * NV, e);  // M is symmetric: column k fills row k
+    }
     for (int r = 0; r < NV; r++) {
       for (int k = 0; k < NV; k++)
         w.M = std::fmax(w.M, std::fabs(t.M(r, k) - sign(r) * sign(k) * Mmj[r * NV + k]));
