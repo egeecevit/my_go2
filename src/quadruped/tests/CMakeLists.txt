@@ -39,6 +39,16 @@ add_executable(test_leg_dynamics test_leg_dynamics.cc)
 target_link_libraries(test_leg_dynamics quadruped rtcore rtclient)
 add_test(NAME test_leg_dynamics COMMAND test_leg_dynamics)
 
+# Same reason as test_state_estimator: pulls in MdlAMB.o, which carries the
+# rtcore Module base class alongside the template math being tested.
+add_executable(test_amb_template test_amb_template.cc)
+target_link_libraries(test_amb_template quadruped rtcore rtclient)
+add_test(NAME test_amb_template COMMAND test_amb_template)
+
+add_executable(test_wbc test_wbc.cc)
+target_link_libraries(test_wbc quadruped rtcore rtclient)
+add_test(NAME test_wbc COMMAND test_wbc)
+
 add_executable(test_config_layering test_config_layering.cc)
 target_link_libraries(test_config_layering rtcore rtclient)
 foreach(chain robotv1 sim go1)

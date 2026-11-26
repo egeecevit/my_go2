@@ -36,7 +36,8 @@ class LogServer;
   gravity. Measurement rows are:
 
     - rows  0-11  relative body/foot positions from leg kinematics
-    - rows 12-23  body velocity from negated foot velocity
+    - rows 12-23  body velocity from negated foot velocity, plus the rolling
+                  of the foot sphere with its calf (radius foot_ground_height)
     - rows 24-27  world height of each foot above the ground datum
 
   Each leg's contact phase in [0, 1] sets a trust weight. Trust ramps at both
@@ -48,6 +49,9 @@ class LogServer;
 
   Rbw is the body-to-world rotation. Optional simulator ground truth and
   visualization use weak hooks and remain inactive when those hooks are absent.
+  Shadow mode (simulation only): with use_ground_truth the filter keeps running
+  and is what the logs record, while the accessors hand consumers the
+  simulator's position and velocity.
   The module runs after the orientation estimator and before behavioral
   controllers, so consumers see the latest available attitude and estimate.
 
@@ -87,13 +91,17 @@ class MdlPosVelEstimator : public rtcore::Module {
     double foot_sensor_noise_velocity = 0.1;
     double foot_height_sensor_noise = 0.001;
 
-    /** \brief Fraction of stance over which trust ramps at each boundary. */
-    double trust_window = 0.2;
+    /** \brief Fraction of stance over which trust ramps up after touchdown. */
+    double trust_window = 0.5;
+    /** \brief Fraction of stance over which trust ramps down before liftoff. */
+    double trust_window_liftoff = 0.1;
     /** \brief Additional covariance scale at zero trust; total scale is 1 plus
         this value. */
-    double high_suspect_number = 100.0;
+    double high_suspect_number = 1000.0;
 
-    /** \brief World height of a contacting foot center [m]. */
+    /** \brief World height of a contacting foot center [m]; on flat ground
+        this is the foot-sphere radius, which also sets how fast the centre
+        rolls with the calf. Zero gives a point foot. */
     double foot_ground_height = 0.022;
 
     Eigen::Vector3d gravity = Eigen::Vector3d(0.0, 0.0, -9.81);
@@ -102,9 +110,14 @@ class MdlPosVelEstimator : public rtcore::Module {
         The covariance remains at its initialized value. */
     bool warm_start = true;
 
-    /** \brief Use simulator position and velocity directly instead of filtering.
-        Simulation only. */
+    /** \brief Publish simulator position and velocity to consumers while the
+        filter keeps running. Shadow mode, simulation only. */
     bool use_ground_truth = false;
+
+    /** \brief Take contact trust from the simulator's foot forces instead of
+        the gait schedule: a diagnostic tier that separates contact-timing error
+        from filter error. Simulation only. */
+    bool use_contact_oracle = false;
   };
 
   /** \brief Result of comparing the estimate with optional simulator truth. */
@@ -112,7 +125,10 @@ class MdlPosVelEstimator : public rtcore::Module {
     /** \brief False when simulator truth is unavailable. */
     bool valid = false;
 
-    // Instantaneous errors: estimate minus truth.
+    // Instantaneous errors, estimate minus truth. Position is in the world
+    // frame; velocity is each estimate's own body-frame velocity minus the
+    // true body-frame velocity, because heading is unobservable and a
+    // world-frame velocity difference grows with yaw drift.
     Eigen::Vector3d position_error = Eigen::Vector3d::Zero();
     Eigen::Vector3d velocity_error = Eigen::Vector3d::Zero();
 
@@ -165,20 +181,33 @@ class MdlPosVelEstimator : public rtcore::Module {
     @param omegaBody Angular rate in the body frame
     @param footPos Foot positions in the body frame, from leg kinematics
     @param footVel Foot velocities in the body frame, J*qdot
+    @param omegaCalf Angular velocity of each calf relative to the body, body frame
     @param phase Per-leg contact phase in [0, 1], zero while airborne */
   void step(const Eigen::Matrix3d& Rbw, const Eigen::Vector3d& aWorld,
             const Eigen::Vector3d& omegaBody, const Eigen::Vector3d footPos[NUM_LEGS],
-            const Eigen::Vector3d footVel[NUM_LEGS], const double phase[NUM_LEGS]);
+            const Eigen::Vector3d footVel[NUM_LEGS], const Eigen::Vector3d omegaCalf[NUM_LEGS],
+            const double phase[NUM_LEGS]);
 
   /** \brief Trust weight for a contact phase, in [0, 1].
 
-    Trust ramps over trust_window at both stance boundaries and is one between
-    them. A phase of exactly 1.0 is the liftoff boundary and has zero trust. */
-  static double trustFromPhase(double phase, double window);
+    Trust ramps over windowTouchdown after touchdown and over windowLiftoff
+    before liftoff and is one between them. A phase of exactly 1.0 is the
+    liftoff boundary and has zero trust. */
+  static double trustFromPhase(double phase, double windowTouchdown, double windowLiftoff);
+  /** \brief Symmetric ramp: the same window at both boundaries. */
+  static double trustFromPhase(double phase, double window) {
+    return trustFromPhase(phase, window, window);
+  }
 
   /** \brief Compares the current estimate with simulator ground truth.
       Returns false and leaves result.valid false when truth is unavailable. */
   bool compareWithGroundTruth(comparison_t& result) const;
+
+  /** \brief Shadow mode: publish this position and velocity to consumers while
+      the filter keeps running. update() calls it with simulator truth; public
+      so tests can drive it without a simulator. */
+  void setPublishedTruth(const Eigen::Vector3d& pos, const Eigen::Vector3d& velWorld,
+                         const Eigen::Quaterniond& qTrue);
 
   // Estimate accessors for other modules.
   bool getBodyPosition(Eigen::Vector3d& pos) const;
@@ -222,6 +251,19 @@ class MdlPosVelEstimator : public rtcore::Module {
   bool _needSeed = true;
   bool _ready = false;
 
+  // Shadow mode: simulator truth handed to consumers while the filter above
+  // keeps running. See setPublishedTruth().
+  Eigen::Vector3d _truthPos = Eigen::Vector3d::Zero();
+  Eigen::Vector3d _truthVel = Eigen::Vector3d::Zero();
+  Eigen::Vector3d _truthVBody = Eigen::Vector3d::Zero();
+  bool _haveTruth = false;
+
+  // Innovation diagnostics over fully trusted legs, refreshed by step().
+  Eigen::Vector3d _innovVel = Eigen::Vector3d::Zero();  // body frame
+  double _innovZ = 0.0;
+  double _nis = 0.0;
+  int _nTrusted = 0;
+
   // Horizontal world-position datum retained across activations; zero initially.
   Eigen::Vector2d _originCarry = Eigen::Vector2d::Zero();
 
@@ -235,8 +277,10 @@ class MdlPosVelEstimator : public rtcore::Module {
   Eigen::Vector3d _jointVel[NUM_LEGS];
   Eigen::Vector3d _footPosBody[NUM_LEGS];
   Eigen::Vector3d _footVelBody[NUM_LEGS];
+  Eigen::Vector3d _calfOmegaBody[NUM_LEGS];
   Eigen::Matrix3d _footJacobian[NUM_LEGS];
   double _contactPhase[NUM_LEGS] = {0, 0, 0, 0};
+  bool _oracleContact[NUM_LEGS] = {false, false, false, false};
 
   double _dt = 0.001;
   double _startTime = 0.0;
@@ -296,6 +340,8 @@ class MdlPosVelEstimator : public rtcore::Module {
   double _logFootErr[4] = {0};    // per-leg foothold error, negative if untrusted
   // Simulator foot positions in the world frame; simulation only.
   double _logFootTruth[12] = {0};
+  // Mean velocity innovation (body), height innovation, NIS, trusted-leg count.
+  double _logInnov[6] = {0};
 
   // Comparison result reused by statistics, logging, and visualization.
   comparison_t _comparison;

@@ -397,32 +397,214 @@ static void test_bias_clamp() {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Ground truth is an exact bypass
+// 8. Shadow mode publishes truth while the filter keeps running
 // ---------------------------------------------------------------------------
 
-// Ground truth is a diagnostic contract, not another sensor feeding the
-// configured estimator.  In particular, a config that happens to retain
-// attitude_source="filter" must still reproduce every supplied simulator
-// quaternion exactly.  Otherwise a run labelled ground truth is partly a
-// Mahony-filter run and cannot isolate the controller.
-static void test_ground_truth_bypasses_filter() {
+// use_ground_truth is a diagnostic contract for the consumers, not a bypass of
+// the estimator: the accessors must reproduce every published simulator
+// quaternion and body rate exactly, while the filter behind them keeps running
+// on the IMU, so a shadow run measures the estimator the controller is not
+// using. Otherwise "estimator error with the controller on truth" could never
+// be measured at all.
+static void test_shadow_publishes_truth_while_filter_runs() {
   MdlOrientationEstimator ori;
   MdlOrientationEstimator::params_t p = baseParams(0.6, 0.09);
   p.use_ground_truth = true;
   ori.setParams(p);
   ori.reset();
 
+  // Filter seeded level against a tilted truth, so it has somewhere to go.
+  const double roll = 0.1, pitch = -0.05;
+  const Eigen::Quaterniond truth = quatFromRPY(roll, pitch, 0.0);
+  const Eigen::Vector3d acc = truth.conjugate() * Eigen::Vector3d(0.0, 0.0, G);
   const Eigen::Vector3d gyro = Eigen::Vector3d::Zero();
-  const Eigen::Vector3d acc(0.0, 0.0, G);
-  for (int k = 0; k < 100; ++k) {
-    const Eigen::Quaterniond truth =
-        quatFromRPY(0.001 * k, -0.0005 * k, 0.002 * k);
-    ori.step(truth, gyro, acc, DT);
+  const Eigen::Vector3d omegaTrue(0.01, -0.02, 0.03);
+  const Eigen::Vector3d aWorldTrue = truth * acc;
+
+  for (int k = 0; k < 20000; ++k) {
+    ori.step(Eigen::Quaterniond::Identity(), gyro, acc, DT);
+    ori.setPublishedTruth(truth, omegaTrue, acc);
     T_CHECK(ori.getOrientation().angularDistance(truth) < 1e-12);
+    T_CHECK((ori.getAngularVelocity() - omegaTrue).norm() < 1e-12);
+    T_CHECK((ori.getAccelerationWorld() - aWorldTrue).norm() < 1e-9);
   }
 
-  T_NEAR(ori.getGyroBias().norm(), 0.0, 0.0);
-  std::cout << "  ground_truth_bypasses_filter OK" << std::endl;
+  // The filter ran: from an identity seed its roll and pitch have converged
+  // onto the truth. (Not the full angular distance: two successive tilt
+  // corrections leave a small yaw residual that gravity cannot observe.)
+  const Eigen::Vector3d rpy = MdlOrientationEstimator::rpyFromQuat(ori.getFilterOrientation());
+  T_NEAR(rpy.x(), roll, 2e-3);
+  T_NEAR(rpy.y(), pitch, 2e-3);
+  std::cout << "  shadow_publishes_truth_while_filter_runs OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 8b. A planted attitude error decays as the second-order loop predicts
+// ---------------------------------------------------------------------------
+
+// perturbAttitude() is the convergence probe behind tilt_probe_deg. For a
+// stationary body with no gyro bias, a planted roll error e, the bias
+// integrator b and the gravity reference's own error r obey, to first order,
+//
+//     e' = -kp (e - r) - b,     b' = ki (e - r),     r' = -r/tau - b.
+//
+// The third equation is the part a textbook Mahony analysis lacks: the filter
+// transports its low-passed gravity reference with the bias-corrected rate, so
+// while b is wrong the reference is dragged along at -b and the low-pass pulls
+// it back at 1/tau. It makes the loop third-order. For kp = 1, ki = 0.25,
+// tau = 0.5 that is 1/e at 0.84 s, zero at 1.76 s and an undershoot of
+// -0.235 theta0 at 4.0 s, against -0.135 theta0 for the second-order loop
+// alone. The test integrates the model rather than quoting those numbers, so
+// it keeps pinning the loop if the gains change. The bias clamp is disabled:
+// the integrator peaks near 0.19 theta0, which an 8 degree probe pushes past
+// the 0.02 rad/s limit.
+static void test_tilt_probe_convergence() {
+  const double kp = 1.0, ki = 0.25, tau = 0.5;
+  MdlOrientationEstimator ori;
+  MdlOrientationEstimator::params_t p = baseParams(kp, ki);
+  p.accel_filter_tau = tau;
+  p.mahony_bias_limit = 0.0;
+  ori.setParams(p);
+  ori.reset();
+
+  const Eigen::Vector3d gyro = Eigen::Vector3d::Zero();
+  const Eigen::Vector3d acc(0.0, 0.0, G);
+  runStationary(ori, Eigen::Quaterniond::Identity(), gyro, acc, 2000);
+
+  const double theta0 = 8.0 * M_PI / 180.0;
+  ori.perturbAttitude(Eigen::Vector3d(theta0, 0.0, 0.0));
+
+  double e = theta0, b = 0.0, r = 0.0;
+  double tZero = -1.0, undershoot = 0.0, tUnder = 0.0, worst = 0.0;
+  for (int k = 1; k <= 15000; ++k) {
+    const double before = k == 1 ? theta0 : ori.getRPY().x();
+    ori.step(Eigen::Quaterniond::Identity(), gyro, acc, DT);
+    const double de = -kp * (e - r) - b, db = ki * (e - r), dr = -r / tau - b;
+    e += de * DT;
+    b += db * DT;
+    r += dr * DT;
+
+    const double t = k * DT;
+    const double roll = ori.getRPY().x();
+    // The published attitude refreshes on step(); one step in, the probe is intact.
+    if (k == 1) T_NEAR(roll, theta0, 1e-3 * theta0);
+    if (tZero < 0.0 && before > 0.0 && roll <= 0.0) tZero = t;
+    if (roll < undershoot) {
+      undershoot = roll;
+      tUnder = t;
+    }
+    worst = std::max(worst, std::fabs(roll - e));
+  }
+  std::cout << "    zero crossing " << tZero << " s, undershoot " << undershoot / theta0
+            << " theta0 at " << tUnder << " s, max |roll - model| " << worst / theta0
+            << " theta0" << std::endl;
+  T_CHECK(worst < 0.01 * theta0);
+  T_NEAR(tZero, 1.76, 0.1);
+  T_NEAR(undershoot / theta0, -0.235, 0.02);
+  T_CHECK(std::fabs(ori.getRPY().x()) < 0.01 * theta0);
+  T_CHECK(std::fabs(ori.getRPY().y()) < 1e-6);  // the error stays on its own axis
+  std::cout << "  tilt_probe_convergence OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 8c. Bias learning is frozen while the body moves
+// ---------------------------------------------------------------------------
+
+// A trotting body pitches at a few tenths of a radian per second and, at a
+// gait transition, accelerates fore-aft at ~0.3 m/s^2 for a second or two.
+// The acceleration tilts the low-passed gravity reference by a/g without
+// changing its magnitude, so the gravity band lets it through and the
+// integrator reads it as bias: 0.25 * 0.03 rad * 1.5 s = 11 mrad/s on paper,
+// 7 mrad/s measured in simulation. With the body-rate gate the integrator must
+// not move at all, while the proportional path still tracks.
+static void test_bias_gate_during_motion() {
+  MdlOrientationEstimator ori;
+  MdlOrientationEstimator::params_t p = baseParams(1.0, 0.25);
+  p.accel_filter_tau = 0.5;
+  ori.setParams(p);
+  ori.reset();
+
+  const double f = 3.33, amp = 0.03;
+  double maxBias = 0.0, maxPitchErr = 0.0;
+  for (int k = 0; k < 6000; ++k) {
+    const double t = k * DT;
+    const double pitch = amp * std::sin(2.0 * M_PI * f * t);
+    const double rate = amp * 2.0 * M_PI * f * std::cos(2.0 * M_PI * f * t);
+    const Eigen::Quaterniond truth = quatFromRPY(0.0, pitch, 0.0);
+    const double ax = (t >= 2.0 && t < 3.5) ? 0.3 : 0.0;
+    const Eigen::Vector3d acc = truth.conjugate() * Eigen::Vector3d(ax, 0.0, G);
+    ori.step(truth, Eigen::Vector3d(0.0, rate, 0.0), acc, DT);
+    maxBias = std::max(maxBias, ori.getGyroBias().norm());
+    if (t > 1.0) maxPitchErr = std::max(maxPitchErr, std::fabs(ori.getRPY().y() - pitch));
+  }
+  std::cout << "    max |bias| " << maxBias << " rad/s, max pitch error " << maxPitchErr << " rad"
+            << std::endl;
+  // ki/20 while moving: the 7 mrad/s kick of the ungated loop becomes < 1 mrad/s.
+  T_CHECK(maxBias < 1e-3);
+  // The proportional path still follows the reference's a/g tilt: bounded, not divergent.
+  T_CHECK(maxPitchErr < 0.04);
+  std::cout << "  bias_gate_during_motion OK" << std::endl;
+}
+
+// The gate must reopen: after the motion stops and the hold-off has elapsed,
+// a real bias is learned as before. During motion only the slow ki/20 path
+// runs, so less than a tenth of the bias is learned in the first 3 s, which
+// also pins that the gate never opens at the rate's zero crossings.
+static void test_bias_gate_reopens_after_quiet() {
+  MdlOrientationEstimator ori;
+  MdlOrientationEstimator::params_t p = baseParams(1.0, 0.25);
+  p.accel_filter_tau = 0.5;
+  ori.setParams(p);
+  ori.reset();
+
+  const Eigen::Vector3d bias(0.002, 0.002, 0.0);
+  const double f = 3.33, amp = 0.03;
+  for (int k = 0; k < 25000; ++k) {
+    const double t = k * DT;
+    const double pitch = t < 2.0 ? amp * std::sin(2.0 * M_PI * f * t) : 0.0;
+    const double rate = t < 2.0 ? amp * 2.0 * M_PI * f * std::cos(2.0 * M_PI * f * t) : 0.0;
+    const Eigen::Quaterniond truth = quatFromRPY(0.0, pitch, 0.0);
+    const Eigen::Vector3d acc = truth.conjugate() * Eigen::Vector3d(0.0, 0.0, G);
+    ori.step(truth, Eigen::Vector3d(0.0, rate, 0.0) + bias, acc, DT);
+    if (t < 2.95) T_CHECK(ori.getGyroBias().norm() < 0.1 * bias.norm());
+    if (k == 3500) T_CHECK(ori.getGyroBias().norm() > 1e-5);  // reopened after 2 tau
+  }
+  T_NEAR(ori.getGyroBias().x(), bias.x(), 0.1 * bias.x());
+  T_NEAR(ori.getGyroBias().y(), bias.y(), 0.1 * bias.y());
+  std::cout << "  bias_gate_reopens_after_quiet OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 8d. Centripetal acceleration is removed from the gravity reference
+// ---------------------------------------------------------------------------
+
+// A body turning at omega_z while moving at v_x reads omega x v = 0.09 m/s^2
+// of lateral specific force, which gravity alone cannot tell from a 0.53 deg
+// roll; with ki > 0 the filter settles exactly there (trot_yaw: 0.70 deg tilt
+// rms against 0.31 straight). With the velocity hint the term is subtracted
+// before the reference low-pass and the roll error vanishes.
+static void test_centripetal_compensation() {
+  const double wz = 0.3, vx = 0.3;
+  const Eigen::Vector3d omega(0.0, 0.0, wz), vBody(vx, 0.0, 0.0);
+  // Level body yawing: body-frame specific force = g up + omega x v.
+  const Eigen::Vector3d acc = Eigen::Vector3d(0.0, 0.0, G) + omega.cross(vBody);
+
+  double rollWithout = 0.0, rollWith = 0.0;
+  for (int pass = 0; pass < 2; ++pass) {
+    MdlOrientationEstimator ori;
+    ori.setParams(baseParams(1.0, 0.25));
+    ori.reset();
+    if (pass == 1) ori.setBodyVelocityHint(vBody);
+    for (int k = 0; k < 20000; ++k) ori.step(Eigen::Quaterniond::Identity(), omega, acc, DT);
+    (pass == 0 ? rollWithout : rollWith) = ori.getRPY().x();
+  }
+  std::cout << "    roll error without hint " << rollWithout << " rad, with hint " << rollWith
+            << std::endl;
+  // The uncompensated filter leans by about omega v / g (0.53 deg); the exact
+  // steady value differs by the small-angle and transport terms, ~0.04 deg.
+  T_NEAR(rollWithout, std::atan2(wz * vx, G), 1e-3);
+  T_CHECK(std::fabs(rollWith) < 1e-4);
+  std::cout << "  centripetal_compensation OK" << std::endl;
 }
 
 // ---------------------------------------------------------------------------
@@ -588,7 +770,11 @@ int main() {
   test_dynamic_acceleration_rejection();
   test_yaw_unobservability();
   test_bias_clamp();
-  test_ground_truth_bypasses_filter();
+  test_shadow_publishes_truth_while_filter_runs();
+  test_tilt_probe_convergence();
+  test_bias_gate_during_motion();
+  test_bias_gate_reopens_after_quiet();
+  test_centripetal_compensation();
   test_zero_initial_yaw_is_applied_once();
   test_zero_initial_yaw_reports_relative_heading();
   test_rotating_frame_accel_filter_invariance();

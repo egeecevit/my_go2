@@ -28,6 +28,7 @@ using namespace rtcore;
 extern bool simGetGroundTruth(double pos[3], double quat[4], double linvel[3],
                               double angvel[3]) __attribute__((weak));
 extern bool simGetFootPositions(double pos[4][3]) __attribute__((weak));
+extern bool simGetFootContacts(bool contacts[4], double forces[4]) __attribute__((weak));
 extern void simDebugClear() __attribute__((weak));
 extern void simDebugSphere(const double pos[3], double radius,
                            const double rgba[4]) __attribute__((weak));
@@ -42,6 +43,7 @@ MdlPosVelEstimator::MdlPosVelEstimator()
     _jointVel[i].setZero();
     _footPosBody[i].setZero();
     _footVelBody[i].setZero();
+    _calfOmegaBody[i].setZero();
     _footJacobian[i].setIdentity();
     _footTruePos[i].setZero();
   }
@@ -55,14 +57,13 @@ MdlPosVelEstimator::~MdlPosVelEstimator() {
 //  The filter
 // ===========================================================================
 
-double MdlPosVelEstimator::trustFromPhase(double phase, double window) {
+double MdlPosVelEstimator::trustFromPhase(double phase, double windowTouchdown,
+                                          double windowLiftoff) {
   if (phase > 1.0) phase = 1.0;
   if (phase < 0.0) phase = 0.0;
-  // A nonpositive window disables the ramp and gives full trust.
-  if (!(window > 0.0)) return 1.0;
-
-  if (phase < window) return phase / window;
-  if (phase > 1.0 - window) return (1.0 - phase) / window;
+  // A nonpositive window disables that ramp.
+  if (windowTouchdown > 0.0 && phase < windowTouchdown) return phase / windowTouchdown;
+  if (windowLiftoff > 0.0 && phase > 1.0 - windowLiftoff) return (1.0 - phase) / windowLiftoff;
   return 1.0;
 }
 
@@ -70,7 +71,13 @@ void MdlPosVelEstimator::setParams(const params_t& params) {
   _params = params;
   if (!(_params.dt > 0.0)) _params.dt = 0.001;
   if (!(_params.trust_window >= 0.0)) _params.trust_window = 0.0;
-  if (_params.trust_window > 0.5) _params.trust_window = 0.5;
+  if (!(_params.trust_window_liftoff >= 0.0)) _params.trust_window_liftoff = 0.0;
+  // The two ramps must not overlap.
+  if (_params.trust_window + _params.trust_window_liftoff > 1.0) {
+    const double s = _params.trust_window + _params.trust_window_liftoff;
+    _params.trust_window /= s;
+    _params.trust_window_liftoff /= s;
+  }
 }
 
 void MdlPosVelEstimator::reset() {
@@ -122,6 +129,11 @@ void MdlPosVelEstimator::reset() {
   for (int i = 0; i < NUM_LEGS; i++) _trust[i] = 0.0;
   _needSeed = true;
   _ready = false;
+  _haveTruth = false;
+  _innovVel.setZero();
+  _innovZ = 0.0;
+  _nis = 0.0;
+  _nTrusted = 0;
 }
 
 void MdlPosVelEstimator::_seedFromKinematics(const Eigen::Matrix3d& Rbw,
@@ -152,6 +164,7 @@ void MdlPosVelEstimator::step(const Eigen::Matrix3d& Rbw, const Eigen::Vector3d&
                               const Eigen::Vector3d& omegaBody,
                               const Eigen::Vector3d footPos[NUM_LEGS],
                               const Eigen::Vector3d footVel[NUM_LEGS],
+                              const Eigen::Vector3d omegaCalf[NUM_LEGS],
                               const double phase[NUM_LEGS]) {
   _Rbw = Rbw;
 
@@ -181,6 +194,7 @@ void MdlPosVelEstimator::step(const Eigen::Matrix3d& Rbw, const Eigen::Vector3d&
 
   Eigen::Matrix<double, 12, 1> ps, vs;
   Eigen::Vector4d pzs = Eigen::Vector4d::Zero();
+  Eigen::Vector3d rollVel[NUM_LEGS];
 
   for (int i = 0; i < NUM_LEGS; i++) {
     const int i1 = 3 * i;
@@ -195,7 +209,8 @@ void MdlPosVelEstimator::step(const Eigen::Matrix3d& Rbw, const Eigen::Vector3d&
 
     const int qindex = 6 + i1, rindex2 = 12 + i1, rindex3 = 24 + i;
 
-    const double trust = trustFromPhase(phase[i], _params.trust_window);
+    const double trust =
+        trustFromPhase(phase[i], _params.trust_window, _params.trust_window_liftoff);
     _trust[i] = trust;
 
     // Inflate foot process and velocity/height measurement noise as trust decreases; retain position anchoring.
@@ -207,8 +222,17 @@ void MdlPosVelEstimator::step(const Eigen::Matrix3d& Rbw, const Eigen::Vector3d&
     // Match the body-to-foot measurement sign used by _C.
     ps.segment<3>(i1) = -p_f;
 
-    // Blend stationary-foot velocity with the current estimate according to trust.
-    vs.segment<3>(i1) = (1.0 - trust) * v0 + trust * (-dp_f);
+    // A stance foot is a sphere rolling without slip on the ground: its
+    // material contact point is fixed but its centre, which is what the
+    // kinematics track, moves at r * (omega_calf x z). At 0.5 m/s the calf
+    // pitches at ~1.5 rad/s and a 22 mm foot creeps 33 mm/s forward; read as
+    // a stationary point that was a 7 % under-estimate of forward speed.
+    const Eigen::Vector3d rolling =
+        (Rbw * (omegaBody + omegaCalf[i])).cross(Eigen::Vector3d(0.0, 0.0, _params.foot_ground_height));
+
+    // Blend the rolling-foot body velocity with the current estimate according to trust.
+    vs.segment<3>(i1) = (1.0 - trust) * v0 + trust * (rolling - dp_f);
+    rollVel[i] = trust * rolling;
 
     // Blend foot height toward the configured ground datum according to trust.
     pzs(i) = (1.0 - trust) * (r0.z() + p_f.z()) + trust * _params.foot_ground_height;
@@ -218,10 +242,40 @@ void MdlPosVelEstimator::step(const Eigen::Matrix3d& Rbw, const Eigen::Vector3d&
   y << ps, vs, pzs;
 
   _xhat = _A * _xhat + _B * a;
+  // The foot states are sphere centres too: in stance they roll with the calf,
+  // so propagate them with the velocity the velocity rows use. Otherwise the
+  // position rows (r - p_i, never inflated) keep asserting a stationary centre
+  // and leak about 2 % of the path into the body position.
+  for (int i = 0; i < NUM_LEGS; i++) _xhat.segment<3>(6 + 3 * i) += rollVel[i] * _params.dt;
   const Eigen::Matrix<double, DIM, DIM> Pm = _A * _P * _A.transpose() + Q;
   const Eigen::Matrix<double, DIM, MEAS> Ct = _C.transpose();
   const Eigen::Matrix<double, MEAS, 1> ey = y - _C * _xhat;
   const Eigen::Matrix<double, MEAS, MEAS> S = _C * Pm * Ct + R;
+
+  // Innovation diagnostics for the consistency check, over fully trusted legs
+  // only so the blended partial-trust rows do not dilute them: the mean
+  // velocity-row innovation (body frame), its normalized square against the
+  // predicted covariance of that mean, and the mean height-row innovation.
+  _innovVel.setZero();
+  _innovZ = 0.0;
+  _nis = 0.0;
+  _nTrusted = 0;
+  for (int i = 0; i < NUM_LEGS; i++) {
+    if (_trust[i] < 0.999) continue;
+    _innovVel += ey.segment<3>(12 + 3 * i);
+    _innovZ += ey(24 + i);
+    _nTrusted++;
+  }
+  if (_nTrusted > 0) {
+    _innovVel /= (double)_nTrusted;
+    _innovZ /= (double)_nTrusted;
+    // The mean of n velocity rows carries noise R_v/n on top of the predicted P_vv.
+    const Eigen::Matrix3d Sv =
+        Pm.block<3, 3>(3, 3) + (_params.foot_sensor_noise_velocity / (double)_nTrusted) *
+                                   Eigen::Matrix3d::Identity();
+    _nis = _innovVel.dot(Sv.ldlt().solve(_innovVel));
+    _innovVel = Rbw.transpose() * _innovVel;
+  }
 
   // Reuse one factorization for the state and covariance updates.
   const Eigen::PartialPivLU<Eigen::Matrix<double, MEAS, MEAS> > lu(S);
@@ -287,6 +341,8 @@ void MdlPosVelEstimator::init() {
                             (unsigned char*)_logFootErr);
     _logserver->registerVar(LOG_DOUBLE, 12, POSVELMODULE_NAME, "foottruth",
                             (unsigned char*)_logFootTruth);
+    _logserver->registerVar(LOG_DOUBLE, 6, POSVELMODULE_NAME, "innov",
+                            (unsigned char*)_logInnov);
   }
 }
 
@@ -301,6 +357,7 @@ void MdlPosVelEstimator::uninit() {
     _logserver->deleteVar(POSVELMODULE_NAME, "contacts");
     _logserver->deleteVar(POSVELMODULE_NAME, "footerr");
     _logserver->deleteVar(POSVELMODULE_NAME, "foottruth");
+    _logserver->deleteVar(POSVELMODULE_NAME, "innov");
     _logserver = nullptr;
   }
 
@@ -333,10 +390,12 @@ void MdlPosVelEstimator::_readConfig() {
   p.foot_height_sensor_noise =
       config.getDouble("foot_height_sensor_noise", p.foot_height_sensor_noise);
   p.trust_window = config.getDouble("trust_window", p.trust_window);
+  p.trust_window_liftoff = config.getDouble("trust_window_liftoff", p.trust_window_liftoff);
   p.high_suspect_number = config.getDouble("high_suspect_number", p.high_suspect_number);
   p.foot_ground_height = config.getDouble("foot_ground_height", p.foot_ground_height);
   p.warm_start = config.getBool("warm_start", p.warm_start);
   p.use_ground_truth = config.getBool("use_ground_truth", p.use_ground_truth);
+  p.use_contact_oracle = config.getBool("use_contact_oracle", p.use_contact_oracle);
 
   ConfigArray gravity;
   if (config.getArray("gravity", gravity) && gravity.size() >= 3)
@@ -347,6 +406,11 @@ void MdlPosVelEstimator::_readConfig() {
     _mgr->warning(POSVELMODULE_NAME,
                   "use_ground_truth needs the simulation target; running the filter");
     p.use_ground_truth = false;
+  }
+  if (p.use_contact_oracle && !simGetFootContacts) {
+    _mgr->warning(POSVELMODULE_NAME,
+                  "use_contact_oracle needs the simulation target; using the gait schedule");
+    p.use_contact_oracle = false;
   }
 
   setParams(p);
@@ -430,6 +494,8 @@ void MdlPosVelEstimator::deactivate() {
 
   // Carry the last horizontal datum into the next activation.
   if (_ready) _originCarry = _xhat.head<2>();
+  // Sitting: no leg odometry, and the body is still.
+  if (_orientation) _orientation->setBodyVelocityHint(Eigen::Vector3d::Zero());
 
   if (simDebugClear && _vizEnable) simDebugClear();
 }
@@ -442,32 +508,32 @@ void MdlPosVelEstimator::update() {
   _readContactPhase();
   _readFootTruth();
 
-  const Eigen::Matrix3d& Rbw = _orientation->getRotation();
-
-  if (_params.use_ground_truth && simGetGroundTruth) {
-    // Substitute simulator state when the diagnostic bypass is enabled.
-    double pos[3], quat[4], linvel[3], angvel[3];
-    if (simGetGroundTruth(pos, quat, linvel, angvel)) {
-      _xhat.head<3>() = Eigen::Vector3d(pos[0], pos[1], pos[2]);
-      _xhat.segment<3>(3) = Eigen::Vector3d(linvel[0], linvel[1], linvel[2]);
-      for (int i = 0; i < NUM_LEGS; i++)
-        _xhat.segment<3>(6 + 3 * i) = _xhat.head<3>() + Rbw * _footPosBody[i];
-      _Rbw = Rbw;
-      _vBody = Rbw.transpose() * _xhat.segment<3>(3);
-      for (int i = 0; i < NUM_LEGS; i++)
-        _trust[i] = trustFromPhase(_contactPhase[i], _params.trust_window);
-      _ready = true;
-    }
-  } else {
-    step(Rbw, _orientation->getAccelerationWorld(), _orientation->getAngularVelocity(),
-         _footPosBody, _footVelBody, _contactPhase);
-  }
+  // The filter always runs on the published attitude: with the orientation
+  // stage in shadow mode that is the true attitude, which isolates this
+  // filter's own error; otherwise the whole estimator chain is exercised.
+  step(_orientation->getRotation(), _orientation->getAccelerationWorld(),
+       _orientation->getAngularVelocity(), _footPosBody, _footVelBody, _calfOmegaBody,
+       _contactPhase);
 
   for (int i = 0; i < NUM_LEGS; i++) _trustSum[i] += _trust[i];
   _trustSamples++;
 
+  // The attitude stage removes omega x v from its gravity reference with this.
+  _orientation->setBodyVelocityHint(_vBody);
+
   // Compute the comparison once for statistics, logging, and visualization.
   compareWithGroundTruth(_comparison);
+
+  // Shadow mode: consumers get simulator truth, the logs keep the filter. The
+  // velocity handed over is the TRUE body velocity re-expressed through the
+  // attitude the consumers actually use, otherwise a drifted estimated heading
+  // makes the controller crab-walk against a world-frame truth.
+  if (_params.use_ground_truth && _comparison.valid) {
+    const Eigen::Vector3d vBodyTrue =
+        _comparison.true_orientation.conjugate() * _comparison.true_velocity;
+    setPublishedTruth(_comparison.true_position, _orientation->getRotation() * vBodyTrue,
+                      _orientation->getOrientation());
+  }
 
   _updateGroundTruthStats();
   _refreshLogBuffers();
@@ -498,10 +564,30 @@ void MdlPosVelEstimator::_readSensors() {
 
     // Compute body-frame foot velocity from the joint Jacobian.
     _footVelBody[leg] = _footJacobian[leg] * _jointVel[leg];
+    _kinematics->calfAngularVelocity(leg, _jointAngles[leg], _jointVel[leg], _calfOmegaBody[leg]);
   }
 }
 
 void MdlPosVelEstimator::_readContactPhase() {
+  // Diagnostic tier: the simulator's own foot forces decide trust outright,
+  // which separates contact-timing error from filter error in the benchmark.
+  // 20 N sits above the force ripple of a grazing contact and well below the
+  // ~75 N a loaded foot carries, so trust is a clean 0/1.
+  if (_params.use_contact_oracle && simGetFootContacts) {
+    bool contact[NUM_LEGS];
+    double force[NUM_LEGS];
+    if (simGetFootContacts(contact, force)) {
+      // 2:1 hysteresis: impact ringing on a lightly loaded foot crosses a
+      // single threshold repeatedly (240 toggles in a 35 s trot with noise).
+      for (int i = 0; i < NUM_LEGS; i++) {
+        if (force[i] > 20.0) _oracleContact[i] = true;
+        if (force[i] < 10.0) _oracleContact[i] = false;
+        _contactPhase[i] = _oracleContact[i] ? PLANTED_PHASE : 0.0;
+      }
+      return;
+    }
+  }
+
   // Use the active gait's contact phase as the trust input.
   double gaitPhase[NUM_LEGS];
   if (_trot && _trot->getState() == Module::ACTIVE && _trot->getStancePhase(gaitPhase)) {
@@ -543,7 +629,12 @@ bool MdlPosVelEstimator::compareWithGroundTruth(comparison_t& result) const {
 
   // Compare the estimated body-frame origin with the simulator's free-joint origin.
   result.position_error = _xhat.head<3>() - result.true_position;
-  result.velocity_error = _xhat.segment<3>(3) - result.true_velocity;
+  // Velocity error with each velocity in its own body frame. Heading is
+  // unobservable, so the filter's world frame slowly rotates against the
+  // simulator's, and a world-frame difference (or rotating both by one
+  // attitude) reads forward motion as a growing lateral error. The body-frame
+  // velocity is what leg odometry measures and what MdlTrot consumes.
+  result.velocity_error = _vBody - result.true_orientation.conjugate() * result.true_velocity;
 
   result.position_error_norm = result.position_error.norm();
   result.distance_travelled = _distanceTravelled;
@@ -641,7 +732,7 @@ void MdlPosVelEstimator::_updateGroundTruthStats() {
 
     _mgr->message(
         "%s t=%.1fs trust=[%.2f %.2f %.2f %.2f] |pos err|=%.4fm (drift %.1f%% of "
-        "%.2fm path, net %.2fm) vel rms=[%.4f %.4f %.4f]m/s %s\n",
+        "%.2fm path, net %.2fm) vel rms(body)=[%.4f %.4f %.4f]m/s %s\n",
         POSVELMODULE_NAME, c.elapsed, meanTrust[0], meanTrust[1], meanTrust[2],
         meanTrust[3], c.position_error_norm, c.drift_percent, c.distance_travelled,
         c.net_displacement, c.velocity_rms.x(), c.velocity_rms.y(), c.velocity_rms.z(),
@@ -679,6 +770,11 @@ void MdlPosVelEstimator::_refreshLogBuffers() {
   }
 
   for (int i = 0; i < DIM; i++) _logCov[i] = _P(i, i);
+
+  for (int i = 0; i < 3; i++) _logInnov[i] = _innovVel[i];
+  _logInnov[3] = _innovZ;
+  _logInnov[4] = _nis;
+  _logInnov[5] = (double)_nTrusted;
 
   if (_comparison.valid) {
     const comparison_t& c = _comparison;
@@ -773,21 +869,32 @@ void MdlPosVelEstimator::_updateVisualization() {
 //  Estimate accessors
 // ---------------------------------------------------------------------------
 
+void MdlPosVelEstimator::setPublishedTruth(const Eigen::Vector3d& pos,
+                                           const Eigen::Vector3d& velWorld,
+                                           const Eigen::Quaterniond& qTrue) {
+  _truthPos = pos;
+  _truthVel = velWorld;
+  _truthVBody = qTrue.conjugate() * velWorld;
+  _haveTruth = true;
+}
+
+// In shadow mode the body accessors return simulator truth; the foot, state
+// and covariance accessors below stay on the filter, which is what gets logged.
 bool MdlPosVelEstimator::getBodyPosition(Eigen::Vector3d& pos) const {
   if (!_ready) return false;
-  pos = _xhat.head<3>();
+  pos = _haveTruth ? _truthPos : Eigen::Vector3d(_xhat.head<3>());
   return true;
 }
 
 bool MdlPosVelEstimator::getBodyVelocity(Eigen::Vector3d& vel) const {
   if (!_ready) return false;
-  vel = _xhat.segment<3>(3);
+  vel = _haveTruth ? _truthVel : Eigen::Vector3d(_xhat.segment<3>(3));
   return true;
 }
 
 bool MdlPosVelEstimator::getBodyVelocityInBody(Eigen::Vector3d& vel) const {
   if (!_ready) return false;
-  vel = _vBody;
+  vel = _haveTruth ? _truthVBody : _vBody;
   return true;
 }
 

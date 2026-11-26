@@ -32,6 +32,7 @@ file_rev = 1   # list.toml file revision
 %include mpc.toml             # Solver MdlTrot's stance phase runs on
 %include legcontrol.toml
 %include sit.toml
+%include amb.toml             # Diagonal-stance placement + AMB balancing
 
 # ---- ROBOT-SPECIFIC INCLUDES
 # The following files should be present in a robot specific directory

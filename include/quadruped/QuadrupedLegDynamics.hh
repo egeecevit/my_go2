@@ -84,23 +84,7 @@ class QuadrupedLegDynamics {
     Eigen::Matrix3d operational_inertia = Eigen::Matrix3d::Zero();
   };
 
-  explicit QuadrupedLegDynamics(const params_t& params);
-
-  const params_t& getParams() const { return _params; }
-  bool isValid() const { return _valid; }
-
-  bool footPosition(int leg, const Eigen::Vector3d& q, Eigen::Vector3d& position) const;
-  bool footJacobian(int leg, const Eigen::Vector3d& q, Eigen::Matrix3d& jacobian) const;
-
-  /** Compute mass, bias, foot Jacobian/position, Jdot*qdot, and operational
-      inertia.
-
-    gravity_body is the inertial acceleration of gravity expressed in body
-    axes, for example R_BW^T [0,0,-9.81]. */
-  bool compute(int leg, const Eigen::Vector3d& q, const Eigen::Vector3d& qdot,
-               const Eigen::Vector3d& gravity_body, terms_t& terms) const;
-
- private:
+  /** Per-link chain kinematics in body axes, controller coordinates. */
   struct kinematics_t {
     Eigen::Vector3d joint_position[NUM_JOINTS];
     Eigen::Vector3d joint_axis[NUM_JOINTS];
@@ -112,6 +96,30 @@ class QuadrupedLegDynamics {
     Eigen::Matrix3d foot_jacobian = Eigen::Matrix3d::Zero();
   };
 
+  explicit QuadrupedLegDynamics(const params_t& params);
+
+  const params_t& getParams() const { return _params; }
+  bool isValid() const { return _valid; }
+
+  bool footPosition(int leg, const Eigen::Vector3d& q, Eigen::Vector3d& position) const;
+  bool footJacobian(int leg, const Eigen::Vector3d& q, Eigen::Matrix3d& jacobian) const;
+
+  /** The full link chain (COM positions, Jacobians, rotations, foot), so a
+      whole-body quantity such as the CoM or the angular momentum can be
+      assembled from the same model that supplies the leg dynamics. */
+  bool linkKinematics(int leg, const Eigen::Vector3d& q, kinematics_t& out) const {
+    return _kinematics(leg, q, out);
+  }
+
+  /** Compute mass, bias, foot Jacobian/position, Jdot*qdot, and operational
+      inertia.
+
+    gravity_body is the inertial acceleration of gravity expressed in body
+    axes, for example R_BW^T [0,0,-9.81]. */
+  bool compute(int leg, const Eigen::Vector3d& q, const Eigen::Vector3d& qdot,
+               const Eigen::Vector3d& gravity_body, terms_t& terms) const;
+
+ private:
   params_t _params;
   bool _valid = false;
 

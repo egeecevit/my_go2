@@ -9,6 +9,9 @@
 #ifndef _SUPERVISOR_HH
 #define _SUPERVISOR_HH
 
+#include <utility>
+#include <vector>
+
 #include "rtcore/Module.hh"
 #include "rtcore/LogServer.hh"
 #include "rtcore/ThreadedLoop.hh"
@@ -20,6 +23,8 @@ class MdlDrawSquare;
 class MdlTrot;
 class MdlStand;
 class MdlSit;
+class MdlDiagonalStance;
+class MdlAMB;
 class MdlPosVelEstimator;
 
 /** \brief Top-level supervisor module for quadruped control
@@ -56,13 +61,15 @@ public:
 
 private:
   typedef enum { S_IDLE, S_STAND, S_DRAW, S_DRAW_STOPPING, S_TROT, S_TROT_STOPPING,
-                 S_SIT, S_EXIT } _state_t;
+                 S_DIAG, S_AMB, S_AMB_STOPPING, S_SIT, S_EXIT } _state_t;
   int _state = S_IDLE;
 
   MdlDrawSquare *_wm = nullptr;
   MdlTrot *_trot = nullptr;
   MdlStand *_stand = nullptr;
   MdlSit *_sit = nullptr;
+  MdlDiagonalStance *_diag = nullptr;
+  MdlAMB *_amb = nullptr;
 
   // Runs only while the robot is up on its feet. See _setEstimation().
   MdlPosVelEstimator *_posvel = nullptr;
@@ -82,10 +89,23 @@ private:
   // configured WAIT/PREP transition, exactly as an interactive T key does.
   double _autorunTrotDuration = 0.0;
   double _autorunTrotStart = 0.0;
+  // The balance counterpart: stand -> diag -> amb -> sit (in WBC mode through
+  // MdlAMB's foot placement and load transfer). Its duration starts when
+  // MdlAMB is grabbed, i.e. it counts balancing time, not the placement.
+  // The two autoruns are mutually exclusive; the shared flags below serve both.
+  double _autorunAmbDuration = 0.0;
+  double _autorunAmbStart = 0.0;
   bool _autorunStarted = false;
   bool _autorunTrotStarted = false;
+  bool _autorunAmbStarted = false;
   bool _autorunStopIssued = false;
   bool _autorunDone = false;
+
+  // Timed key script from supervisor.script, e.g. ["2 s", "6 t", "46 d"]:
+  // deterministic sequences the autoruns cannot express (sit <-> stand cycles,
+  // a stand that never trots). Keys go through the same handler a keypress does.
+  std::vector<std::pair<double, char> > _script;
+  size_t _scriptNext = 0;
 
   int _readKey();
 

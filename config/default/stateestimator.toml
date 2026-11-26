@@ -10,25 +10,47 @@ enable = true
 # Rotate the published estimate so its initial yaw is zero without changing the recursive attitude state.
 zero_initial_yaw = false
 
-# Use simulator attitude instead of IMU attitude; this option is for simulation-only estimator isolation.
-use_ground_truth = false
+# Shadow mode (simulation only): consumers get the simulator attitude while the filter keeps running on the IMU and is what the logs record.
+use_ground_truth = true
 
 # "imu" uses the reported quaternion, while "filter" estimates roll and pitch from gyro integration and gravity correction; the first quaternion seeds the filter.
 attitude_source = "filter"
 
 # Mahony proportional gain [1/s] controls roll and pitch correction toward gravity.
-mahony_kp = 0.1
+# The error loop is third-order, not the textbook second-order one: the low-passed gravity reference is transported
+# with the bias-corrected rate, so while the bias estimate is wrong the reference is dragged along at -b and pulled
+# back at 1/tau. With e = tilt error, b = bias error, r = reference error: e' = -kp (e - r) - b, b' = ki (e - r),
+# r' = -r/tau - b. At kp 1 / ki 0.25 / tau 0.5 the poles are -0.40 +- 0.25j and -2.19 (zeta 0.85): a planted tilt is
+# 1/e at 0.84 s, crosses zero at 1.76 s and undershoots by 0.235 theta0 (measured 0.86 s / 0.218). The loop goes
+# unstable for ki > kp (kp + 1/tau) = 3 here, so "raise ki freely" does not hold. The old kp = 0.1
+# meant a 20 s time constant, and MdlAMB (attitude_source = "estimator") reads any unlearned gyro bias as angular
+# momentum and walks the swing legs into the hip stop; with kp = 1 the simnoise 0.002 rad/s bias is 96 % learned by
+# 10 s standing. The price is that the attitude follows 39 % of a 0.5 s specific-force pulse (fore-aft acceleration
+# at a gait transition): 1.5 deg at 1 m/s^2; the bias gate below keeps that out of the bias estimate.
+mahony_kp = 1
 
 # Mahony integral gain [1/s^2] integrates the gravity correction into a gyro-bias estimate; zero disables bias integration.
-mahony_ki = 0.0025
+# kp^2/4 would be critical damping for the second-order loop; for the implemented third-order loop see mahony_kp.
+mahony_ki = 0.25
 
 # Symmetric per-axis gyro-bias clamp [rad/s] used to limit integral windup.
 mahony_bias_limit = 0.02
 
+# Learn the gyro bias at full ki only while the bias-corrected body rate has stayed below this [rad/s] for
+# 2 * accel_filter_tau; while moving, learning runs at ki/20. Fore-aft acceleration at trot start/stop tilts the
+# gravity reference without changing its magnitude, so the gravity band cannot reject it; at full ki that
+# integrated a 7 mrad/s bias kick. Standing reads 0.01-0.04 rad/s with the simnoise gyro, trotting ~0.6, so 0.1
+# separates them with margin. Slowed rather than frozen so a long trot still tracks the bias random walk.
+# Zero disables the gate.
+bias_gate_rate = 0.1
+
 # Low-pass specific force before gravity correction with time constant [s]; the filtered state is transported between body frames using the gyro increment.
 accel_filter_tau = 0.5
 
-# Gravity magnitude [m/s^2] and half-width of the linear magnitude gate for gravity correction.
+# Gravity magnitude [m/s^2]. It is also the half-width of the linear magnitude band that fades the correction, which
+# makes that band inert: the low-passed |a| stays within 0.1 m/s^2 of g in a trot (gain >= 0.99), and a horizontal
+# acceleration changes |a| only to second order (a^2/2g), so a magnitude gate cannot see the direction error it causes.
+# The band only guards against a vanishing or wild reading; the bias gate (bias_gate_rate) does the real gating.
 gravity_magnitude = 9.81
 
 # ---- SYNTHETIC SENSOR CORRUPTION
@@ -43,9 +65,13 @@ simnoise = {
   gyro_bias_walk    = 0.0001   # [rad/s / sqrt(s)]
 
   acc_bias_init     = 0.02     # constant initial bias on every axis [m/s^2]
-  gyro_bias_init    = 0.002    # [rad/s]
+  gyro_bias_init    = 0.002    # [rad/s]; see mahony_kp for what MdlAMB needs of it
 
   seed = 12345                 # fixed seed keeps runs reproducible
+
+  # Convergence probe: plant a roll error [deg] on the filter attitude once, tilt_probe_time seconds after activation; applied even with enable = false.
+  tilt_probe_deg  = 0
+  tilt_probe_time = 0
 }
 
 # ===========================================================================
@@ -54,7 +80,7 @@ simnoise = {
 
 enable = true
 
-# Use simulator position and velocity instead of the Kalman filter; this option is simulation-only and supports estimator isolation.
+# Shadow mode (simulation only): consumers get the simulator position and velocity while the filter keeps running and is what the logs record.
 use_ground_truth = false
 
 # ---- KALMAN FILTER NOISE
@@ -71,9 +97,27 @@ foot_height_sensor_noise    = 0.001  # foot height above flat ground
 
 # ---- CONTACT TRUST
 #
-# Contact trust ramps over each leg's phase in [0, 1], scales measurement noise by 1 + (1 - trust) * high_suspect_number, maps phase 1.0 to zero at liftoff, and maps latched contact to 0.5.
-trust_window        = 0.2
-high_suspect_number = 100.0
+# Contact trust ramps over each leg's scheduled stance phase in [0, 1]: up over trust_window after touchdown, down
+# over trust_window_liftoff before liftoff, one in between. Reduced trust inflates that leg's foot PROCESS noise and its
+# velocity/height measurement noise by 1 + (1 - trust) * high_suspect_number, and the velocity/height rows are
+# blended toward the current estimate, so the effective row weight is trust / (1 + (1 - trust) * H): at H = 1000 the
+# ramp is a gate that opens where it ends. Behaviours without a schedule (and the contact oracle) use PLANTED_PHASE = 0.5.
+#
+# Touchdown 0.5: the foot lands ~11 ms before the scheduled touchdown, plunges into the compliant contact and
+# rebounds while trusted; a trusted rising foot reads as a sinking body (-26 mm/s vz bias with the old symmetric
+# 0.2). With a 5 cm swing the rebound ends by ~45 % of stance and 0.4 sufficed; with a 10 cm swing the foot lands
+# twice as fast, sinks 5-10 mm and rebounds past 40 %, which in closed loop fed back into a -74 mm/s vz bias. 0.5
+# covers both (measured +0.1 mm/s in place, +3 mm/s at 0.5 m/s with the 10 cm swing) at the price of trusting only the
+# last 40 % of each stance; a ramp fixed as a fraction of stance cannot know how hard the foot landed. Liftoff 0.1: the
+# physical liftoff is ~13 ms after the schedule and the late stance is flat, so a long liftoff ramp only discards data.
+trust_window         = 0.5
+trust_window_liftoff = 0.1
+
+# 1000 rather than MIT's 100: the body-to-foot position rows of a SWING leg stay at full weight, so the filter splits
+# that leg's motion between the foot state and the body in the ratio set by the inflated foot process noise; at H = 100
+# the body took 0.5 % of two 0.5 m/s swing feet (-6 to -8 mm/s of forward drift), at 1000 it takes 0.05 %. H = 3 / 10
+# tripled / doubled the xy drift in the 2026-11-08 sweep.
+high_suspect_number  = 1000.0
 
 # Contact foot-center height [m] assumes a flat ground plane; set it to zero for a point-foot convention.
 foot_ground_height = 0.022
@@ -86,6 +130,9 @@ warm_start = true
 
 # ---- CONTACT PHASE
 # Contact phase comes from MdlTrot's gait schedule during TROT and is 0.5 for other behaviors; no contact estimator is configured.
+
+# Diagnostic tier (simulation only): trust 1 when the simulator reports more than 20 N on a foot, else 0, so contact-timing error can be separated from filter error.
+use_contact_oracle = false
 
 # ---- VISUALIZATION
 # Simulation-only MuJoCo overlay; marker size and opacity reflect contact trust.

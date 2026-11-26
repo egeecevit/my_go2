@@ -278,6 +278,22 @@ bool QuadrupedKinematics::jacobian(int leg_idx, const Eigen::Vector3d& joint_ang
   return true;
 }
 
+bool QuadrupedKinematics::calfAngularVelocity(int leg_idx, const Eigen::Vector3d& joint_angles,
+                                              const Eigen::Vector3d& joint_velocities,
+                                              Eigen::Vector3d& omega) const {
+  if (leg_idx < 0 || leg_idx >= NUM_LEGS) return false;
+
+  // Same internal convention as computeFK() and jacobian(): abduction is a
+  // right-handed rotation about body x, flexion and knee about the y axis that
+  // abduction has rotated to (0, cos q1, sin q1).
+  const Eigen::Vector3d dir = params_.joint_directions.row(leg_idx).transpose();
+  const double q1 = joint_angles(0) * dir(0);
+  const Eigen::Vector3d qd = joint_velocities.cwiseProduct(dir);
+  const double pitchRate = qd(1) + qd(2);
+  omega = Eigen::Vector3d(qd(0), pitchRate * std::cos(q1), pitchRate * std::sin(q1));
+  return true;
+}
+
 // Get current parameters
 const QuadrupedKinematics::params_t& QuadrupedKinematics::getKinematicParams() const {
   return params_;

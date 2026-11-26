@@ -13,6 +13,7 @@
 #include <mujoco/mjui.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cmath>
 
 #include "SimClockHW.hh"
@@ -324,7 +325,9 @@ static void _keyCallback(GLFWwindow* window, int key, int scancode, int action,
 
 void MdlSimDriver::_handleKeyboard(int key, int scancode, int action, int mods) {
   if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-    if (key >= GLFW_KEY_A && key <= GLFW_KEY_Z)
+    if (key == GLFW_KEY_P && _data)  // push, not forwarded to the Supervisor
+      _pushUntil = _data->time + _pushDuration;
+    else if (key >= GLFW_KEY_A && key <= GLFW_KEY_Z)
       g_lastKey = 'a' + (key - GLFW_KEY_A);
     else if (key == GLFW_KEY_ESCAPE)
       g_lastKey = 'q';
@@ -584,15 +587,21 @@ void MdlSimDriver::_createSimulation() {
                initial_position[0], initial_position[1], initial_position[2]);
     }
 
-    ConfigTable oriTable;
-    if (simConfig.getDouble("initial_roll", initial_roll) ||
-        simConfig.getDouble("initial_pitch", initial_pitch) ||
-        simConfig.getDouble("initial_yaw", initial_yaw)) {
-      hasExplicitOri = true;
-    }
+    // getDouble returns the value; a nonzero configured angle selects an explicit orientation.
+    initial_roll = simConfig.getDouble("initial_roll", 0.0);
+    initial_pitch = simConfig.getDouble("initial_pitch", 0.0);
+    initial_yaw = simConfig.getDouble("initial_yaw", 0.0);
+    hasExplicitOri = initial_roll != 0.0 || initial_pitch != 0.0 || initial_yaw != 0.0;
 
     framerate = simConfig.getDouble("framerate", framerate);
     _headless = simConfig.getBool("headless", _headless);
+
+    ConfigArray pushArray;
+    if (simConfig.getArray("push_force", pushArray) && pushArray.size() >= 3)
+      for (int i = 0; i < 3; i++) _pushForce[i] = pushArray.getDoubleAt(i, _pushForce[i]);
+    _pushDuration = simConfig.getDouble("push_duration", _pushDuration);
+    _pushTime = simConfig.getDouble("push_time", _pushTime);
+    _pushRamp = simConfig.getDouble("push_ramp", _pushRamp);
   }
 
   _configured_gravity[0] = gravity[0];
@@ -691,6 +700,11 @@ void MdlSimDriver::_createSimulation() {
   _instance = this;
   g_simdriver = this;
 
+  if (_model) {
+    _baseBodyId = mj_name2id(_model, mjOBJ_BODY, "base");
+    if (_baseBodyId < 0) _mgr->warning("MdlSimDriver", "No body named 'base'; push disabled");
+  }
+
   // Resolve foot geom IDs once by name in FL, FR, RL, RR order.
   static const char* footGeomNames[4] = {"FL", "FR", "RL", "RR"};
   for (int i = 0; _model && i < 4; i++) {
@@ -730,6 +744,7 @@ void MdlSimDriver::_destroySimulation() {
 
 void MdlSimDriver::_integrate(double dt) {
   if (_model && _data) {
+    _lastDt = dt;
     // Select the configured or disabled gravity vector for this step.
     if (_gravityFlag) {
       _model->opt.gravity[0] = _configured_gravity[0];
@@ -744,6 +759,23 @@ void MdlSimDriver::_integrate(double dt) {
     double current_time = _data->time;
     double target_time = current_time + dt;
 
+    // Disturbance push: xfrc_applied persists across steps, so set it every tick.
+    if (_pushTime > 0.0 && !_pushFired && current_time >= _pushTime) {
+      _pushUntil = current_time + _pushDuration;
+      _pushFired = true;
+    }
+    if (_baseBodyId >= 0) {
+      const bool pushing = current_time < _pushUntil;
+      // Thesis Sec. 6.6.5.2: a persistent force reaches its value through a
+      // ramp, so it probes the steady response rather than a step's impulse.
+      const double ramp =
+          (pushing && _pushRamp > 0.0)
+              ? std::min(1.0, (current_time - (_pushUntil - _pushDuration)) / _pushRamp)
+              : 1.0;
+      for (int i = 0; i < 3; i++)
+        _data->xfrc_applied[6 * _baseBodyId + i] = pushing ? ramp * _pushForce[i] : 0.0;
+    }
+
     // Shorten only the final step so simulation time reaches target_time exactly.
     while (_data->time < target_time) {
       double remaining_time = target_time - _data->time;
@@ -757,6 +789,14 @@ void MdlSimDriver::_integrate(double dt) {
         mj_step(_model, _data);
       }
     }
+    // mj_step integrates after its forward pass, so what it leaves in
+    // actuator_length/velocity (and geom_xpos, contacts, sensordata) belongs to
+    // the state before the last step while qpos/qvel are current. Published as
+    // is, the joint states lag the IMU by one tick; a 1 kHz momentum-feedback
+    // controller (MdlAMB) then sees the trunk's roll a tick before the joint
+    // rates that cancel it and reads a fake momentum jump every tick. One more
+    // forward pass makes everything the stack reads belong to the same instant.
+    mj_forward(_model, _data);
   }
 }
 
@@ -816,10 +856,20 @@ void MdlSimDriver::_readIMUData() {
     _imu.rpy[0] = rpy[2];  // roll
     _imu.rpy[1] = rpy[1];  // pitch
     _imu.rpy[2] = rpy[0];  // yaw
-    // Convert world acceleration minus gravity to the body frame.
-    double acc_world[3] = {_data->qacc[0] - _model->opt.gravity[0],
-                           _data->qacc[1] - _model->opt.gravity[1],
-                           _data->qacc[2] - _model->opt.gravity[2]};
+    // Base acceleration as the velocity change the integrator actually applied
+    // over the last tick. d->qacc is the explicit forward-dynamics acceleration,
+    // but MuJoCo's Euler integrator advances qvel through an implicit joint
+    // damping solve, so integrating qacc does not reproduce qvel: over a 35 s
+    // trot the mismatch summed to 0.46 m/s vertically, a -0.013 m/s^2 mean bias
+    // that the attitude filter read as a steady 0.09 deg pitch error. A real
+    // accelerometer measures what the velocity actually does.
+    double acc_world[3];
+    for (int i = 0; i < 3; i++) {
+      acc_world[i] = _havePrevBaseVel ? (_data->qvel[i] - _prevBaseVel[i]) / _lastDt : 0.0;
+      acc_world[i] -= _model->opt.gravity[i];
+      _prevBaseVel[i] = _data->qvel[i];
+    }
+    _havePrevBaseVel = true;
     Quaternion<double> acc_q(0, acc_world[0], acc_world[1], acc_world[2]);
     Quaternion<double> acc_body_q = quaternion::conj(q_unit) * acc_q * q_unit;
     _imu.acc.v[0] = acc_body_q.b();

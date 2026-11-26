@@ -29,6 +29,8 @@
 #include "hardware/MotorHW.hh"
 #include "quadruped/MdlOrientationEstimator.hh"
 #include "quadruped/MdlPosVelEstimator.hh"
+#include "quadruped/QuadrupedConfigs.hh"
+#include "quadruped/QuadrupedKinematics.hh"
 #include "rtcore/ClockHW.hh"
 #include "rtcore/Hardware.hh"
 
@@ -80,6 +82,10 @@ static void checkMatrixNear(const Eigen::MatrixXd& a, const Eigen::MatrixXd& b,
 #define T_MATRIX_NEAR(a, b, tol, what) checkMatrixNear(a, b, tol, what, __LINE__)
 
 static const int NL = MdlPosVelEstimator::NUM_LEGS;
+
+// Calves at rest relative to the body: no rolling term in the velocity rows.
+static const Eigen::Vector3d NO_ROLL[4] = {Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(),
+                                           Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero()};
 
 // Body to world rotation from roll, pitch and yaw in ZYX order, matching the
 // convention MdlOrientationEstimator::rpyFromQuat inverts.
@@ -302,7 +308,7 @@ static void runStatic(MdlPosVelEstimator& est, double height, int steps) {
   const Eigen::Vector3d omega = Eigen::Vector3d::Zero();
 
   for (int k = 0; k < steps; k++)
-    est.step(R, aWorld, omega, footPos, footVel, phase);
+    est.step(R, aWorld, omega, footPos, footVel, NO_ROLL, phase);
 }
 
 static void test_static_stance_convergence() {
@@ -416,7 +422,7 @@ static void runConstantVelocity(MdlPosVelEstimator& est, const Eigen::Vector3d& 
       footPos[i] = R.transpose() * rel;
       footVel[i] = R.transpose() * (-v);
     }
-    est.step(R, aWorld, omega, footPos, footVel, phase);
+    est.step(R, aWorld, omega, footPos, footVel, NO_ROLL, phase);
   }
 }
 
@@ -539,7 +545,7 @@ static void test_omega_cross_term() {
       // the body is correctly reported as not translating.
       footVel[i] = -omega.cross(footPos[i]);
     }
-    est.step(R, Eigen::Vector3d(0.0, 0.0, 9.81), omega, footPos, footVel, phase);
+    est.step(R, Eigen::Vector3d(0.0, 0.0, 9.81), omega, footPos, footVel, NO_ROLL, phase);
     R = R * dR;
   }
 
@@ -558,6 +564,17 @@ static void test_omega_cross_term() {
 // ---------------------------------------------------------------------------
 // 7. The contact trust ramp
 // ---------------------------------------------------------------------------
+
+static void test_asymmetric_trust_ramp() {
+  // Up over the first 40 %, down over the last 10 %, one in between.
+  T_NEAR(MdlPosVelEstimator::trustFromPhase(0.2, 0.4, 0.1), 0.5, 1e-12);
+  T_NEAR(MdlPosVelEstimator::trustFromPhase(0.4, 0.4, 0.1), 1.0, 1e-12);
+  T_NEAR(MdlPosVelEstimator::trustFromPhase(0.89, 0.4, 0.1), 1.0, 1e-12);
+  T_NEAR(MdlPosVelEstimator::trustFromPhase(0.95, 0.4, 0.1), 0.5, 1e-12);
+  T_NEAR(MdlPosVelEstimator::trustFromPhase(1.0, 0.4, 0.1), 0.0, 1e-12);
+  T_NEAR(MdlPosVelEstimator::trustFromPhase(0.5, 0.0, 0.1), 1.0, 1e-12);
+  std::cout << "  asymmetric_trust_ramp OK" << std::endl;
+}
 
 static void test_trust_window_boundaries() {
   const double w = 0.2;
@@ -627,7 +644,7 @@ static void test_covariance_health() {
   for (int k = 0; k < steps; k++) {
     double phase[4];
     for (int i = 0; i < 4; i++) phase[i] = trotPhase(i, k * dt, 0.5, 0.5);
-    est.step(R, aWorld, omega, footPos, footVel, phase);
+    est.step(R, aWorld, omega, footPos, footVel, NO_ROLL, phase);
 
     if (k % 100 != 0) continue;
 
@@ -681,7 +698,7 @@ static void runWithBadLeg(MdlPosVelEstimator& est, double height, int steps,
   const Eigen::Vector3d omega = Eigen::Vector3d::Zero();
 
   for (int k = 0; k < steps; k++)
-    est.step(R, aWorld, omega, footPos, footVel, phase);
+    est.step(R, aWorld, omega, footPos, footVel, NO_ROLL, phase);
 }
 
 static void test_swing_foot_trust_rejection() {
@@ -806,7 +823,7 @@ static void test_origin_carry_across_activation() {
     for (int i = 0; i < 4; i++) footVel[i].setZero();
     for (int k = 0; k < 200; k++)
       est.step(Eigen::Matrix3d::Identity(), Eigen::Vector3d(0.0, 0.0, 9.81),
-               Eigen::Vector3d::Zero(), footPos, footVel, swing);
+               Eigen::Vector3d::Zero(), footPos, footVel, NO_ROLL, swing);
 
     // The drag is real, so the assertions below are not trivially satisfied.
     T_CHECK(std::fabs(est.getState()(0) - before.x()) > 1e-3);
@@ -828,6 +845,145 @@ static void test_origin_carry_across_activation() {
 }
 
 // ---------------------------------------------------------------------------
+// 10b. The calf angular velocity matches the kinematic chain
+// ---------------------------------------------------------------------------
+
+// R_calf = R_x(q1) R_y(q2 + q3) in the internal (direction-applied) convention,
+// the same chain computeFK() evaluates. Differentiating it numerically gives
+// the body-frame angular velocity the helper must return, right legs included,
+// whose abduction direction is -1.
+static void test_calf_angular_velocity() {
+  QuadrupedKinematics kin(createGo2Config());
+  const QuadrupedKinematics::params_t& P = kin.getKinematicParams();
+  std::mt19937 rng(7);
+  std::uniform_real_distribution<double> ang(-0.8, 0.8), rate(-3.0, 3.0);
+  const double h = 1e-7;
+
+  for (int leg = 0; leg < 4; leg++) {
+    for (int trial = 0; trial < 5; trial++) {
+      const Eigen::Vector3d q(ang(rng), ang(rng), ang(rng) - 1.5);
+      const Eigen::Vector3d qd(rate(rng), rate(rng), rate(rng));
+      const Eigen::Vector3d dir = P.joint_directions.row(leg).transpose();
+      auto Rcalf = [&](const Eigen::Vector3d& a) {
+        const Eigen::Vector3d qi = a.cwiseProduct(dir);
+        return Eigen::Matrix3d(Eigen::AngleAxisd(qi(0), Eigen::Vector3d::UnitX()) *
+                               Eigen::AngleAxisd(qi(1) + qi(2), Eigen::Vector3d::UnitY()));
+      };
+      const Eigen::Matrix3d R0 = Rcalf(q), R1 = Rcalf(q + h * qd);
+      // Body-frame angular velocity: dR R^T = [omega]_x.
+      const Eigen::Matrix3d W = (R1 - R0) / h * R0.transpose();
+      const Eigen::Vector3d expected(W(2, 1), W(0, 2), W(1, 0));
+
+      Eigen::Vector3d omega;
+      T_CHECK(kin.calfAngularVelocity(leg, q, qd, omega));
+      T_MATRIX_NEAR(omega, expected, 1e-5, "calf angular velocity");
+    }
+  }
+  std::cout << "  calf_angular_velocity OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 10c. A rolling stance foot must not read as body velocity
+// ---------------------------------------------------------------------------
+
+// The foot sphere is attached to the calf, so in stance it rolls: its centre,
+// which is what forward kinematics returns, moves at r * (omega_calf x z)
+// while the body moves at v. Feeding the filter exactly that geometry, it must
+// recover v, not v minus the creep. Before the rolling term the velocity rows
+// asserted a stationary centre and this test fails by r * omega = 33 mm/s;
+// the pitched case tells world z from body z apart.
+static void runRollingFeet(MdlPosVelEstimator& est, const Eigen::Vector3d& v,
+                           const Eigen::Matrix3d& R, double omegaCalfY, double radius,
+                           double height, double dt, int steps) {
+  Eigen::Vector3d nominal[4];
+  nominalFootprint(height, nominal);
+  const double phase[4] = {MdlPosVelEstimator::PLANTED_PHASE, MdlPosVelEstimator::PLANTED_PHASE,
+                           MdlPosVelEstimator::PLANTED_PHASE, MdlPosVelEstimator::PLANTED_PHASE};
+  const Eigen::Vector3d aWorld(0.0, 0.0, 9.81);
+  const Eigen::Vector3d omegaBody = Eigen::Vector3d::Zero();
+  // Calves pitch about the body y axis at a constant rate; the centres roll.
+  const Eigen::Vector3d omegaCalfBody(0.0, omegaCalfY, 0.0);
+  const Eigen::Vector3d creep = (R * omegaCalfBody).cross(Eigen::Vector3d(0.0, 0.0, radius));
+  Eigen::Vector3d omegaCalf[4], footPos[4], footVel[4];
+  for (int i = 0; i < 4; i++) omegaCalf[i] = omegaCalfBody;
+
+  for (int k = 0; k < steps; k++) {
+    const double t = k * dt;
+    for (int i = 0; i < 4; i++) {
+      const Eigen::Vector3d rel = R * nominal[i] + (creep - v) * t;
+      footPos[i] = R.transpose() * rel;
+      footVel[i] = R.transpose() * (creep - v);
+    }
+    est.step(R, aWorld, omegaBody, footPos, footVel, omegaCalf, phase);
+  }
+}
+
+static void test_rolling_foot_velocity() {
+  const double dt = 0.002, height = 0.30, radius = 0.022, omegaCalfY = 1.5;
+  const Eigen::Vector3d v(0.25, 0.0, 0.0);
+  const Eigen::Matrix3d attitudes[2] = {
+      Eigen::Matrix3d::Identity(),
+      Eigen::AngleAxisd(0.3, Eigen::Vector3d::UnitY()).toRotationMatrix()};
+
+  for (int a = 0; a < 2; a++) {
+    MdlPosVelEstimator est;
+    MdlPosVelEstimator::params_t p;
+    p.dt = dt;
+    p.foot_ground_height = radius;
+    est.setParams(p);
+    est.reset();
+    runRollingFeet(est, v, attitudes[a], omegaCalfY, radius, height, dt, 3000);
+
+    Eigen::Vector3d vhat, rhat;
+    T_CHECK(est.getBodyVelocity(vhat));
+    T_CHECK(est.getBodyPosition(rhat));
+    std::cout << "    attitude " << a << " vhat " << vhat.transpose() << " rhat " << rhat.transpose()
+              << std::endl;
+    T_MATRIX_NEAR(vhat, v, 2e-3, "velocity with rolling feet");
+    // The body started at the origin and travelled v*t: with the foot states
+    // rolled along, the position rows no longer drag it (0.2 m error otherwise).
+    T_CHECK((rhat.head<2>() - (v * (3000 * dt)).head<2>()).norm() < 0.02);
+  }
+  std::cout << "  rolling_foot_velocity OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 11. Shadow mode publishes truth while the filter keeps running
+// ---------------------------------------------------------------------------
+
+// use_ground_truth hands consumers the simulator's position and velocity, but
+// the filter state behind the accessors must keep running untouched: it is what
+// the logs record, and a shadow run is how estimator error is measured with
+// the controller on truth.
+static void test_shadow_publishes_truth() {
+  MdlPosVelEstimator est;
+  MdlPosVelEstimator::params_t p;
+  p.dt = 0.002;
+  p.foot_ground_height = 0.0;
+  p.use_ground_truth = true;
+  est.setParams(p);
+  est.reset();
+  runStatic(est, 0.30, 1000);
+
+  const Eigen::Vector3d pos(1.0, -2.0, 0.31), vel(0.3, 0.1, -0.05);
+  const Eigen::Quaterniond q = quatFromRPY(0.0, 0.0, 1.0);
+  est.setPublishedTruth(pos, vel, q);
+
+  Eigen::Vector3d r, v, vb;
+  T_CHECK(est.getBodyPosition(r));
+  T_CHECK(est.getBodyVelocity(v));
+  T_CHECK(est.getBodyVelocityInBody(vb));
+  T_MATRIX_NEAR(r, pos, 1e-12, "published position");
+  T_MATRIX_NEAR(v, vel, 1e-12, "published velocity");
+  T_MATRIX_NEAR(vb, Eigen::Vector3d(q.conjugate() * vel), 1e-12, "published body velocity");
+
+  // The filter state is untouched by what is published.
+  T_NEAR(est.getState()(2), 0.30, 5e-3);
+  T_CHECK(est.getState().segment<3>(3).norm() < 1e-3);
+  std::cout << "  shadow_publishes_truth OK" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
 
 int main() {
   std::cout << "test_state_estimator" << std::endl;
@@ -839,9 +995,13 @@ int main() {
   test_constant_velocity();
   test_omega_cross_term();
   test_trust_window_boundaries();
+  test_asymmetric_trust_ramp();
   test_covariance_health();
   test_swing_foot_trust_rejection();
   test_origin_carry_across_activation();
+  test_calf_angular_velocity();
+  test_rolling_foot_velocity();
+  test_shadow_publishes_truth();
 
   std::cout << "test_state_estimator PASSED" << std::endl;
   return 0;

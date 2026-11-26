@@ -77,9 +77,17 @@ Eigen::Vector3d MdlOrientationEstimator::rpyFromQuat(const Eigen::Quaterniond& q
 
 void MdlOrientationEstimator::setParams(const params_t& params) {
   _params = params;
-  _injectedAccBias = Eigen::Vector3d::Constant(_params.acc_bias_init);
-  _injectedGyroBias = Eigen::Vector3d::Constant(_params.gyro_bias_init);
+  _resetInjectedBias();
   _rng.seed(_params.seed);
+}
+
+// The injected bias is also what the error log compares the estimate with, so
+// it must read zero when the synthetic corruption is off.
+void MdlOrientationEstimator::_resetInjectedBias() {
+  const double acc = _params.noise_enable ? _params.acc_bias_init : 0.0;
+  const double gyro = _params.noise_enable ? _params.gyro_bias_init : 0.0;
+  _injectedAccBias = Eigen::Vector3d::Constant(acc);
+  _injectedGyroBias = Eigen::Vector3d::Constant(gyro);
 }
 
 void MdlOrientationEstimator::reset() {
@@ -96,12 +104,16 @@ void MdlOrientationEstimator::reset() {
   _qYawInv = Eigen::Quaterniond::Identity();
   _gyroBias.setZero();
   _accFilt.setZero();
+  _quietTime = 0.0;
+  _vBodyHint.setZero();
   _wcorr.setZero();
   _gain = 0.0;
   _haveAttitude = false;
   _haveImu = false;
-  _injectedAccBias = Eigen::Vector3d::Constant(_params.acc_bias_init);
-  _injectedGyroBias = Eigen::Vector3d::Constant(_params.gyro_bias_init);
+  _haveTruth = false;
+  _elapsed = 0.0;
+  _tiltProbePlanted = false;
+  _resetInjectedBias();
 }
 
 // Propagate the body-to-world attitude and apply the gravity correction.
@@ -113,9 +125,14 @@ void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
   const Eigen::Quaterniond qPred = (_qFilter * delta).normalized();
   _accFilt = delta.conjugate() * _accFilt;
 
+  // A turning body reads its centripetal acceleration omega x v as a tilt of
+  // gravity: at 0.3 rad/s and 0.3 m/s that is 0.09 m/s^2, i.e. 0.5 deg of
+  // roll the filter would settle on. The velocity stage knows v, so remove it.
+  const Eigen::Vector3d accGravity = acc - omegaPrediction.cross(_vBodyHint);
+
   // Low-pass the frame-consistent specific force before using it as gravity.
   const double a = dt / (_params.accel_filter_tau + dt);
-  _accFilt += a * (acc - _accFilt);
+  _accFilt += a * (accGravity - _accFilt);
 
   _wcorr.setZero();
   _gain = 0.0;
@@ -132,8 +149,25 @@ void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
                      0.0);
   }
 
-  // Integrate the gravity innovation into the gyro-bias estimate.
-  _gyroBias -= _params.mahony_ki * _gain * _wcorr * dt;
+  // Integrate the gravity innovation into the gyro-bias estimate, but only
+  // while the body is quiet. A fore-aft acceleration of 0.3 m/s^2 at a gait
+  // transition tilts the low-passed gravity reference by a/g = 0.03 rad while
+  // changing its magnitude by a^2/2g = 0.005 m/s^2, so the gravity band above
+  // never notices and with ki = 0.25 the innovation integrated into a 7 mrad/s
+  // bias kick that took ~8 s to unwind. Body rates separate the two regimes
+  // cleanly: standing reads 0.01-0.04 rad/s including noise, trotting ~0.6.
+  // The hold-off of 2 tau lets a polluted reference decay before learning
+  // resumes, otherwise the stop transient would still be integrated. While
+  // moving, learning is slowed 20x rather than stopped: the kick scales with
+  // ki, so 1/20 keeps it under 0.5 mrad/s, while a frozen integrator could not
+  // follow the bias random walk through a long trot (1e-4 rad/s/sqrt(s) is
+  // 0.8 mrad/s per minute); at ki/20 the walk is still tracked with an ~80 s
+  // time constant.
+  const bool gateOff = !(_params.bias_gate_rate > 0.0);
+  _quietTime = (gateOff || omegaPrediction.norm() < _params.bias_gate_rate) ? _quietTime + dt : 0.0;
+  const bool quiet = gateOff || _quietTime >= 2.0 * _params.accel_filter_tau;
+  const double ki = quiet ? _params.mahony_ki : 0.05 * _params.mahony_ki;
+  _gyroBias -= ki * _gain * _wcorr * dt;
 
   // Clamp the integrated bias when a positive limit is configured.
   if (_params.mahony_bias_limit > 0.0)
@@ -148,8 +182,9 @@ void MdlOrientationEstimator::_filterAttitude(const Eigen::Vector3d& gyro,
 void MdlOrientationEstimator::step(const Eigen::Quaterniond& q,
                                    const Eigen::Vector3d& gyro,
                                    const Eigen::Vector3d& acc, double dt) {
-  // Ground truth bypasses filter propagation when requested and available.
-  if (_params.filter_attitude && !_params.use_ground_truth) {
+  // Shadow mode (use_ground_truth) does not bypass the filter: update()
+  // publishes truth separately, so the filter is always evaluated.
+  if (_params.filter_attitude) {
     // Seed recursive state from the first supplied quaternion.
     if (!_haveAttitude) {
       _qFilter = q.normalized();
@@ -193,6 +228,22 @@ void MdlOrientationEstimator::step(const Eigen::Quaterniond& q,
   _ready = true;
 }
 
+void MdlOrientationEstimator::setPublishedTruth(const Eigen::Quaterniond& q,
+                                                const Eigen::Vector3d& omegaBody,
+                                                const Eigen::Vector3d& accBody) {
+  _truth.q = q.normalized();
+  _truth.Rbw = _truth.q.toRotationMatrix();
+  _truth.rpy = rpyFromQuat(_truth.q);
+  _truth.omegaBody = omegaBody;
+  _truth.omegaWorld = _truth.Rbw * omegaBody;
+  _truth.aWorld = _truth.Rbw * accBody;
+  _haveTruth = true;
+}
+
+void MdlOrientationEstimator::perturbAttitude(const Eigen::Vector3d& rotvecBody) {
+  _qFilter = (_qFilter * rotationIncrement(rotvecBody)).normalized();
+}
+
 // ---------------------------------------------------------------------------
 //  Module interface
 // ---------------------------------------------------------------------------
@@ -210,6 +261,9 @@ void MdlOrientationEstimator::init() {
     // Keep filter internals in a separate fixed-width log variable.
     _logserver->registerVar(LOG_DOUBLE, 10, ORIENTATIONMODULE_NAME, "filter",
                             (unsigned char*)_logFilter);
+    // Error against simulator truth; stays zero on hardware.
+    _logserver->registerVar(LOG_DOUBLE, 11, ORIENTATIONMODULE_NAME, "error",
+                            (unsigned char*)_logError);
   }
 }
 
@@ -219,6 +273,7 @@ void MdlOrientationEstimator::uninit() {
   if (_logserver) {
     _logserver->deleteVar(ORIENTATIONMODULE_NAME, "state");
     _logserver->deleteVar(ORIENTATIONMODULE_NAME, "filter");
+    _logserver->deleteVar(ORIENTATIONMODULE_NAME, "error");
     _logserver = nullptr;
   }
 }
@@ -247,6 +302,7 @@ void MdlOrientationEstimator::_readConfig() {
   p.mahony_kp = config.getDouble("mahony_kp", p.mahony_kp);
   p.mahony_ki = config.getDouble("mahony_ki", p.mahony_ki);
   p.mahony_bias_limit = config.getDouble("mahony_bias_limit", p.mahony_bias_limit);
+  p.bias_gate_rate = config.getDouble("bias_gate_rate", p.bias_gate_rate);
   p.accel_filter_tau = config.getDouble("accel_filter_tau", p.accel_filter_tau);
   p.gravity_magnitude = config.getDouble("gravity_magnitude", p.gravity_magnitude);
   // Warn when an obsolete gate override is present.
@@ -271,6 +327,8 @@ void MdlOrientationEstimator::_readConfig() {
     p.acc_bias_init = noise.getDouble("acc_bias_init", p.acc_bias_init);
     p.gyro_bias_init = noise.getDouble("gyro_bias_init", p.gyro_bias_init);
     p.seed = (unsigned int)noise.getInt("seed", p.seed);
+    p.tilt_probe_deg = noise.getDouble("tilt_probe_deg", p.tilt_probe_deg);
+    p.tilt_probe_time = noise.getDouble("tilt_probe_time", p.tilt_probe_time);
   }
 
   setParams(p);
@@ -304,20 +362,62 @@ void MdlOrientationEstimator::update() {
     return;
   }
 
-  if (_params.use_ground_truth && simGetGroundTruth) {
-    double pos[3], quat[4], linvel[3], angvel[3];
-    if (simGetGroundTruth(pos, quat, linvel, angvel)) {
-      q = Eigen::Quaterniond(quat[0], quat[1], quat[2], quat[3]);
-      // Simulation angular velocity is already in the body frame.
-      gyro = Eigen::Vector3d(angvel[0], angvel[1], angvel[2]);
-      // Keep the IMU acceleration on the ground-truth path.
-    }
-  } else {
-    _applySensorNoise(acc, gyro);
+  // The filter always sees the corrupted IMU, shadow mode included, so the
+  // logs measure the estimator a hardware run would have.
+  _applySensorNoise(acc, gyro);
+  step(q, gyro, acc, _dt);
+
+  // Convergence probe: plant the configured roll error once the robot has had
+  // tilt_probe_time seconds to settle, so the decay is measured while standing.
+  _elapsed += _dt;
+  if (!_tiltProbePlanted && _params.tilt_probe_deg != 0.0 &&
+      _elapsed >= _params.tilt_probe_time) {
+    perturbAttitude(Eigen::Vector3d(_params.tilt_probe_deg * M_PI / 180.0, 0.0, 0.0));
+    _tiltProbePlanted = true;
   }
 
-  step(q, gyro, acc, _dt);
+  if (simGetGroundTruth) {
+    double pos[3], quat[4], linvel[3], angvel[3];
+    if (simGetGroundTruth(pos, quat, linvel, angvel)) {
+      Eigen::Quaterniond qTrue(quat[0], quat[1], quat[2], quat[3]);
+      qTrue.normalize();
+      // Simulation angular velocity is already in the body frame.
+      const Eigen::Vector3d wTrue(angvel[0], angvel[1], angvel[2]);
+      if (_params.use_ground_truth) setPublishedTruth(qTrue, wTrue, acc);
+      _refreshErrorLog(qTrue, wTrue);
+    }
+  }
   _refreshLogBuffer();
+}
+
+void MdlOrientationEstimator::_refreshErrorLog(const Eigen::Quaterniond& qTrue,
+                                               const Eigen::Vector3d& wTrue) {
+  // Body-frame rotation vector taking the true attitude to the filter's. Uses
+  // _qFilter rather than _q so a zero_initial_yaw datum never reads as error.
+  const Eigen::AngleAxisd err(qTrue.conjugate() * _qFilter);
+  const Eigen::Vector3d rotvec = err.angle() * err.axis();
+
+  // Split the error the way the sensors see it, not by body axis: gravity
+  // observes the angle between the true and estimated up vectors, and nothing
+  // observes the heading about the world vertical. Splitting by body-frame
+  // components instead leaks heading drift into "roll" whenever the body is
+  // pitched (6.7 degrees in the stand pose puts 12 % of the yaw error there).
+  const Eigen::Vector3d upTrue = qTrue.conjugate() * Eigen::Vector3d::UnitZ();
+  const Eigen::Vector3d upEst = _qFilter.conjugate() * Eigen::Vector3d::UnitZ();
+  const double tilt = std::atan2(upTrue.cross(upEst).norm(), upTrue.dot(upEst));
+  Eigen::Vector3d hTrue = qTrue * Eigen::Vector3d::UnitX();
+  Eigen::Vector3d hEst = _qFilter * Eigen::Vector3d::UnitX();
+  hTrue.z() = 0.0;
+  hEst.z() = 0.0;
+  const double heading = std::atan2(hTrue.cross(hEst).z(), hTrue.dot(hEst));
+
+  for (int i = 0; i < 3; i++) {
+    _logError[i] = rotvec[i];
+    _logError[5 + i] = _omegaBody[i] - wTrue[i];
+    _logError[8 + i] = _gyroBias[i] - _injectedGyroBias[i];
+  }
+  _logError[3] = tilt;
+  _logError[4] = heading;
 }
 
 void MdlOrientationEstimator::_applySensorNoise(Eigen::Vector3d& acc,

@@ -136,6 +136,18 @@ class QuadrupedKinematics {
    */
   bool jacobian(int leg_idx, const Eigen::Vector3d& angles, Eigen::Matrix3d& J) const;
 
+  /** @brief Angular velocity of the calf link relative to the body, in the body
+   * frame: abduction rate about body x plus flexion and knee rates about the
+   * abduction-rotated y axis. A foot sphere rigidly attached to the calf rolls
+   * with this rate, which the state estimator needs to model stance.
+   * @param leg_idx Leg index (0-3)
+   * @param angles Joint angles [hip_abduction, hip_flexion, knee] in radians
+   * @param velocities Joint velocities in the same order [rad/s]
+   * @param omega Output angular velocity [rad/s]
+   */
+  bool calfAngularVelocity(int leg_idx, const Eigen::Vector3d& angles,
+                           const Eigen::Vector3d& velocities, Eigen::Vector3d& omega) const;
+
   /** @brief Returns true if all angles are within limits
    * @param leg_idx Leg index (0-3)
    * @param angles Joint angles to check

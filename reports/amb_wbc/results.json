@@ -1,0 +1,2191 @@
+{
+ "ablation": {
+  "cfg": {
+   "wbc_off": [
+    "amb.enabled = false"
+   ],
+   "joint_on": [
+    "amb.wbc = false"
+   ],
+   "joint_off": [
+    "amb.wbc = false",
+    "amb.enabled = false"
+   ],
+   "wbc_thesis_gains": [
+    "amb.gains = [3430.0, 1470.0, 210.0]",
+    "amb.template_m = [10.5, 2.26, 2.26]"
+   ]
+  },
+  "runs": {
+   "wbc_on": {
+    "handoff_s": 7.104,
+    "closing": {
+     "max_theta1_deg": 0.3,
+     "torque_saturated_pct": 0.0,
+     "tick_mean_us": 136.5,
+     "tick_max_us": 1093.7
+    },
+    "amb_error": null,
+    "theta_wrap_t": null,
+    "fall": false,
+    "time_to_fall": null,
+    "min_z": 0.298065,
+    "peak_roll": 0.116349,
+    "peak_pitch": 0.391819,
+    "peak_w": 0.025193,
+    "peak_L": 0.008033,
+    "peak_cx": 0.000648,
+    "observed": 12.0,
+    "max_abs_x2_deg": 24.975784,
+    "x2_drift_last_2s_deg_per_s": -0.377584,
+    "abduction_margin_end_deg": 51.78,
+    "abduction_margin_rate_deg_per_s": 0.197
+   },
+   "wbc_off": {
+    "handoff_s": 7.105,
+    "closing": {
+     "max_theta1_deg": 45.06,
+     "torque_saturated_pct": 0.8,
+     "tick_mean_us": 173.5,
+     "tick_max_us": 3195.0
+    },
+    "amb_error": {
+     "t": 1.168,
+     "message": "Tick failed: theta1=45.1 deg l_c=0.231 m j_c=0.98 j_d=-1.12"
+    },
+    "theta_wrap_t": null,
+    "fall": true,
+    "time_to_fall": 1.436,
+    "min_z": 0.064057,
+    "peak_roll": 179.797246,
+    "peak_pitch": 9.091473,
+    "peak_w": 7.700041,
+    "peak_L": 4.607056,
+    "peak_cx": 0.216641,
+    "observed": 2.436,
+    "max_abs_x2_deg": 88.311322,
+    "x2_drift_last_2s_deg_per_s": -77.003655
+   },
+   "joint_on": {
+    "handoff_s": 7.104,
+    "closing": {
+     "max_theta1_deg": 0.37,
+     "torque_saturated_pct": 0.0,
+     "tick_mean_us": null,
+     "tick_max_us": null
+    },
+    "amb_error": null,
+    "theta_wrap_t": null,
+    "fall": false,
+    "time_to_fall": null,
+    "min_z": 0.29814,
+    "peak_roll": 0.397134,
+    "peak_pitch": 0.390577,
+    "peak_w": 0.212321,
+    "peak_L": 0.007516,
+    "peak_cx": 0.000648,
+    "observed": 12.0,
+    "max_abs_x2_deg": 27.727294,
+    "x2_drift_last_2s_deg_per_s": -3.2e-05,
+    "abduction_margin_end_deg": 46.22,
+    "abduction_margin_rate_deg_per_s": 0.0
+   },
+   "joint_off": {
+    "handoff_s": 7.105,
+    "closing": {
+     "max_theta1_deg": 45.07,
+     "torque_saturated_pct": 0.0,
+     "tick_mean_us": null,
+     "tick_max_us": null
+    },
+    "amb_error": {
+     "t": 1.153,
+     "message": "Tick failed: theta1=45.1 deg l_c=0.279 m j_c=1.00 j_d=-1.02"
+    },
+    "theta_wrap_t": null,
+    "fall": true,
+    "time_to_fall": 1.216,
+    "min_z": 0.056142,
+    "peak_roll": 179.960673,
+    "peak_pitch": 5.225108,
+    "peak_w": 8.671344,
+    "peak_L": 6.541152,
+    "peak_cx": 0.264484,
+    "observed": 2.216,
+    "max_abs_x2_deg": 27.93383,
+    "x2_drift_last_2s_deg_per_s": 20.212836
+   },
+   "wbc_thesis_gains": {
+    "handoff_s": 7.104,
+    "closing": {
+     "max_theta1_deg": 0.34,
+     "torque_saturated_pct": 0.0,
+     "tick_mean_us": 139.6,
+     "tick_max_us": 1435.7
+    },
+    "amb_error": null,
+    "theta_wrap_t": null,
+    "fall": false,
+    "time_to_fall": null,
+    "min_z": 0.298062,
+    "peak_roll": 0.276978,
+    "peak_pitch": 0.391144,
+    "peak_w": 0.031489,
+    "peak_L": 0.01735,
+    "peak_cx": 0.000843,
+    "observed": 12.0,
+    "max_abs_x2_deg": 39.674726,
+    "x2_drift_last_2s_deg_per_s": -4.261177,
+    "abduction_margin_end_deg": 51.89,
+    "abduction_margin_rate_deg_per_s": -2.085
+   }
+  },
+  "thesis_table_6_4": {
+   "disabled": {
+    "fall": true,
+    "time_to_fall": 1.299,
+    "min_z": 0.1595,
+    "peak_roll": 29.66,
+    "peak_pitch": 14.41,
+    "peak_w": 5.404,
+    "peak_L": 3.83,
+    "peak_cx": 0.1769,
+    "observed": 2.447
+   },
+   "enabled": {
+    "fall": false,
+    "min_z": 0.3026,
+    "peak_roll": 1.887,
+    "peak_pitch": 0.978,
+    "peak_w": 0.151,
+    "peak_L": 0.0352,
+    "peak_cx": 0.00245,
+    "observed": 8.447
+   }
+  },
+  "units": "s, m, deg, rad/s, kg m^2/s, m; x2 (unwrapped) while MdlAMB runs",
+  "amb_off_realization": "amb.enabled = false keeps the WBC, its hierarchy and the lift; it removes the AMB feedforward a_f and the tangential pass-through (6.23): the swing-foot task takes the tangential channel through the same lift to the lift target's angle about e_r0 and PD-holds it there (MdlAMB.cc _wbcTick), as the joint-space ablation PD-holds the lift posture. The thesis says only that the run 'removes the tangential balance acceleration'.",
+  "long": {
+   "wbc_on": {
+    "handoff_s": 7.104,
+    "closing": {
+     "max_theta1_deg": 0.3,
+     "torque_saturated_pct": 0.0,
+     "tick_mean_us": 136.6,
+     "tick_max_us": 1346.0
+    },
+    "amb_error": null,
+    "theta_wrap_t": null,
+    "cfg": [],
+    "observed": 60.0,
+    "fall": false,
+    "time_to_fall": null,
+    "max_theta1_deg": 0.297039,
+    "x2_deg_at_5s": 18.51538,
+    "x2_deg_at_20s": 12.182696,
+    "x2_deg_at_35s": 11.021278,
+    "abduction_margin_end_deg": 53.41,
+    "abduction_margin_rate_deg_per_s": 0.002
+   },
+   "wbc_thesis_ori_gains": {
+    "handoff_s": 7.104,
+    "closing": {
+     "max_theta1_deg": 45.17,
+     "torque_saturated_pct": 0.0,
+     "tick_mean_us": 138.2,
+     "tick_max_us": 1954.7
+    },
+    "amb_error": {
+     "t": 44.441,
+     "message": "Tick failed: theta1=45.2 deg l_c=0.242 m j_c=0.93 j_d=-0.94"
+    },
+    "theta_wrap_t": 43.81,
+    "cfg": [
+     "amb.kp_body_ori = 100.0",
+     "amb.kd_body_ori = 10.0"
+    ],
+    "observed": 60.0,
+    "fall": true,
+    "time_to_fall": 44.42,
+    "max_theta1_deg": 44.689462,
+    "x2_deg_at_5s": 26.933946,
+    "x2_deg_at_20s": 56.824629,
+    "x2_deg_at_35s": 100.086533
+   }
+  },
+  "thesis_gains_balance": true,
+  "gate": {
+   "gate": "ablation: AMB on no fall >= 10 s, AMB off falls",
+   "result": "pass",
+   "numbers": "on: no fall over 12 s, min z 0.298 m, peak |L| 0.0080, peak |c_x| 0.65 mm, abduction margin at the end 51.78 deg (0.197 deg/s); off: falls 1.436 s after activation (thesis 1.299), MdlAMB error at 1.168 s; joint path on/off falls False/True; thesis gains balance"
+  },
+  "figs": [
+   "figs/fig6_07_ablation_height.png",
+   "figs/fig6_08_ablation_com.png"
+  ]
+ },
+ "transfer": {
+  "handoff_s": 7.104,
+  "closing": {
+   "max_theta1_deg": 0.3,
+   "torque_saturated_pct": 0.0,
+   "tick_mean_us": 200.4,
+   "tick_max_us": 2687.7
+  },
+  "amb_error": null,
+  "theta_wrap_t": null,
+  "phases": {
+   "placement": 5.002,
+   "transfer": 6.864,
+   "final": 9.866,
+   "settled": 12.864
+  },
+  "table_6_6": {
+   "transfer": {
+    "FL": {
+     "mean_desired": 48.450488,
+     "mean_solved": 49.41384,
+     "rmse_des_sol": 0.996791,
+     "mean_sim": 49.633993,
+     "rmse_des_sim": 1.268849,
+     "rmse_sol_sim": 0.396769
+    },
+    "FR": {
+     "mean_desired": 16.563114,
+     "mean_solved": 17.311227,
+     "rmse_des_sol": 0.805896,
+     "mean_sim": 17.24989,
+     "rmse_des_sim": 0.837889,
+     "rmse_sol_sim": 0.265338
+    },
+    "RL": {
+     "mean_desired": 17.649138,
+     "mean_solved": 17.483036,
+     "rmse_des_sol": 0.289478,
+     "mean_sim": 17.413422,
+     "rmse_des_sim": 0.422571,
+     "rmse_sol_sim": 0.326505
+    },
+    "RR": {
+     "mean_desired": 66.098459,
+     "mean_solved": 64.869904,
+     "rmse_des_sol": 1.26684,
+     "mean_sim": 64.872903,
+     "rmse_des_sim": 1.250668,
+     "rmse_sol_sim": 0.219061
+    },
+    "pooled_rmse_des_sol": 0.912653,
+    "rmse_of_summed_force_des_sol": 0.325956,
+    "duration_s": 3.002
+   },
+   "final": {
+    "FL": {
+     "mean_desired": 24.496476,
+     "mean_solved": 25.664835,
+     "rmse_des_sol": 1.168384,
+     "mean_sim": 25.650464,
+     "rmse_des_sim": 1.154006,
+     "rmse_sol_sim": 0.017965
+    },
+    "FR": {
+     "mean_desired": 33.082555,
+     "mean_solved": 34.418272,
+     "rmse_des_sol": 1.335719,
+     "mean_sim": 34.617201,
+     "rmse_des_sim": 1.534667,
+     "rmse_sol_sim": 0.199016
+    },
+    "RL": {
+     "mean_desired": 35.174342,
+     "mean_solved": 34.593813,
+     "rmse_des_sol": 0.58054,
+     "mean_sim": 34.613631,
+     "rmse_des_sim": 0.560762,
+     "rmse_sol_sim": 0.020448
+    },
+    "RR": {
+     "mean_desired": 55.736803,
+     "mean_solved": 54.350774,
+     "rmse_des_sol": 1.38621,
+     "mean_sim": 54.293001,
+     "rmse_des_sim": 1.443954,
+     "rmse_sol_sim": 0.057804
+    },
+    "pooled_rmse_des_sol": 1.162742,
+    "rmse_of_summed_force_des_sol": 0.537888,
+    "duration_s": 2.998
+   }
+  },
+  "thesis_table_6_6": {
+   "columns": [
+    "mean_desired",
+    "mean_solved",
+    "rmse"
+   ],
+   "transfer": {
+    "FR": [
+     18.41,
+     19.61,
+     1.4
+    ],
+    "FL": [
+     55.24,
+     58.42,
+     3.38
+    ],
+    "RR": [
+     55.24,
+     49.58,
+     5.89
+    ],
+    "RL": [
+     18.41,
+     16.22,
+     2.57
+    ]
+   },
+   "final": {
+    "FR": [
+     36.83,
+     39.36,
+     2.54
+    ],
+    "FL": [
+     36.83,
+     37.83,
+     1.0
+    ],
+    "RR": [
+     36.83,
+     34.07,
+     2.76
+    ],
+    "RL": [
+     36.83,
+     32.37,
+     4.46
+    ]
+   },
+   "total_rmse": {
+    "transfer": 3.48,
+    "final": 3.68
+   }
+  },
+  "table_6_6_note": "forces [N]; final = the 3 s four-foot hold up to SETTLED; the thesis' 'total' RMSE is undefined there, pooled and summed-force RMSE given here",
+  "principal_two_foot": {
+   "FR": {
+    "normal_rmse_mm": 0.204512,
+    "normal_max_mm": 0.253369,
+    "radial_rmse_mm": 0.585859,
+    "radial_max_mm": 1.960782,
+    "tangential_rmse_mm": 0.0,
+    "with_lift": {
+     "normal_rmse_mm": 0.231664,
+     "normal_max_mm": 0.788163,
+     "radial_rmse_mm": 0.675385,
+     "radial_max_mm": 2.496376
+    }
+   },
+   "RL": {
+    "normal_rmse_mm": 0.10198,
+    "normal_max_mm": 0.718582,
+    "radial_rmse_mm": 0.394719,
+    "radial_max_mm": 2.075099,
+    "tangential_rmse_mm": 0.0,
+    "with_lift": {
+     "normal_rmse_mm": 0.327684,
+     "normal_max_mm": 2.071014,
+     "radial_rmse_mm": 0.57646,
+     "radial_max_mm": 2.554379
+    }
+   },
+   "both_rmse_mm": {
+    "normal": 0.161503,
+    "radial": 0.499342
+   },
+   "thesis_rmse_mm": {
+    "normal": 7.59,
+    "radial": 18.95
+   },
+   "window": "lift end to each foot's promotion; with_lift: from activation"
+  },
+  "final_body_rmse_mm": 0.42617,
+  "final_body_rmse_truth_mm": 0.429579,
+  "final_body_note": "final_body_rmse_mm is the controller's own error (MdlAMB_wbc 28-30, base from the stance kinematics); _truth_mm is the simulator's; the thesis' 7.13 mm was measured under its simulated-state override",
+  "final_sim_fz_N": {
+   "FL": 25.65,
+   "FR": 34.62,
+   "RL": 34.61,
+   "RR": 54.3
+  },
+  "weight_N": 149.174862,
+  "fall_before_settled": false,
+  "gate": {
+   "gate": "load transfer: four-foot support, no fall, desired-vs-solved RMSE < 10 N",
+   "result": "pass",
+   "numbers": "SETTLED 12.86 s after activation, final sim Fz [25.6, 34.6, 34.6, 54.3] N (sum 149.2, weight 149.2); worst per-foot RMSE desired-solved 1.39 N (thesis <= 5.89), desired-simulated 1.53 N; final body RMSE 0.43 mm controller frame, 0.43 mm truth (thesis 7.13)"
+  },
+  "gate_principal": {
+   "gate": "principal-frame tracking: normal and radial errors bounded",
+   "result": "pass",
+   "numbers": "two-foot part, max |error| 2.1 mm (< 50); RMSE normal FR/RL 0.20/0.10 mm, radial 0.59/0.39 mm (thesis 7.59 / 18.95)"
+  },
+  "figs": [
+   "figs/fig6_03_principal_frame.png",
+   "figs/fig6_21_normal_forces.png",
+   "figs/fig6_22_body.png"
+  ]
+ },
+ "x3": {
+  "handoff_s": 7.104,
+  "closing": {
+   "max_theta1_deg": 0.79,
+   "torque_saturated_pct": 0.0,
+   "tick_mean_us": 138.3,
+   "tick_max_us": 1492.0
+  },
+  "amb_error": null,
+  "theta_wrap_t": null,
+  "steps": [
+   {
+    "from_s": 0.4,
+    "to_s": 2.0,
+    "x3d_deg": -340.0,
+    "steady_error_deg": 2.402159
+   },
+   {
+    "from_s": 2.0,
+    "to_s": 10.0,
+    "x3d_deg": -220.0,
+    "steady_error_deg": -0.661098
+   },
+   {
+    "from_s": 10.0,
+    "to_s": 15.0,
+    "x3d_deg": -250.0,
+    "steady_error_deg": -0.328749
+   },
+   {
+    "from_s": 15.0,
+    "to_s": 20.0,
+    "x3d_deg": -270.0,
+    "steady_error_deg": -0.152251
+   },
+   {
+    "from_s": 20.0,
+    "to_s": 26.0,
+    "x3d_deg": -360.0,
+    "steady_error_deg": -0.220093
+   }
+  ],
+  "fall": null,
+  "max_cx_mm": 0.647693,
+  "reachable_note": "Fig. 6.4 applied in full: -360...-220 deg lies in the measured reachable [-360, -200] deg (kinematic [-372, -205] with the x2 coupling)",
+  "torso_max_dev": {
+   "height_mm": 0.317522,
+   "roll_deg": 0.467762,
+   "pitch_deg": 0.034691,
+   "yaw_deg": 0.031838,
+   "roll_max_at_s": 21.184
+  },
+  "abduction_margin_end_deg": 30.53,
+  "abduction_margin_rate_deg_per_s": 0.811,
+  "gate": {
+   "gate": "x3: steady error < 5 deg on every step, no fall",
+   "result": "pass",
+   "numbers": "steady errors [2.4, -0.66, -0.33, -0.15, -0.22] deg (last 1 s of each step), no fall over 26 s: True, max |c_x| 0.65 mm, abduction margin at the end 30.53 deg (0.811 deg/s)"
+  },
+  "figs": [
+   "figs/fig6_04_x3_tracking.png",
+   "figs/fig6_05_x3_torso.png"
+  ]
+ },
+ "orientation": {
+  "pitch5": {
+   "handoff_s": 7.105,
+   "closing": {
+    "max_theta1_deg": 0.31,
+    "torque_saturated_pct": 0.0,
+    "tick_mean_us": 135.6,
+    "tick_max_us": 1006.5
+   },
+   "amb_error": null,
+   "theta_wrap_t": null,
+   "amplitude_ref_deg": 5.000112,
+   "amplitude_ratio": 0.997305,
+   "lag_s": 0.052802,
+   "tracking_rms_deg": 0.13047,
+   "max_L": 0.007897,
+   "max_L_sinusoid": 0.001705,
+   "max_Ld": 0.089663,
+   "max_cx_mm": 0.646018,
+   "fall": null,
+   "abduction_margin_end_deg": 48.7,
+   "abduction_margin_rate_deg_per_s": -1.758
+  },
+  "yaw3": {
+   "handoff_s": 7.105,
+   "closing": {
+    "max_theta1_deg": 0.32,
+    "torque_saturated_pct": 0.0,
+    "tick_mean_us": 137.0,
+    "tick_max_us": 1391.1
+   },
+   "amb_error": null,
+   "theta_wrap_t": null,
+   "amplitude_ref_deg": 3.000045,
+   "amplitude_ratio": 0.999569,
+   "lag_s": 0.035832,
+   "tracking_rms_deg": 0.055604,
+   "max_L": 0.007897,
+   "max_L_sinusoid": 0.000456,
+   "max_Ld": 0.089663,
+   "max_cx_mm": 0.646018,
+   "fall": null,
+   "abduction_margin_end_deg": 47.13,
+   "abduction_margin_rate_deg_per_s": -1.99
+  },
+  "thesis_peaks_ref_meas_deg": {
+   "pitch": [
+    5.1,
+    4.6
+   ],
+   "yaw": [
+    2.9,
+    2.3
+   ]
+  },
+  "gate": {
+   "gate": "orientation: both sinusoids tracked, L bounded, no fall",
+   "result": "pass",
+   "numbers": "pitch5: ratio 0.997, lag 0.053 s, max|L| 0.0079, no fall True; yaw3: ratio 1.000, lag 0.036 s, max|L| 0.0079, no fall True"
+  },
+  "figs": [
+   "figs/fig6_11_orientation.png",
+   "figs/fig6_12_orientation_com.png"
+  ]
+ },
+ "force": {
+  "direction": {
+   "support_line_s_xy": [
+    -0.9992,
+    -0.0398
+   ],
+   "push_direction_xy": [
+    -0.0398,
+    0.9992
+   ],
+   "support_line_angle_to_body_x_deg": 1.12933,
+   "note": "+t_h, t_h = s x t_v levelled, s from the FL to the RR contact at hand-off + 2 s of the baseline run; sign of thesis Fig. 6.18 (L, L-dot > 0 in the pulse)",
+   "grf_z_N": {
+    "FL": 72.91,
+    "FR": 0.0,
+    "RL": 0.0,
+    "RR": 76.26
+   },
+   "contact_height_mm": {
+    "FL": -0.3,
+    "FR": 116.3,
+    "RL": 76.7,
+    "RR": -0.3
+   }
+  },
+  "runs": {
+   "1": {
+    "handoff_s": 7.104,
+    "closing": {
+     "max_theta1_deg": 0.55,
+     "torque_saturated_pct": 0.0,
+     "tick_mean_us": 137.7,
+     "tick_max_us": 1054.3
+    },
+    "amb_error": null,
+    "theta_wrap_t": null,
+    "bounded": true,
+    "fall": null,
+    "steady_x_deg": [
+     0.593,
+     67.108,
+     -304.019
+    ],
+    "x2_drift_deg_per_s": -2.210557,
+    "steady_cx_mm": -1.963953,
+    "required_cx_mm": -1.964991,
+    "min_joint_limit_distance_rad": 0.293361,
+    "max_cx_mm": 2.087395,
+    "abduction_margin_end_deg": 25.75,
+    "abduction_margin_rate_deg_per_s": 1.088
+   },
+   "2": {
+    "handoff_s": 7.105,
+    "closing": {
+     "max_theta1_deg": 45.04,
+     "torque_saturated_pct": 8.5,
+     "tick_mean_us": 147.3,
+     "tick_max_us": 1786.3
+    },
+    "amb_error": {
+     "t": 5.258,
+     "message": "Tick failed: theta1=45.0 deg l_c=0.269 m j_c=0.92 j_d=-0.95"
+    },
+    "theta_wrap_t": null,
+    "bounded": false,
+    "fall": 5.218,
+    "steady_x_deg": null,
+    "x2_drift_deg_per_s": null,
+    "steady_cx_mm": null,
+    "required_cx_mm": -3.930006,
+    "min_joint_limit_distance_rad": -0.01321,
+    "max_cx_mm": 224.718831
+   },
+   "4": {
+    "handoff_s": 7.104,
+    "closing": {
+     "max_theta1_deg": 45.02,
+     "torque_saturated_pct": 10.8,
+     "tick_mean_us": 148.9,
+     "tick_max_us": 1726.0
+    },
+    "amb_error": {
+     "t": 4.252,
+     "message": "Tick failed: theta1=45.0 deg l_c=0.270 m j_c=0.92 j_d=-0.95"
+    },
+    "theta_wrap_t": null,
+    "bounded": false,
+    "fall": 4.212,
+    "steady_x_deg": null,
+    "x2_drift_deg_per_s": null,
+    "steady_cx_mm": null,
+    "required_cx_mm": -7.859965,
+    "min_joint_limit_distance_rad": -0.013205,
+    "max_cx_mm": 225.276569
+   },
+   "6": {
+    "handoff_s": 7.105,
+    "closing": {
+     "max_theta1_deg": 45.06,
+     "torque_saturated_pct": 12.0,
+     "tick_mean_us": 150.9,
+     "tick_max_us": 1784.4
+    },
+    "amb_error": {
+     "t": 3.888,
+     "message": "Tick failed: theta1=45.1 deg l_c=0.270 m j_c=0.92 j_d=-0.96"
+    },
+    "theta_wrap_t": null,
+    "bounded": false,
+    "fall": 3.848,
+    "steady_x_deg": null,
+    "x2_drift_deg_per_s": null,
+    "steady_cx_mm": null,
+    "required_cx_mm": -11.790018,
+    "min_joint_limit_distance_rad": -0.013211,
+    "max_cx_mm": 223.165914
+   },
+   "8": {
+    "handoff_s": 7.104,
+    "closing": {
+     "max_theta1_deg": 45.09,
+     "torque_saturated_pct": 13.4,
+     "tick_mean_us": 150.3,
+     "tick_max_us": 1749.2
+    },
+    "amb_error": {
+     "t": 3.688,
+     "message": "Tick failed: theta1=45.1 deg l_c=0.271 m j_c=0.92 j_d=-0.96"
+    },
+    "theta_wrap_t": null,
+    "bounded": false,
+    "fall": 3.648,
+    "steady_x_deg": null,
+    "x2_drift_deg_per_s": null,
+    "steady_cx_mm": null,
+    "required_cx_mm": -15.719929,
+    "min_joint_limit_distance_rad": -0.016572,
+    "max_cx_mm": 225.552479
+   }
+  },
+  "thesis": {
+   "x1": {
+    "2": -0.95,
+    "4": -1.7,
+    "6": -2.4,
+    "8": -3.2
+   },
+   "x2": {
+    "2": -10,
+    "4": -21,
+    "6": -33,
+    "8": -42
+   }
+  },
+  "bounded_definition": "no fall and no MdlAMB error until 12 s after activation (8 s at full force)",
+  "boundary_N": [
+   1,
+   2
+  ],
+  "gate": {
+   "gate": "persistent force: bounded for 2/4/6/8 N, or the boundary reported",
+   "result": "pass",
+   "numbers": "NOT all bounded (thesis: all four): bounded [1] N, failing [2, 4, 6, 8] N, boundary 1-2 N; min joint-limit distance [rad] 1 N 0.293, 2 N -0.013, 4 N -0.013, 6 N -0.013, 8 N -0.017; bounded runs' abduction margin at the end [deg] (rate [deg/s]) 1 N 25.75 (1.088)"
+  },
+  "figs": [
+   "figs/fig6_14_force_states.png",
+   "figs/fig6_15_force_com.png"
+  ]
+ },
+ "push": {
+  "direction": {
+   "support_line_s_xy": [
+    -0.9992,
+    -0.0398
+   ],
+   "push_direction_xy": [
+    -0.0398,
+    0.9992
+   ],
+   "support_line_angle_to_body_x_deg": 1.12933,
+   "note": "+t_h, t_h = s x t_v levelled, s from the FL to the RR contact at hand-off + 2 s of the baseline run; sign of thesis Fig. 6.18 (L, L-dot > 0 in the pulse)",
+   "grf_z_N": {
+    "FL": 72.91,
+    "FR": 0.0,
+    "RL": 0.0,
+    "RR": 76.26
+   },
+   "contact_height_mm": {
+    "FL": -0.3,
+    "FR": 116.3,
+    "RL": 76.7,
+    "RR": -0.3
+   }
+  },
+  "figs": [
+   "figs/fig6_16_push_com_recovering.png",
+   "figs/fig6_17_push_com_failing.png",
+   "figs/fig6_18_push_dynamics.png",
+   "figs/table6_05_push_sweep.png"
+  ],
+  "thesis_table_6_5": {
+   "columns": [
+    "impulse",
+    "max_cx",
+    "max_L",
+    "z_min",
+    "success"
+   ],
+   "9": [
+    0.9,
+    0.00957,
+    0.219,
+    0.3066,
+    true
+   ],
+   "10": [
+    1.0,
+    0.0092,
+    0.244,
+    0.3066,
+    true
+   ],
+   "11": [
+    1.1,
+    0.00922,
+    0.273,
+    0.3017,
+    true
+   ],
+   "12": [
+    1.2,
+    0.20182,
+    4.754,
+    0.1312,
+    false
+   ],
+   "13": [
+    1.3,
+    0.36269,
+    6.924,
+    0.0874,
+    false
+   ]
+  },
+  "window": "pulse 0.1 s at 2.0 s after activation; Table 6.5 metrics over [2.1, 10.0] s (post-pulse, as the thesis), success judged after the pulse; peak abduction, norm-limited samples and torque saturation from the pulse start to the MdlAMB error",
+  "wbc": {
+   "table_6_5": [
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.35,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 136.0,
+      "tick_max_us": 1021.8
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 1,
+     "impulse": 0.1,
+     "max_cx": 0.001187,
+     "max_L": 0.025458,
+     "z_min": 0.298113,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 21.179964,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 50.96,
+     "abduction_margin_rate_deg_per_s": 0.377
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.42,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 136.7,
+      "tick_max_us": 920.2
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 2,
+     "impulse": 0.2,
+     "max_cx": 0.002374,
+     "max_L": 0.05147,
+     "z_min": 0.29809,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 29.435721,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 50.69,
+     "abduction_margin_rate_deg_per_s": 0.394
+    },
+    {
+     "handoff_s": 7.105,
+     "closing": {
+      "max_theta1_deg": 0.49,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 136.3,
+      "tick_max_us": 958.7
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 3,
+     "impulse": 0.3,
+     "max_cx": 0.003532,
+     "max_L": 0.077241,
+     "z_min": 0.298069,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 38.788822,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 50.16,
+     "abduction_margin_rate_deg_per_s": 0.427
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.57,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 137.8,
+      "tick_max_us": 957.0
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 4,
+     "impulse": 0.4,
+     "max_cx": 0.004649,
+     "max_L": 0.103796,
+     "z_min": 0.298052,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 48.369845,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 49.32,
+     "abduction_margin_rate_deg_per_s": 0.48
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.64,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 136.7,
+      "tick_max_us": 1331.1
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 5,
+     "impulse": 0.5,
+     "max_cx": 0.00572,
+     "max_L": 0.130147,
+     "z_min": 0.298032,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 57.61688,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 48.17,
+     "abduction_margin_rate_deg_per_s": 0.555
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.75,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 136.3,
+      "tick_max_us": 918.2
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 6,
+     "impulse": 0.6,
+     "max_cx": 0.006631,
+     "max_L": 0.156621,
+     "z_min": 0.298116,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 62.354819,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 45.53,
+     "abduction_margin_rate_deg_per_s": 0.733
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.87,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 136.8,
+      "tick_max_us": 935.3
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 7,
+     "impulse": 0.7,
+     "max_cx": 0.007247,
+     "max_L": 0.183206,
+     "z_min": 0.2981,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 64.141634,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 41.74,
+     "abduction_margin_rate_deg_per_s": 1.002
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.97,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 136.9,
+      "tick_max_us": 1283.2
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 8,
+     "impulse": 0.8,
+     "max_cx": 0.007744,
+     "max_L": 0.209889,
+     "z_min": 0.298079,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 65.274055,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 36.81,
+     "abduction_margin_rate_deg_per_s": 1.37
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 1.07,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": 137.1,
+      "tick_max_us": 1320.9
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 9,
+     "impulse": 0.9,
+     "max_cx": 0.008165,
+     "max_L": 0.236829,
+     "z_min": 0.298042,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 66.177704,
+     "feedforward_norm_limited_samples": 0,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 25.99,
+     "abduction_margin_rate_deg_per_s": 1.716
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 45.14,
+      "torque_saturated_pct": 12.2,
+      "tick_mean_us": 155.4,
+      "tick_max_us": 1792.7
+     },
+     "amb_error": {
+      "t": 3.853,
+      "message": "Tick failed: theta1=45.1 deg l_c=0.267 m j_c=0.92 j_d=-0.95"
+     },
+     "theta_wrap_t": null,
+     "F": 10,
+     "impulse": 1.0,
+     "max_cx": 0.222226,
+     "max_L": 6.526066,
+     "z_min": 0.071809,
+     "success": false,
+     "fall_t": 3.814,
+     "peak_abduction_deg": 66.427578,
+     "feedforward_norm_limited_samples": 484,
+     "torque_saturated_t": 3.16
+    },
+    {
+     "handoff_s": 7.105,
+     "closing": {
+      "max_theta1_deg": 4.46,
+      "torque_saturated_pct": 7.4,
+      "tick_mean_us": 159.1,
+      "tick_max_us": 4340.2
+     },
+     "amb_error": {
+      "t": 2.877,
+      "message": "Tick failed: theta1=-0.8 deg l_c=0.293 m j_c=0.50 j_d=-1.22"
+     },
+     "theta_wrap_t": null,
+     "F": 11,
+     "impulse": 1.1,
+     "max_cx": 0.062669,
+     "max_L": 0.612583,
+     "z_min": 0.130501,
+     "success": false,
+     "fall_t": 3.074,
+     "peak_abduction_deg": 67.344074,
+     "feedforward_norm_limited_samples": 413,
+     "torque_saturated_t": 2.134
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 45.19,
+      "torque_saturated_pct": 11.7,
+      "tick_mean_us": 158.4,
+      "tick_max_us": 2842.9
+     },
+     "amb_error": {
+      "t": 2.849,
+      "message": "Tick failed: theta1=45.2 deg l_c=0.264 m j_c=1.00 j_d=-1.47"
+     },
+     "theta_wrap_t": null,
+     "F": 12,
+     "impulse": 1.2,
+     "max_cx": 0.215044,
+     "max_L": 5.084052,
+     "z_min": 0.139338,
+     "success": false,
+     "fall_t": 2.8,
+     "peak_abduction_deg": 67.092067,
+     "feedforward_norm_limited_samples": 415,
+     "torque_saturated_t": 2.136
+    }
+   ],
+   "boundary_N": [
+    9,
+    10
+   ],
+   "recovering_above_first_failure": []
+  },
+  "joint": {
+   "table_6_5": [
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.43,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": null,
+      "tick_max_us": null
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 1,
+     "impulse": 0.1,
+     "max_cx": 0.001277,
+     "max_L": 0.026481,
+     "z_min": 0.300531,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 23.69553,
+     "feedforward_norm_limited_samples": null,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 46.55,
+     "abduction_margin_rate_deg_per_s": -0.0
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.5,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": null,
+      "tick_max_us": null
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 2,
+     "impulse": 0.2,
+     "max_cx": 0.002577,
+     "max_L": 0.053169,
+     "z_min": 0.300194,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 33.444925,
+     "feedforward_norm_limited_samples": null,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 46.8,
+     "abduction_margin_rate_deg_per_s": 0.0
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.56,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": null,
+      "tick_max_us": null
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 3,
+     "impulse": 0.3,
+     "max_cx": 0.003871,
+     "max_L": 0.079874,
+     "z_min": 0.299809,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 43.610878,
+     "feedforward_norm_limited_samples": null,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 47.14,
+     "abduction_margin_rate_deg_per_s": 0.0
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.63,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": null,
+      "tick_max_us": null
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 4,
+     "impulse": 0.4,
+     "max_cx": 0.005015,
+     "max_L": 0.106614,
+     "z_min": 0.299386,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 52.911181,
+     "feedforward_norm_limited_samples": null,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 44.89,
+     "abduction_margin_rate_deg_per_s": -0.0
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 0.81,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": null,
+      "tick_max_us": null
+     },
+     "amb_error": null,
+     "theta_wrap_t": null,
+     "F": 5,
+     "impulse": 0.5,
+     "max_cx": 0.00521,
+     "max_L": 0.133426,
+     "z_min": 0.298966,
+     "success": true,
+     "fall_t": null,
+     "peak_abduction_deg": 55.525837,
+     "feedforward_norm_limited_samples": null,
+     "torque_saturated_t": null,
+     "abduction_margin_end_deg": 29.94,
+     "abduction_margin_rate_deg_per_s": -0.0
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 45.23,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": null,
+      "tick_max_us": null
+     },
+     "amb_error": {
+      "t": 3.666,
+      "message": "Tick failed: theta1=45.2 deg l_c=0.280 m j_c=0.97 j_d=-1.01"
+     },
+     "theta_wrap_t": null,
+     "F": 6,
+     "impulse": 0.6,
+     "max_cx": 0.265122,
+     "max_L": 6.783402,
+     "z_min": 0.057667,
+     "success": false,
+     "fall_t": 3.61,
+     "peak_abduction_deg": 60.273982,
+     "feedforward_norm_limited_samples": null,
+     "torque_saturated_t": null
+    },
+    {
+     "handoff_s": 7.104,
+     "closing": {
+      "max_theta1_deg": 45.15,
+      "torque_saturated_pct": 0.0,
+      "tick_mean_us": null,
+      "tick_max_us": null
+     },
+     "amb_error": {
+      "t": 3.28,
+      "message": "Tick failed: theta1=45.2 deg l_c=0.280 m j_c=0.97 j_d=-1.00"
+     },
+     "theta_wrap_t": null,
+     "F": 7,
+     "impulse": 0.7,
+     "max_cx": 0.265082,
+     "max_L": 6.83425,
+     "z_min": 0.057622,
+     "success": false,
+     "fall_t": 3.224,
+     "peak_abduction_deg": 60.267104,
+     "feedforward_norm_limited_samples": null,
+     "torque_saturated_t": 2.086
+    },
+    {
+     "handoff_s": 7.105,
+     "closing": {
+      "max_theta1_deg": 45.15,
+      "torque_saturated_pct": 0.1,
+      "tick_mean_us": null,
+      "tick_max_us": null
+     },
+     "amb_error": {
+      "t": 3.139,
+      "message": "Tick failed: theta1=45.1 deg l_c=0.280 m j_c=0.97 j_d=-1.00"
+     },
+     "theta_wrap_t": null,
+     "F": 8,
+     "impulse": 0.8,
+     "max_cx": 0.265106,
+     "max_L": 6.807505,
+     "z_min": 0.057709,
+     "success": false,
+     "fall_t": 3.084,
+     "peak_abduction_deg": 61.260228,
+     "feedforward_norm_limited_samples": null,
+     "torque_saturated_t": 2.078
+    }
+   ],
+   "boundary_N": [
+    5,
+    6
+   ],
+   "recovering_above_first_failure": []
+  },
+  "minus_t_h": {
+   "note": "side result: pulses along -t_h; the canonical sign is +t_h",
+   "wbc": {
+    "boundary_N": [
+     11,
+     12
+    ],
+    "table_6_5": [
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.31,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 136.8,
+       "tick_max_us": 955.4
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 1,
+      "impulse": 0.1,
+      "max_cx": 0.0012,
+      "max_L": 0.026476,
+      "z_min": 0.298109,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 12.252091,
+      "feedforward_norm_limited_samples": 0,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 50.51,
+      "abduction_margin_rate_deg_per_s": 0.405
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.33,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 136.5,
+       "tick_max_us": 1345.9
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 2,
+      "impulse": 0.2,
+      "max_cx": 0.002356,
+      "max_L": 0.052497,
+      "z_min": 0.298083,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 12.18588,
+      "feedforward_norm_limited_samples": 0,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 50.81,
+      "abduction_margin_rate_deg_per_s": 0.387
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.35,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 136.6,
+       "tick_max_us": 947.3
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 3,
+      "impulse": 0.3,
+      "max_cx": 0.003459,
+      "max_L": 0.078604,
+      "z_min": 0.29806,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 20.766608,
+      "feedforward_norm_limited_samples": 0,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 51.58,
+      "abduction_margin_rate_deg_per_s": 0.32
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.37,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 137.0,
+       "tick_max_us": 945.5
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 4,
+      "impulse": 0.4,
+      "max_cx": 0.004498,
+      "max_L": 0.104814,
+      "z_min": 0.298041,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 32.443616,
+      "feedforward_norm_limited_samples": 0,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 52.3,
+      "abduction_margin_rate_deg_per_s": 0.114
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.38,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 136.2,
+       "tick_max_us": 949.4
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 5,
+      "impulse": 0.5,
+      "max_cx": 0.005472,
+      "max_L": 0.131133,
+      "z_min": 0.29802,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 43.787369,
+      "feedforward_norm_limited_samples": 0,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 53.8,
+      "abduction_margin_rate_deg_per_s": -0.037
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.39,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 138.4,
+       "tick_max_us": 1371.6
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 6,
+      "impulse": 0.6,
+      "max_cx": 0.006391,
+      "max_L": 0.157563,
+      "z_min": 0.297995,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 54.424296,
+      "feedforward_norm_limited_samples": 0,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 55.2,
+      "abduction_margin_rate_deg_per_s": -0.345
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.4,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 137.0,
+       "tick_max_us": 905.9
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 7,
+      "impulse": 0.7,
+      "max_cx": 0.00726,
+      "max_L": 0.184125,
+      "z_min": 0.297969,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 61.781691,
+      "feedforward_norm_limited_samples": 0,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 57.79,
+      "abduction_margin_rate_deg_per_s": -0.501
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.57,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 138.6,
+       "tick_max_us": 1399.8
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 8,
+      "impulse": 0.8,
+      "max_cx": 0.00789,
+      "max_L": 0.210866,
+      "z_min": 0.29794,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 63.735745,
+      "feedforward_norm_limited_samples": 4,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 54.2,
+      "abduction_margin_rate_deg_per_s": 0.838
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.8,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 136.7,
+       "tick_max_us": 915.7
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 9,
+      "impulse": 0.9,
+      "max_cx": 0.008413,
+      "max_L": 0.237918,
+      "z_min": 0.297926,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 65.551975,
+      "feedforward_norm_limited_samples": 20,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 44.44,
+      "abduction_margin_rate_deg_per_s": 1.451
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.83,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 135.7,
+       "tick_max_us": 1315.4
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 10,
+      "impulse": 1.0,
+      "max_cx": 0.008772,
+      "max_L": 0.266026,
+      "z_min": 0.297973,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 66.478105,
+      "feedforward_norm_limited_samples": 57,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 42.24,
+      "abduction_margin_rate_deg_per_s": 1.561
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.98,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": 137.5,
+       "tick_max_us": 1440.7
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 11,
+      "impulse": 1.1,
+      "max_cx": 0.00867,
+      "max_L": 0.295947,
+      "z_min": 0.297971,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 66.934277,
+      "feedforward_norm_limited_samples": 74,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 24.69,
+      "abduction_margin_rate_deg_per_s": 2.109
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 45.18,
+       "torque_saturated_pct": 2.7,
+       "tick_mean_us": 155.5,
+       "tick_max_us": 2367.4
+      },
+      "amb_error": {
+       "t": 3.538,
+       "message": "Tick failed: theta1=-45.2 deg l_c=0.245 m j_c=1.10 j_d=-1.05"
+      },
+      "theta_wrap_t": 2.888,
+      "F": 12,
+      "impulse": 1.2,
+      "max_cx": 0.229395,
+      "max_L": 6.473025,
+      "z_min": 0.109642,
+      "success": false,
+      "fall_t": 3.552,
+      "peak_abduction_deg": 66.767562,
+      "feedforward_norm_limited_samples": 547,
+      "torque_saturated_t": 2.84
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 45.06,
+       "torque_saturated_pct": 2.8,
+       "tick_mean_us": 157.4,
+       "tick_max_us": 2483.7
+      },
+      "amb_error": {
+       "t": 3.281,
+       "message": "Tick failed: theta1=-45.1 deg l_c=0.246 m j_c=1.10 j_d=-1.05"
+      },
+      "theta_wrap_t": 2.632,
+      "F": 13,
+      "impulse": 1.3,
+      "max_cx": 0.229809,
+      "max_L": 6.483903,
+      "z_min": 0.10911,
+      "success": false,
+      "fall_t": 3.296,
+      "peak_abduction_deg": 67.12203,
+      "feedforward_norm_limited_samples": 634,
+      "torque_saturated_t": 2.6
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 45.07,
+       "torque_saturated_pct": 2.9,
+       "tick_mean_us": 157.2,
+       "tick_max_us": 2840.9
+      },
+      "amb_error": {
+       "t": 3.023,
+       "message": "Tick failed: theta1=-45.1 deg l_c=0.248 m j_c=1.11 j_d=-1.06"
+      },
+      "theta_wrap_t": 2.474,
+      "F": 14,
+      "impulse": 1.4,
+      "max_cx": 0.230918,
+      "max_L": 6.47392,
+      "z_min": 0.138392,
+      "success": false,
+      "fall_t": 3.042,
+      "peak_abduction_deg": 66.722695,
+      "feedforward_norm_limited_samples": 497,
+      "torque_saturated_t": 2.402
+     }
+    ]
+   },
+   "joint": {
+    "boundary_N": [
+     9,
+     10
+    ],
+    "table_6_5": [
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.41,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 1,
+      "impulse": 0.1,
+      "max_cx": 0.00127,
+      "max_L": 0.026641,
+      "z_min": 0.300478,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 14.116248,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 45.89,
+      "abduction_margin_rate_deg_per_s": 0.0
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.44,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 2,
+      "impulse": 0.2,
+      "max_cx": 0.002532,
+      "max_L": 0.053259,
+      "z_min": 0.300127,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 14.146288,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 45.85,
+      "abduction_margin_rate_deg_per_s": 0.0
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.46,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 3,
+      "impulse": 0.3,
+      "max_cx": 0.003765,
+      "max_L": 0.079851,
+      "z_min": 0.299868,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 15.388405,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 45.65,
+      "abduction_margin_rate_deg_per_s": -0.0
+     },
+     {
+      "handoff_s": 7.105,
+      "closing": {
+       "max_theta1_deg": 0.47,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 4,
+      "impulse": 0.4,
+      "max_cx": 0.004969,
+      "max_L": 0.106001,
+      "z_min": 0.299693,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 25.300665,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 45.45,
+      "abduction_margin_rate_deg_per_s": -0.0
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.49,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 5,
+      "impulse": 0.5,
+      "max_cx": 0.00614,
+      "max_L": 0.133054,
+      "z_min": 0.299613,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 35.498379,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 45.12,
+      "abduction_margin_rate_deg_per_s": -0.0
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.5,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 6,
+      "impulse": 0.6,
+      "max_cx": 0.00727,
+      "max_L": 0.159712,
+      "z_min": 0.299715,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 46.104897,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 44.51,
+      "abduction_margin_rate_deg_per_s": -0.0
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.58,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 7,
+      "impulse": 0.7,
+      "max_cx": 0.008184,
+      "max_L": 0.186461,
+      "z_min": 0.299689,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 54.205537,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": null,
+      "abduction_margin_end_deg": 48.42,
+      "abduction_margin_rate_deg_per_s": 0.0
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.56,
+       "torque_saturated_pct": 0.0,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 8,
+      "impulse": 0.8,
+      "max_cx": 0.008427,
+      "max_L": 0.21335,
+      "z_min": 0.299612,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 57.484403,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": 2.116,
+      "abduction_margin_end_deg": 50.95,
+      "abduction_margin_rate_deg_per_s": -0.0
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 0.76,
+       "torque_saturated_pct": 0.1,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": null,
+      "theta_wrap_t": null,
+      "F": 9,
+      "impulse": 0.9,
+      "max_cx": 0.008554,
+      "max_L": 0.240437,
+      "z_min": 0.299621,
+      "success": true,
+      "fall_t": null,
+      "peak_abduction_deg": 60.414748,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": 2.106,
+      "abduction_margin_end_deg": 25.61,
+      "abduction_margin_rate_deg_per_s": 0.0
+     },
+     {
+      "handoff_s": 7.105,
+      "closing": {
+       "max_theta1_deg": 45.03,
+       "torque_saturated_pct": 0.3,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": {
+       "t": 3.404,
+       "message": "Tick failed: theta1=-45.0 deg l_c=0.277 m j_c=1.00 j_d=-0.98"
+      },
+      "theta_wrap_t": null,
+      "F": 10,
+      "impulse": 1.0,
+      "max_cx": 0.263286,
+      "max_L": 7.101979,
+      "z_min": 0.071302,
+      "success": false,
+      "fall_t": 3.348,
+      "peak_abduction_deg": 62.836045,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": 2.098
+     },
+     {
+      "handoff_s": 7.105,
+      "closing": {
+       "max_theta1_deg": 45.22,
+       "torque_saturated_pct": 0.4,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": {
+       "t": 3.129,
+       "message": "Tick failed: theta1=-45.2 deg l_c=0.277 m j_c=1.01 j_d=-0.97"
+      },
+      "theta_wrap_t": null,
+      "F": 11,
+      "impulse": 1.1,
+      "max_cx": 0.263141,
+      "max_L": 7.099277,
+      "z_min": 0.071429,
+      "success": false,
+      "fall_t": 3.072,
+      "peak_abduction_deg": 64.878724,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": 2.094
+     },
+     {
+      "handoff_s": 7.104,
+      "closing": {
+       "max_theta1_deg": 45.04,
+       "torque_saturated_pct": 0.4,
+       "tick_mean_us": null,
+       "tick_max_us": null
+      },
+      "amb_error": {
+       "t": 2.995,
+       "message": "Tick failed: theta1=-45.0 deg l_c=0.277 m j_c=1.01 j_d=-0.97"
+      },
+      "theta_wrap_t": null,
+      "F": 12,
+      "impulse": 1.2,
+      "max_cx": 0.263217,
+      "max_L": 7.019936,
+      "z_min": 0.071353,
+      "success": false,
+      "fall_t": 2.94,
+      "peak_abduction_deg": 65.871094,
+      "feedforward_norm_limited_samples": null,
+      "torque_saturated_t": 2.092
+     }
+    ]
+   }
+  },
+  "gate": {
+   "gate": "pushes: boundary bracketed, WBC >= joint space, failure plotted vs workspace bounds",
+   "result": "pass",
+   "numbers": "WBC recovers up to 9 N, fails from 10 N (thesis 11-12 N); joint space recovers up to 5 N, fails from 6 N; workspace plot in the workspace experiment; side result along -t_h: WBC [11, 12] N, joint space [9, 10] N"
+  }
+ },
+ "workspace": {
+  "choice": "last recovering - 2 N and first failing + 2 N, as the thesis' 9 and 14 N around 11-12 N",
+  "xi_t_lim_derivation": "MuJoCo FK of the logged posture with only that swing leg's abduction moved to either end of its range (+-1.0472 rad; thigh, knee, base held): xi_t,lim = xi_t + rho_d (alpha(q_lim) - alpha(q)), alpha the foot-centre angle about the support line seen from the abduction anchor (the controller's hip point), rho_d the held radius. Dashed: at the sample before the pulse (thesis style); dotted: at every sample",
+  "recovering": {
+   "handoff_s": 7.104,
+   "closing": {
+    "max_theta1_deg": 0.87,
+    "torque_saturated_pct": 0.0,
+    "tick_mean_us": 136.8,
+    "tick_max_us": 935.3
+   },
+   "amb_error": null,
+   "theta_wrap_t": null,
+   "F": 7,
+   "impulse": 0.7,
+   "max_cx": 0.007247,
+   "max_L": 0.183206,
+   "z_min": 0.2981,
+   "success": true,
+   "fall_t": null,
+   "peak_abduction_deg": 64.141634,
+   "feedforward_norm_limited_samples": 0,
+   "torque_saturated_t": null,
+   "abduction_margin_end_deg": 41.74,
+   "abduction_margin_rate_deg_per_s": 1.002,
+   "xi_t_lim_m": {
+    "FR": [
+     -0.192181,
+     0.235334
+    ],
+    "RL": [
+     -0.224082,
+     0.204924
+    ]
+   },
+   "events_s_after_activation": {
+    "feedforward_norm_limited": null,
+    "joint_limit_within_0.01rad": 2.12,
+    "torque_saturated": null,
+    "qp_status_nonzero": null,
+    "FR_xi_t_beyond_bound": null,
+    "FR_xi_t_wrap": null,
+    "RL_xi_t_beyond_bound": 2.126,
+    "RL_xi_t_wrap": null,
+    "theta_wrap": null,
+    "fall": null,
+    "amb_error": null
+   },
+   "FR_max_normal_error_mm": {
+    "pre": 0.218083,
+    "post": 6.467993
+   },
+   "FR_max_radial_error_mm": {
+    "pre": 0.487736,
+    "post": 58.40833
+   },
+   "FR_xi_t_range_after_pulse_m": [
+    0.057528,
+    0.230827
+   ],
+   "RL_max_normal_error_mm": {
+    "pre": 0.057547,
+    "post": 6.113479
+   },
+   "RL_max_radial_error_mm": {
+    "pre": 0.19394,
+    "post": 82.139081
+   },
+   "RL_xi_t_range_after_pulse_m": [
+    0.032703,
+    0.235573
+   ]
+  },
+  "failing": {
+   "handoff_s": 7.104,
+   "closing": {
+    "max_theta1_deg": 45.19,
+    "torque_saturated_pct": 11.7,
+    "tick_mean_us": 158.4,
+    "tick_max_us": 2842.9
+   },
+   "amb_error": {
+    "t": 2.849,
+    "message": "Tick failed: theta1=45.2 deg l_c=0.264 m j_c=1.00 j_d=-1.47"
+   },
+   "theta_wrap_t": null,
+   "F": 12,
+   "impulse": 1.2,
+   "max_cx": 0.215044,
+   "max_L": 5.084052,
+   "z_min": 0.139338,
+   "success": false,
+   "fall_t": 2.8,
+   "peak_abduction_deg": 67.092067,
+   "feedforward_norm_limited_samples": 415,
+   "torque_saturated_t": 2.136,
+   "xi_t_lim_m": {
+    "FR": [
+     -0.192181,
+     0.235334
+    ],
+    "RL": [
+     -0.224082,
+     0.204924
+    ]
+   },
+   "events_s_after_activation": {
+    "feedforward_norm_limited": 2.016,
+    "joint_limit_within_0.01rad": 2.092,
+    "torque_saturated": 2.136,
+    "qp_status_nonzero": null,
+    "FR_xi_t_beyond_bound": 2.102,
+    "FR_xi_t_wrap": null,
+    "RL_xi_t_beyond_bound": 2.096,
+    "RL_xi_t_wrap": null,
+    "theta_wrap": null,
+    "fall": 2.8,
+    "amb_error": {
+     "t": 2.849,
+     "message": "Tick failed: theta1=45.2 deg l_c=0.264 m j_c=1.00 j_d=-1.47"
+    }
+   },
+   "FR_max_normal_error_mm": {
+    "pre": 0.218083,
+    "post": 238.965548
+   },
+   "FR_max_radial_error_mm": {
+    "pre": 0.487736,
+    "post": 103.843405
+   },
+   "FR_xi_t_range_after_pulse_m": [
+    0.057528,
+    0.559609
+   ],
+   "RL_max_normal_error_mm": {
+    "pre": 0.057547,
+    "post": 165.111041
+   },
+   "RL_max_radial_error_mm": {
+    "pre": 0.19394,
+    "post": 172.081387
+   },
+   "RL_xi_t_range_after_pulse_m": [
+    0.032703,
+    0.38209
+   ]
+  },
+  "figs": [
+   "figs/fig6_19_workspace_tangential.png",
+   "figs/fig6_20_workspace_normal_radial.png",
+   "figs/fig6_19b_workspace_diagnostics.png"
+  ],
+  "sweep_facts": {
+   "abduction_stop_deg": 60.00014,
+   "recovering_peak_abduction_deg": {
+    "1": 21.179964,
+    "2": 29.435721,
+    "3": 38.788822,
+    "4": 48.369845,
+    "5": 57.61688,
+    "6": 62.354819,
+    "7": 64.141634,
+    "8": 65.274055,
+    "9": 66.177704
+   },
+   "first_force_norm_limited_N": 10
+  },
+  "gate": {
+   "gate": "workspace: failed push plotted against the tangential bounds",
+   "result": "pass",
+   "numbers": "7 N and 12 N plotted; failing run, s after activation: feedforward norm-limited 2.016, joint limit 2.092, xi_t past bound FR/RL 2.102/2.096, torque saturated 2.136, QP status != 0 None, theta branch-cut jump None, fall 2.8, MdlAMB error {'t': 2.849, 'message': 'Tick failed: theta1=45.2 deg l_c=0.264 m j_c=1.00 j_d=-1.47'}; recovering pushes' peak |abduction| {1: 21.179964, 2: 29.435721, 3: 38.788822, 4: 48.369845, 5: 57.61688, 6: 62.354819, 7: 64.141634, 8: 65.274055, 9: 66.177704} deg (stop 60), feedforward first norm-limited at 10 N"
+  }
+ },
+ "meta": {
+  "handoff_s": 7.104,
+  "push_direction": {
+   "support_line_s_xy": [
+    -0.9992,
+    -0.0398
+   ],
+   "push_direction_xy": [
+    -0.0398,
+    0.9992
+   ],
+   "support_line_angle_to_body_x_deg": 1.12933,
+   "note": "+t_h, t_h = s x t_v levelled, s from the FL to the RR contact at hand-off + 2 s of the baseline run; sign of thesis Fig. 6.18 (L, L-dot > 0 in the pulse)",
+   "grf_z_N": {
+    "FL": 72.91,
+    "FR": 0.0,
+    "RL": 0.0,
+    "RR": 76.26
+   },
+   "contact_height_mm": {
+    "FL": -0.3,
+    "FR": 116.3,
+    "RL": 76.7,
+    "RR": -0.3
+   }
+  },
+  "experiments_run": [
+   "ablation"
+  ],
+  "fall_criteria": {
+   "ablation": "torso height < 0.16 m",
+   "others": "torso height < 0.16 m or |roll|/|pitch| > 45 deg"
+  },
+  "wall_time_s": 51.2,
+  "run_wall_times_s": {
+   "ablation/wbc_on": 4.6,
+   "ablation/wbc_off": 2.9,
+   "ablation/joint_on": 2.9,
+   "ablation/joint_off": 2.7,
+   "ablation/wbc_thesis_gains": 4.7,
+   "ablation/wbc_on_long": 16.3,
+   "ablation/wbc_thesis_ori_gains_long": 13.7
+  },
+  "log_period_ms": 2,
+  "script": [
+   "0 s",
+   "2.5 b"
+  ],
+  "closing_note": "computeTick timing varies between identical runs; the joint-space path prints no computeTick line (tick_mean_us null there)"
+ },
+ "gates": [
+  {
+   "gate": "ablation: AMB on no fall >= 10 s, AMB off falls",
+   "result": "pass",
+   "numbers": "on: no fall over 12 s, min z 0.298 m, peak |L| 0.0080, peak |c_x| 0.65 mm, abduction margin at the end 51.78 deg (0.197 deg/s); off: falls 1.436 s after activation (thesis 1.299), MdlAMB error at 1.168 s; joint path on/off falls False/True; thesis gains balance"
+  },
+  {
+   "gate": "principal-frame tracking: normal and radial errors bounded",
+   "result": "pass",
+   "numbers": "two-foot part, max |error| 2.1 mm (< 50); RMSE normal FR/RL 0.20/0.10 mm, radial 0.59/0.39 mm (thesis 7.59 / 18.95)"
+  },
+  {
+   "gate": "load transfer: four-foot support, no fall, desired-vs-solved RMSE < 10 N",
+   "result": "pass",
+   "numbers": "SETTLED 12.86 s after activation, final sim Fz [25.6, 34.6, 34.6, 54.3] N (sum 149.2, weight 149.2); worst per-foot RMSE desired-solved 1.39 N (thesis <= 5.89), desired-simulated 1.53 N; final body RMSE 0.43 mm controller frame, 0.43 mm truth (thesis 7.13)"
+  },
+  {
+   "gate": "x3: steady error < 5 deg on every step, no fall",
+   "result": "pass",
+   "numbers": "steady errors [2.4, -0.66, -0.33, -0.15, -0.22] deg (last 1 s of each step), no fall over 26 s: True, max |c_x| 0.65 mm, abduction margin at the end 30.53 deg (0.811 deg/s)"
+  },
+  {
+   "gate": "orientation: both sinusoids tracked, L bounded, no fall",
+   "result": "pass",
+   "numbers": "pitch5: ratio 0.997, lag 0.053 s, max|L| 0.0079, no fall True; yaw3: ratio 1.000, lag 0.036 s, max|L| 0.0079, no fall True"
+  },
+  {
+   "gate": "persistent force: bounded for 2/4/6/8 N, or the boundary reported",
+   "result": "pass",
+   "numbers": "NOT all bounded (thesis: all four): bounded [1] N, failing [2, 4, 6, 8] N, boundary 1-2 N; min joint-limit distance [rad] 1 N 0.293, 2 N -0.013, 4 N -0.013, 6 N -0.013, 8 N -0.017; bounded runs' abduction margin at the end [deg] (rate [deg/s]) 1 N 25.75 (1.088)"
+  },
+  {
+   "gate": "pushes: boundary bracketed, WBC >= joint space, failure plotted vs workspace bounds",
+   "result": "pass",
+   "numbers": "WBC recovers up to 9 N, fails from 10 N (thesis 11-12 N); joint space recovers up to 5 N, fails from 6 N; workspace plot in the workspace experiment; side result along -t_h: WBC [11, 12] N, joint space [9, 10] N"
+  },
+  {
+   "gate": "workspace: failed push plotted against the tangential bounds",
+   "result": "pass",
+   "numbers": "7 N and 12 N plotted; failing run, s after activation: feedforward norm-limited 2.016, joint limit 2.092, xi_t past bound FR/RL 2.102/2.096, torque saturated 2.136, QP status != 0 None, theta branch-cut jump None, fall 2.8, MdlAMB error {'t': 2.849, 'message': 'Tick failed: theta1=45.2 deg l_c=0.264 m j_c=1.00 j_d=-1.47'}; recovering pushes' peak |abduction| {1: 21.179964, 2: 29.435721, 3: 38.788822, 4: 48.369845, 5: 57.61688, 6: 62.354819, 7: 64.141634, 8: 65.274055, 9: 66.177704} deg (stop 60), feedforward first norm-limited at 10 N"
+  }
+ ]
+}

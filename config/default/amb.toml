@@ -1,0 +1,93 @@
+# --- amb.toml ---
+# MdlAMB diagonal-stance balancing and the MdlDiagonalStance foot placement that leads into it.
+
+[amb]
+enabled = true                       # false: AMB-off ablation, same lift (joint space: swing roll PD-held;
+                                     # wbc: no tangential feedforward, swing feet held by the Cartesian task)
+# "imu": raw IMU quaternion and gyro (noise-free ground truth in simulation).
+# "estimator": MdlOrientationEstimator's attitude and bias-corrected rate, i.e.
+# the Mahony filter fed by [orientationestimator] simnoise -- the hardware-like path.
+attitude_source = "estimator"
+template_m = [14.954, 0.2296, 0.0594] # momentum-matched cross-bar masses at x3 = -304 deg [kg]
+template_l = [0.30605, 0.31773, 0.56403]
+template_d = 0.093
+x3_ref_deg = -304.0
+gains = [950.0, 360.0, 41.0]         # k0 k1 k2 (positive; law is u0 = -(k0 L + k1 Ld + k2 Ldd)/g)
+kp3 = 100.0
+kd3 = 40.0
+observer_tc = 0.05
+kp_stance = 60.0
+kd_stance = 2.5
+kp_swing = 50.0
+kd_swing = 1.0
+kp_height = 400.0
+kd_height = 10.0
+qdd_max = 300.0
+barrier_margin_deg = 8.0
+barrier_kp = 60.0
+barrier_kd = 2.0
+joint_damping = 0.2                  # sim MJCF values, cancelled on the swing joints of both paths; retune on hardware
+joint_friction = 0.2
+lift_duration = 0.4
+stance_x = 0.15
+base_z = 0.30
+swing_rel = [0.18, 0.0955, 0.18]     # fore, lateral, down from the abduction anchor (mirrored per leg)
+fd_step = 1e-4
+theta1_max_deg = 45.0
+z_min = 0.16
+# Realization of the same reduced-order law. true: thesis Ch. 6, AMB as a
+# principal-frame swing-foot task of the whole-body controller (QuadrupedWBC)
+# with stance forces from MdlConvexMPC. false: the joint-space hip-roll path,
+# which alone uses kp/kd_stance, kp/kd_swing, kp/kd_height, qdd_max and barrier_*.
+wbc = true
+# WBC gains and limits, Table 6.2 except the body orientation: with its
+# (100, 10) the roll about the support line yields to the swing legs, x2 has
+# no restoring action (the law feeds back L and x3 only) and it runs away
+# slowly: +1.3 deg/s at 5 s, +2.7 deg/s at 35 s, a fall 44 s after the
+# hand-off. From kp 200 up x2 settles; (400, 40) settles in about 20 s, held
+# 120 s, and is critically damped. kd alone changes nothing.
+kp_body_ori = 400.0
+kd_body_ori = 40.0
+kp_body_pos = 100.0
+kd_body_pos = 10.0
+kp_foot = 150.0                      # swing foot, Cartesian (6.27)
+kd_foot = 10.0
+kp_joint = 30.0                      # stance legs only; swing joints get kp 0 (6.28)
+kd_joint = 3.0
+foot_acc_max = 50.0                  # norm limit of the AMB feedforward [m/s^2]
+force_ratio = 0.10                   # MPC stance force: tangential / normal at most
+# Experiment inputs of thesis Sec. 6.6 (Table 6.3); these defaults leave them off.
+# x3_schedule: [time since MdlAMB activation [s], x3 reference [deg]] pairs in
+# increasing time; after the lift each replaces x3_ref_deg as a raw step (Fig.
+# 6.4), in both realizations. Fig. 6.4 is [[0.4, -340.0], [2.0, -220.0],
+# [10.0, -250.0], [15.0, -270.0], [20.0, -360.0]], which the full stack
+# balances. The swing hip-roll range (+-60 deg) bounds a step from the -304 deg
+# hand-off to about -360 ... -200 deg.
+x3_schedule = []
+# Amplitudes [deg] of the 0.1 Hz pitch and yaw sinusoids on the body-orientation
+# reference, WBC only (Sec. 6.6.5.1: 5 and 3 deg, separate trials; the 2 s
+# delay and 2 s ramp are fixed in code).
+pitch_amp_deg = 0.0
+yaw_amp_deg = 0.0
+# Stop (D key, WBC only; Sec. 6.6.7, Fig. 6.3): placement ramp [s], normal
+# reference back to its hand-off value and radial reference out to the ground,
+# with AMB on, ending with the swing feet on the ground. The 3 s load
+# transfer to four feet (Table 6.3) and the 3 s final hold before SETTLED are fixed.
+place_duration = 2.5
+
+[diagstance]
+# Body shifts [m] from the stand position, in the gravity-levelled frame. The
+# stand leaves all four feet ~6.5 cm ahead of the body origin, so the first
+# (RR) step needs a large forward shift to get the CoM 5.5 cm inside FL/FR/RL;
+# the FL step then sits 5.4 cm inside FR/RL/RR with a small shift back.
+shift1 = [0.10, 0.05]
+shift2 = [-0.02, 0.01]
+# Joint PD on the foot targets; the legcontrol default 100 / 5 sags the loaded
+# legs 2-3 cm and leaves FL/RR 2-4 cm off their hand-off spots. Sim values;
+# retune on hardware (a 0.06 rad error already saturates a 23.7 Nm joint).
+kp = 400.0
+kd = 10.0
+shift_duration = 1.0
+step_duration = 0.8
+step_clearance = 0.05
+tracking_error_limit = 0.5

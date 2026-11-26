@@ -39,7 +39,13 @@
       <default class="collision">
         <geom group="3"/>
         <default class="foot">
-          <geom size="0.022" pos="-0.002 0 -0.213" priority="1" solimp="0.9 1 0.002" condim="6"
+          <!-- condim 3 (sliding friction only) instead of the Menagerie's 6: its 0.01 m rolling
+               friction is up to 1.5 Nm of dry friction about the FL-RR support line at ~75 N per
+               stance foot, eight times the gravity torque of a 0.3 deg tilt, so the diagonal-stance
+               pivot sticks and MdlAMB cannot balance on it (measured: dL/dt - M g c_h equals the
+               contact moment about the line, correlation 0.994). The thesis, the Python reference
+               (go2_planar.xml) and MdlAMB all assume a frictionless line pivot. -->
+          <geom size="0.022" pos="-0.002 0 -0.213" priority="1" solimp="0.9 1 0.002" condim="3"
             friction="0.8 0.02 0.01"/>
         </default>
       </default>

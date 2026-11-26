@@ -71,6 +71,23 @@ QuadrupedLegDynamics::params_t createGo2DynamicsConfig() {
   return params;
 }
 
+QuadrupedDynamics::params_t createGo2WholeBodyConfig() {
+  QuadrupedDynamics::params_t params;
+  params.legs = createGo2DynamicsConfig();
+  // Trunk inertial and foot geom from models/unitree_go2/go2.xml
+  // (<body name="base"> <inertial>, foot sphere size).
+  params.trunk_mass = 6.921;
+  params.trunk_com = Eigen::Vector3d(0.021112, 0.0, -0.005366);
+  const Eigen::Matrix3d Rq =
+      Eigen::Quaterniond(-0.000543471, 0.713435, -0.00173769, 0.700719)
+          .normalized()  // as MuJoCo does; the XML value is 3e-8 short of unit norm
+          .toRotationMatrix();
+  params.trunk_inertia_com =
+      Rq * Eigen::Vector3d(0.107027, 0.0980771, 0.0244531).asDiagonal() * Rq.transpose();
+  params.foot_radius = 0.022;
+  return params;
+}
+
 QuadrupedKinematics::params_t createGo2Config() {
   QuadrupedKinematics::params_t params;
 

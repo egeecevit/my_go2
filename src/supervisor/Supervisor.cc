@@ -9,7 +9,9 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <termios.h>
+#include <algorithm>
 #include <cmath>
+#include <string>
 #include "rtcore/ModuleManager.hh"
 #include "rtcore/LogServer.hh"
 
@@ -22,6 +24,8 @@
 #include "quadruped/MdlTrot.hh"
 #include "quadruped/MdlStand.hh"
 #include "quadruped/MdlSit.hh"
+#include "quadruped/MdlDiagonalStance.hh"
+#include "quadruped/MdlAMB.hh"
 #include "quadruped/MdlPosVelEstimator.hh"
 
 #include "Supervisor.hh"
@@ -190,6 +194,8 @@ void Supervisor::init() {
   _trot = (MdlTrot *)_mgr->findModule(TROTMODULE_NAME, 0);
   _stand = (MdlStand *)_mgr->findModule(STANDMODULE_NAME, 0);
   _sit = (MdlSit *)_mgr->findModule(SITMODULE_NAME, 0);
+  _diag = (MdlDiagonalStance *)_mgr->findModule(DIAGSTANCEMODULE_NAME, 0);
+  _amb = (MdlAMB *)_mgr->findModule(AMBMODULE_NAME, 0);
   _posvel = (MdlPosVelEstimator *)_mgr->findModule(POSVELMODULE_NAME, 0);
 
   ConfigTable config;
@@ -202,6 +208,38 @@ void Supervisor::init() {
     if (!std::isfinite(_autorunTrotDuration) || _autorunTrotDuration < 0.0) {
       _mgr->warning("Supervisor", "Invalid autorun_trot_duration; disabling autorun");
       _autorunTrotDuration = 0.0;
+    }
+    _autorunAmbDuration = config.getDouble("autorun_amb_duration", 0.0);
+    if (!std::isfinite(_autorunAmbDuration) || _autorunAmbDuration < 0.0) {
+      _mgr->warning("Supervisor", "Invalid autorun_amb_duration; disabling autorun");
+      _autorunAmbDuration = 0.0;
+    }
+    // Both autoruns leave S_STAND on the same settled edge, so only one can own it.
+    if (_autorunTrotDuration > 0.0 && _autorunAmbDuration > 0.0) {
+      _mgr->warning("Supervisor",
+                    "autorun_trot_duration and autorun_amb_duration both set; ignoring the balance autorun");
+      _autorunAmbDuration = 0.0;
+    }
+
+    // Timed key script: "<seconds> <key>" entries, sorted by time.
+    ConfigArray script;
+    if (config.getArray("script", script)) {
+      for (int i = 0; i < script.size(); i++) {
+        const std::string entry = script.getStringAt(i, "");
+        double at = 0.0;
+        char key = 0;
+        if (sscanf(entry.c_str(), "%lf %c", &at, &key) == 2 && std::isfinite(at) && at >= 0.0)
+          _script.push_back(std::make_pair(at, key));
+        else
+          _mgr->warning("Supervisor", "Ignoring malformed script entry '%s'", entry.c_str());
+      }
+      std::sort(_script.begin(), _script.end());
+      // The script owns the state-machine edges, so the autoruns must not.
+      if (!_script.empty() && (_autorunTrotDuration > 0.0 || _autorunAmbDuration > 0.0)) {
+        _mgr->warning("Supervisor", "script set; ignoring the autorun durations");
+        _autorunTrotDuration = 0.0;
+        _autorunAmbDuration = 0.0;
+      }
     }
 
     // Process logging configuration
@@ -263,9 +301,11 @@ void Supervisor::activate() {
   _state = S_IDLE;
   _autorunStarted = false;
   _autorunTrotStarted = false;
+  _autorunAmbStarted = false;
   _autorunStopIssued = false;
   _autorunDone = false;
-  printf("\n  [S]tand  [W]alk(draw)  [T]rot  [R]un-stop  [D]own(sit)  [Q]uit\n\n");
+  _scriptNext = 0;
+  printf("\n  [S]tand  [W]alk(draw)  [T]rot  [B]alance  [R]un-stop  [D]own(sit)  [Q]uit\n\n");
 }
 
 void Supervisor::deactivate() {
@@ -277,6 +317,10 @@ void Supervisor::deactivate() {
     _mgr->releaseModule(_wm, this);
   if (_state == S_TROT || _state == S_TROT_STOPPING)
     _mgr->releaseModule(_trot, this);
+  if (_state == S_DIAG)
+    _mgr->releaseModule(_diag, this);
+  if (_state == S_AMB || _state == S_AMB_STOPPING)
+    _mgr->releaseModule(_amb, this);
 }
 
 // The position/velocity filter only has something to measure while the feet
@@ -315,6 +359,16 @@ void Supervisor::update() {
 
   int key = _readKey();
 
+  // A scripted key is synthesized like an autorun key: only when none was
+  // pressed, and through the same handler, so a key the current state cannot
+  // accept is dropped exactly as a keypress would be. The message makes a
+  // mistimed script visible in the run log.
+  if (key < 0 && _scriptNext < _script.size() && t >= _script[_scriptNext].first) {
+    key = _script[_scriptNext].second;
+    _mgr->message("Supervisor: script key '%c' at t=%.3f s", key, t);
+    _scriptNext++;
+  }
+
   // Synthesize only an otherwise absent key, so an operator can always abort
   // an autorun with Q. The state transitions below remain the single source of
   // behavior ownership; autorun merely exercises the same edges deterministically.
@@ -331,6 +385,19 @@ void Supervisor::update() {
                t - _autorunTrotStart >= _autorunTrotDuration) {
       key = 'd';
     }
+  } else if (_autorunAmbDuration > 0.0 && key < 0) {
+    if (_state == S_IDLE && !_autorunStarted) {
+      key = 's';
+    } else if (_state == S_IDLE && _autorunDone) {
+      _mgr->message("Supervisor: autorun complete at t=%.3f s", t);
+      _mgr->exitMainLoop();
+      return;
+    } else if (_state == S_STAND && _standSettled && !_autorunAmbStarted) {
+      key = 'b';
+    } else if (_state == S_AMB && _autorunAmbStarted && !_autorunStopIssued &&
+               t - _autorunAmbStart >= _autorunAmbDuration) {
+      key = 'd';
+    }
   }
 
   // Quit from any state
@@ -344,6 +411,10 @@ void Supervisor::update() {
       _mgr->releaseModule(_wm, this);
     if (_state == S_TROT || _state == S_TROT_STOPPING)
       _mgr->releaseModule(_trot, this);
+    if (_state == S_DIAG)
+      _mgr->releaseModule(_diag, this);
+    if (_state == S_AMB || _state == S_AMB_STOPPING)
+      _mgr->releaseModule(_amb, this);
     _state = S_EXIT;
     _mark = t;
   }
@@ -356,7 +427,7 @@ void Supervisor::update() {
       _stand->setTargetHeight(_standHeight);
       _standSettled = false;
       _setEstimation(true);
-      if (_autorunTrotDuration > 0.0) _autorunStarted = true;
+      if (_autorunTrotDuration > 0.0 || _autorunAmbDuration > 0.0) _autorunStarted = true;
       _state = S_STAND;
     }
     break;
@@ -389,6 +460,12 @@ void Supervisor::update() {
             _autorunTrotStart = t;
           }
           _state = S_TROT;
+        } else if (key == 'b' || key == 'B') {
+          _mgr->message("Supervisor: -> S_DIAG");
+          _mgr->releaseModule(_stand, this);
+          _mgr->grabModule(_diag, this);
+          if (_autorunAmbDuration > 0.0) _autorunAmbStarted = true;
+          _state = S_DIAG;
         } else if (key == 'd' || key == 'D') {
           _mgr->message("Supervisor: -> S_SIT");
           _mgr->releaseModule(_stand, this);
@@ -396,6 +473,72 @@ void Supervisor::update() {
           _state = S_SIT;
         }
       }
+    }
+    break;
+
+  case S_DIAG:
+    // The placement hands over to balancing on its own; D or an error sits down.
+    if (_diag->getStatus() == MdlDiagonalStance::ERROR) {
+      _mgr->message("Supervisor: ERROR during diagonal stance, sitting down");
+      _mgr->releaseModule(_diag, this);
+      _mgr->grabModule(_sit, this);
+      if (_autorunStarted) _autorunStopIssued = true;
+      _state = S_SIT;
+    } else if (key == 'd' || key == 'D') {
+      _mgr->message("Supervisor: -> S_SIT (from diagonal stance)");
+      _mgr->releaseModule(_diag, this);
+      _mgr->grabModule(_sit, this);
+      if (_autorunStarted) _autorunStopIssued = true;
+      _state = S_SIT;
+    } else if (_diag->getStatus() == MdlDiagonalStance::SETTLED) {
+      // Release and grab in the same tick: MdlAMB::update() runs this very
+      // tick, before MdlLegControl, so the legs never see a command gap.
+      _mgr->message("Supervisor: -> S_AMB");
+      _mgr->releaseModule(_diag, this);
+      _mgr->grabModule(_amb, this);
+      if (_autorunAmbDuration > 0.0) _autorunAmbStart = t;
+      _state = S_AMB;
+    }
+    break;
+
+  case S_AMB:
+    // MdlAMB balances indefinitely; an error sits down. D asks the WBC
+    // realization to place the swing feet and move the load onto all four
+    // (thesis Sec. 6.6.7), and sits once that has settled, as a trot stop
+    // does. The joint-space realization has no such sequence and sits at
+    // once: its swing feet drop about 10 cm on the way into the sit, fine in
+    // sim, worth a gentler exit on hardware.
+    if (_amb->getStatus() == MdlAMB::ERROR) {
+      _mgr->message("Supervisor: ERROR during balance, sitting down");
+      _mgr->releaseModule(_amb, this);
+      _mgr->grabModule(_sit, this);
+      if (_autorunStarted) _autorunStopIssued = true;
+      _state = S_SIT;
+    } else if (key == 'd' || key == 'D') {
+      if (_autorunStarted) _autorunStopIssued = true;
+      if (_amb->stopBalancing()) {
+        _mgr->message("Supervisor: -> S_AMB_STOPPING");
+        _state = S_AMB_STOPPING;
+      } else {
+        _mgr->message("Supervisor: -> S_SIT (from balance)");
+        _mgr->releaseModule(_amb, this);
+        _mgr->grabModule(_sit, this);
+        _state = S_SIT;
+      }
+    }
+    break;
+
+  case S_AMB_STOPPING:
+    if (_amb->getStatus() == MdlAMB::ERROR) {
+      _mgr->message("Supervisor: ERROR during balance stop, sitting down");
+      _mgr->releaseModule(_amb, this);
+      _mgr->grabModule(_sit, this);
+      _state = S_SIT;
+    } else if (_amb->getStatus() == MdlAMB::SETTLED) {
+      _mgr->message("Supervisor: -> S_SIT (from balance)");
+      _mgr->releaseModule(_amb, this);
+      _mgr->grabModule(_sit, this);
+      _state = S_SIT;
     }
     break;
 

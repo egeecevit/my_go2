@@ -118,6 +118,11 @@ private:
   double  _tau[12];
 
   IMUHW::imudata_t _imu;
+  // Base linear velocity at the previous tick and the tick length, for the
+  // finite-difference accelerometer in _readIMUData().
+  double _prevBaseVel[3] = {0.0, 0.0, 0.0};
+  double _lastDt = 0.001;
+  bool _havePrevBaseVel = false;
   
   bool _gravityFlag = true;
 
@@ -141,6 +146,18 @@ private:
 
   // Foot geom IDs in FL, FR, RL, RR order; -1 when absent.
   int _footGeomId[4] = {-1, -1, -1, -1};
+
+  // Disturbance push on the trunk ([simulation] push_*): a world-frame force
+  // held for _pushDuration, fired once at _pushTime (0 = never) and by the P
+  // key in the simulation window. _pushUntil is the end of the active push.
+  // _pushRamp > 0 raises the force linearly from zero over that long first.
+  int _baseBodyId = -1;
+  double _pushForce[3] = {0.0, 0.0, 0.0};
+  double _pushDuration = 0.1;
+  double _pushRamp = 0.0;
+  double _pushTime = 0.0;
+  double _pushUntil = -1.0;
+  bool _pushFired = false;
 
   mjModel   * _model = nullptr;
   mjData    * _data = nullptr;

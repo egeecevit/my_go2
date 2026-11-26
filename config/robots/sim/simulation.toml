@@ -21,3 +21,14 @@ headless = false
 
 # Real-time simulation. Slows down simulation if faster than realtime. Default: false
 realtime = true
+
+# Disturbance push on the trunk for balance tests: a world-frame force [N] held for
+# push_duration [s], fired once at push_time [s] of simulation time (0 = never) and
+# on every P key press in the simulation window. Default: no push.
+push_force = [0.0, -5.0, 0.0]
+push_duration = 0.1
+push_time = 0.0
+# Rise time [s] of the push: the force grows linearly from zero over push_ramp,
+# then holds until the push ends (thesis Sec. 6.6.5.2 persistent force, 2 s).
+# Default 0: the full force from the first tick.
+push_ramp = 0.0

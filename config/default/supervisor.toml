@@ -6,6 +6,13 @@ exit_time = 0
 # Positive values run stand, TROT, stop, and sit for the requested duration before exit; zero keeps the interactive supervisor.
 autorun_trot_duration = 0
 
+# Positive values run stand, diagonal stance, BALANCE for the requested duration, then sit and exit; exclusive with autorun_trot_duration.
+# With [amb] wbc = true the stop first places the swing feet and transfers the load to four feet (about 8 s more), as the D key does.
+autorun_amb_duration = 0
+
+# Timed key script, "<seconds> <key>" entries sent through the normal key handler, e.g. ["2 s", "6 t", "46 d"]; exclusive with the autoruns, end the run with exit_time.
+script = []
+
 log = {
   # Enable or disable automatic local logging.
   enable = false
@@ -27,6 +34,8 @@ log = {
   # vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
   #       "MdlTrot_torquereq", "MdlTrot_footref", "MdlTrot_contact",
   #       "MdlTrot_bodyref", "MdlPosVelEstimator_foottruth"],
+  # Alternative balance variable set (MdlAMB; layouts at _log and _logWbc in MdlAMB.hh).
+  # vars=["MdlAMB_state", "MdlAMB_wbc", "MdlSimDriver_qpos", "MdlSimDriver_grf"],
   # Output format: "ascii", "raw", or "matlab".
   file_format = "matlab",
   file_name   = "deneme.mat"

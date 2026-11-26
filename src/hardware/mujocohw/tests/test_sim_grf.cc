@@ -156,9 +156,14 @@ int main(int argc, char **argv) {
   // from q_nom, the fixed-q feedforward stops matching what is actually needed,
   // and the trunk runs away. These gains are damped conservatively (kd large
   // relative to kp) precisely because the first, stiffer attempt (kp=100,
-  // kd=5) instead pumped an underdamped bounce.
-  const Eigen::Vector3d kp_cart(50.0, 50.0, 50.0);
-  const Eigen::Vector3d kd_cart(25.0, 25.0, 25.0);
+  // kd=5) instead pumped an underdamped bounce. 50/25 held the footprint only
+  // because go2.xml's feet then had the menagerie's 0.01 m rolling friction,
+  // which pinned them; on the rolling-free feet the controller needs (condim 3)
+  // the spheres creep outward on every unload and the trunk sinks 3.5 cm over
+  // the window. 200/40 (damping ratio ~0.7 at ~4 kg per leg) keeps the drift
+  // under 3 mm without a bounce.
+  const Eigen::Vector3d kp_cart(200.0, 200.0, 200.0);
+  const Eigen::Vector3d kd_cart(40.0, 40.0, 40.0);
   auto measuredQ = [&](int leg) {
     Eigen::Vector3d q;
     for (int j = 0; j < 3; j++) q[j] = POLARITY[3 * leg + j] * d->qpos[7 + 3 * leg + j];

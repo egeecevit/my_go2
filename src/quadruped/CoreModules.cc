@@ -15,6 +15,8 @@
 #include "quadruped/MdlTrot.hh"
 #include "quadruped/MdlStand.hh"
 #include "quadruped/MdlSit.hh"
+#include "quadruped/MdlDiagonalStance.hh"
+#include "quadruped/MdlAMB.hh"
 #include "quadruped/MdlLegControl.hh"
 #include "quadruped/MdlOrientationEstimator.hh"
 #include "quadruped/MdlPosVelEstimator.hh"
@@ -30,6 +32,8 @@ static MdlConvexMPC *_mpc = nullptr;
 static MdlTrot *_trot = nullptr;
 static MdlStand *_sm = nullptr;
 static MdlSit *_sit = nullptr;
+static MdlDiagonalStance *_diag = nullptr;
+static MdlAMB *_amb = nullptr;
 static MdlLegControl  *_lm[4] = {nullptr, nullptr, nullptr, nullptr};
 
 void AddCoreModules( ModuleManager *mgr ) {
@@ -50,6 +54,8 @@ void AddCoreModules( ModuleManager *mgr ) {
   CREATE_MODULE(mgr, MdlTrot, _trot);
   CREATE_MODULE(mgr, MdlStand, _sm);
   CREATE_MODULE(mgr, MdlSit, _sit);
+  CREATE_MODULE(mgr, MdlDiagonalStance, _diag);
+  CREATE_MODULE(mgr, MdlAMB, _amb);
 }
 
 void ActivateCoreModules(ModuleManager *mgr ) {
@@ -64,6 +70,8 @@ void ActivateCoreModules(ModuleManager *mgr ) {
 }
 
 void DeactivateCoreModules(ModuleManager *mgr ) {
+  DEACTIVATE_MODULE(mgr, _amb);
+  DEACTIVATE_MODULE(mgr, _diag);
   DEACTIVATE_MODULE(mgr, _sit);
   DEACTIVATE_MODULE(mgr, _sm);
   DEACTIVATE_MODULE(mgr, _trot);
@@ -77,6 +85,8 @@ void DeactivateCoreModules(ModuleManager *mgr ) {
 }
 
 void RemoveCoreModules(ModuleManager *mgr ) {
+  DESTROY_MODULE(mgr, _amb);
+  DESTROY_MODULE(mgr, _diag);
   DESTROY_MODULE(mgr, _sit);
   DESTROY_MODULE(mgr, _sm);
   DESTROY_MODULE(mgr, _trot);
