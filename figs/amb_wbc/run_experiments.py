@@ -228,6 +228,9 @@ class Run:
         self.msg_t = {}
         for v, key in re.findall(r"MdlAMB: t=([\d.]+) (placement started|balance stop|SETTLED)", text):
             self.msg_t.setdefault(key, float(v) - self.th)
+        # MdlDiagonalStance settles once on the way in and again after the return to the stand.
+        back = re.findall(r"MdlDiagonalStance: t=([\d.]+) SETTLED", text)[1:]
+        self.back_t = float(back[0]) - self.th if back else None
 
     def win(self, a, b):
         return (self.t >= a) & (self.t <= b)
@@ -441,7 +444,7 @@ class Experiments:
     # -- b. principal frame + load transfer, Fig. 6.3, 6.21, 6.22, Table 6.6 --
     def transfer(self):
         t_stop = 5.0
-        R = self.run("transfer", "wbc", [], self.th + t_stop + 13.0, keys=[f"{self.th + t_stop:.4f} d"])
+        R = self.run("transfer", "wbc", [], self.th + t_stop + 23.0, keys=[f"{self.th + t_stop:.4f} d"])
         W, ph, act = R.W, R.W[:, 0], R.t >= 0.0
         t_pl, t_tr, t_fi = (first_t(R, act & (ph == p)) for p in (2.0, 3.0, 4.0))
         t_set = R.msg_t.get("SETTLED")
@@ -497,6 +500,22 @@ class Experiments:
         fell = R.fall(0.0)
         res.update(final_sim_fz_N=dict(zip(LEGS, fz.round(2).tolist())), weight_N=r6(MASS * 9.81),
                    fall_before_settled=fell is not None and fell <= t_set)
+        # Not in the thesis: after SETTLED MdlDiagonalStance steps the feet back to
+        # the stand's footprint. Feet relative to the base in the yaw-levelled
+        # frame, against the same at the first sample (the stand, 'b' key).
+        if R.back_t is not None:
+            def feet(i):
+                c, s = np.cos(R.rpy[i, 2]), np.sin(R.rpy[i, 2])
+                return ((R.cp[i] - R.qpos[i, 0:3]) @ np.array([[c, -s], [s, c], [0.0, 0.0]]))
+            ib, wb = np.searchsorted(R.t, R.back_t), R.win(t_set, R.back_t)
+            off = 1e3 * np.linalg.norm(feet(ib) - feet(0), axis=1)
+            res["return_to_stand"] = {
+                "settled": r6(R.back_t), "fall": fell is not None and fell <= R.back_t,
+                "foot_offset_from_stand_mm": dict(zip(LEGS, off.round(1).tolist())),
+                "max_roll_pitch_deg": np.degrees(np.abs(R.rpy[wb, :2]).max(axis=0)).round(2).tolist(),
+                # a step leaves three feet down; fewer means a supporting foot has unloaded
+                "under_three_feet_loaded_ms": int(1e3 * R.t[1] - 1e3 * R.t[0] + 0.5)
+                * int(((R.grf[wb][:, 2::3] > 2.0).sum(axis=1) < 3).sum())}
         worst = max(table[k][g]["rmse_des_sol"] for k in table for g in LEGS)
         worst_sim = max(table[k][g]["rmse_des_sim"] for k in table for g in LEGS)
         # Four-foot support: every simulated foot force above 5 N over the last

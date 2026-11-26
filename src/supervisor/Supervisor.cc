@@ -317,7 +317,7 @@ void Supervisor::deactivate() {
     _mgr->releaseModule(_wm, this);
   if (_state == S_TROT || _state == S_TROT_STOPPING)
     _mgr->releaseModule(_trot, this);
-  if (_state == S_DIAG)
+  if (_state == S_DIAG || _state == S_AMB_RETURN)
     _mgr->releaseModule(_diag, this);
   if (_state == S_AMB || _state == S_AMB_STOPPING)
     _mgr->releaseModule(_amb, this);
@@ -411,7 +411,7 @@ void Supervisor::update() {
       _mgr->releaseModule(_wm, this);
     if (_state == S_TROT || _state == S_TROT_STOPPING)
       _mgr->releaseModule(_trot, this);
-    if (_state == S_DIAG)
+    if (_state == S_DIAG || _state == S_AMB_RETURN)
       _mgr->releaseModule(_diag, this);
     if (_state == S_AMB || _state == S_AMB_STOPPING)
       _mgr->releaseModule(_amb, this);
@@ -463,6 +463,7 @@ void Supervisor::update() {
         } else if (key == 'b' || key == 'B') {
           _mgr->message("Supervisor: -> S_DIAG");
           _mgr->releaseModule(_stand, this);
+          _diag->setReverse(false);
           _mgr->grabModule(_diag, this);
           if (_autorunAmbDuration > 0.0) _autorunAmbStarted = true;
           _state = S_DIAG;
@@ -502,19 +503,21 @@ void Supervisor::update() {
     break;
 
   case S_AMB:
-    // MdlAMB balances indefinitely; an error sits down. D asks the WBC
+    // MdlAMB balances indefinitely; an error sits down. D or R asks the WBC
     // realization to place the swing feet and move the load onto all four
-    // (thesis Sec. 6.6.7), and sits once that has settled, as a trot stop
-    // does. The joint-space realization has no such sequence and sits at
-    // once: its swing feet drop about 10 cm on the way into the sit, fine in
-    // sim, worth a gentler exit on hardware.
+    // (thesis Sec. 6.6.7); MdlDiagonalStance then steps FL and RR back out to
+    // the stand's footprint, and the robot sits (D) or stays standing (R), as
+    // after a trot stop. The joint-space realization has no such sequence and
+    // sits at once on either key: its swing feet drop about 10 cm on the way
+    // into the sit, fine in sim, worth a gentler exit on hardware.
     if (_amb->getStatus() == MdlAMB::ERROR) {
       _mgr->message("Supervisor: ERROR during balance, sitting down");
       _mgr->releaseModule(_amb, this);
       _mgr->grabModule(_sit, this);
       if (_autorunStarted) _autorunStopIssued = true;
       _state = S_SIT;
-    } else if (key == 'd' || key == 'D') {
+    } else if (key == 'r' || key == 'R' || key == 'd' || key == 'D') {
+      _ambStopToStand = (key == 'r' || key == 'R');
       if (_autorunStarted) _autorunStopIssued = true;
       if (_amb->stopBalancing()) {
         _mgr->message("Supervisor: -> S_AMB_STOPPING");
@@ -535,10 +538,35 @@ void Supervisor::update() {
       _mgr->grabModule(_sit, this);
       _state = S_SIT;
     } else if (_amb->getStatus() == MdlAMB::SETTLED) {
-      _mgr->message("Supervisor: -> S_SIT (from balance)");
+      // Same-tick release and grab, as on the way in.
+      _mgr->message("Supervisor: -> S_AMB_RETURN");
       _mgr->releaseModule(_amb, this);
+      _diag->setReverse(true);
+      _mgr->grabModule(_diag, this);
+      _state = S_AMB_RETURN;
+    }
+    break;
+
+  case S_AMB_RETURN:
+    if (_diag->getStatus() == MdlDiagonalStance::ERROR) {
+      _mgr->message("Supervisor: ERROR during the return to the stand, sitting down");
+      _mgr->releaseModule(_diag, this);
       _mgr->grabModule(_sit, this);
       _state = S_SIT;
+    } else if (_diag->getStatus() == MdlDiagonalStance::SETTLED) {
+      _mgr->releaseModule(_diag, this);
+      if (_ambStopToStand) {
+        // Zero delta: the return leaves the robot at its stand height already.
+        _mgr->message("Supervisor: -> S_STAND (from balance)");
+        _mgr->grabModule(_stand, this);
+        _stand->setTargetHeight(0.0);
+        _standSettled = false;
+        _state = S_STAND;
+      } else {
+        _mgr->message("Supervisor: -> S_SIT (from balance)");
+        _mgr->grabModule(_sit, this);
+        _state = S_SIT;
+      }
     }
     break;
 

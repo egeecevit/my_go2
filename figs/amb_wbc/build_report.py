@@ -70,6 +70,13 @@ def content(R, written):
     ph = tr["phases"]
     fz = tr["final_sim_fz_N"]
     legs = ("FL", "FR", "RL", "RR")
+    rt = tr.get("return_to_stand")
+    back = "" if not rt else (
+        f" In the transfer run the return ends {rt['settled']:.1f} s after the hand-off with every foot within "
+        f"{max(rt['foot_offset_from_stand_mm'].values()):.0f} mm of its stand spot and roll and pitch below "
+        f"{max(rt['max_roll_pitch_deg']):.1f} deg. Fewer than three feet carry load for "
+        f"{rt['under_three_feet_loaded_ms']} ms in all, at the last touchdown; the least-loaded supporting foot "
+        f"carries about 10 N during the steps, as on the way in.")
     worst = max(t66[k][g]["rmse_des_sol"] for k in t66 for g in legs)
     worst_th = max(th66[k][g][2] for k in ("transfer", "final") for g in legs)
     worst_sim = max(t66[k][g]["rmse_des_sim"] for k in t66 for g in legs)
@@ -214,8 +221,10 @@ def content(R, written):
                 "mode only, state S_AMB_STOPPING): the swing feet are placed over 2.5 s with AMB still acting; each "
                 "foot becomes a WBC contact once its kinematic contact point is within 5 mm of the ground and no "
                 "longer sinking faster than 1 cm/s; the desired normal forces then blend linearly over 3 s from the "
-                "frozen two-foot plan to the four-foot MPC plan; after a 3 s four-foot hold MdlAMB reports SETTLED "
-                "and the Supervisor sits. In joint-space mode D sits at once, as before."),
+                "frozen two-foot plan to the four-foot MPC plan; after a 3 s four-foot hold MdlAMB reports SETTLED. "
+                "FL and RR are then still on the centreline, so MdlDiagonalStance (state S_AMB_RETURN) steps all "
+                "four feet, one at a time, back to the footprint the stand had before B, and the robot sits. Key R "
+                "does the same and stays standing. In joint-space mode D and R sit at once, as before."),
           ("table", "Table 2. Thesis items and where they live.", ["Thesis", "Implementation", "Where"],
            [["(6.1)–(6.2) floating-base dynamics, rigid contacts",
              "M, h, foot, contact-point and hip Jacobians with their bias terms, CoM",
@@ -455,7 +464,7 @@ def content(R, written):
           ("h3", "3.8 Load transfer (Sec. 6.6.7, Table 6.6, Fig. 6.21–6.22)"),
           ("p", f"Applied: balance for 5 s, then D. Placement starts at {ph['placement']} s, both feet are promoted "
                 f"('balance stop') at {ph['transfer']} s, the final hold starts at {ph['final']} s and SETTLED "
-                f"comes at {ph['settled']} s; the Supervisor then sits. The robot ends in four-foot support without "
+                f"comes at {ph['settled']} s. The robot ends in four-foot support without "
                 f"falling; final simulated normal forces FL / FR / RL / RR "
                 f"{' / '.join(f'{fz[g]:.1f}' for g in legs)} N, sum {sum(fz.values()):.1f} N, weight "
                 f"{tr['weight_N']:.1f} N. The worst per-foot desired−solved RMSE is {fx(worst)} N (thesis "
@@ -487,9 +496,12 @@ def content(R, written):
               f"<b>Entry.</b> MdlDiagonalStance puts FL and RR on the body centreline (support line {angle:.2f} deg "
               "from body x) and MdlAMB lifts FR and RL over 0.4 s; the thesis hands over from a trot. Disturbances "
               "start 2 s after the hand-off (the thesis' 5.5 s warm-up less its ≈3.5 s balance start).",
-              "<b>State.</b> Base position and velocity come from the planted stance feet, attitude from "
-              "MdlOrientationEstimator with its simulated sensor noise (`attitude_source = \"estimator\"`); the "
-              "thesis uses the simulated-state override.",
+              "<b>State.</b> Base position and velocity come from the planted stance feet. Attitude and body rate "
+              "come from MdlOrientationEstimator, which in the default configuration (`[orientationestimator] "
+              "use_ground_truth = true`) hands out the simulator's own, so every run here is free of sensor "
+              "noise, like the thesis' simulated-state override. With `use_ground_truth = false` (Mahony filter "
+              "on the noisy simulated IMU) one-off runs balanced for 23 s and completed the stop, with 0.44 deg "
+              "rms of swing-abduction jitter; the joint-space path fell 7.4 s after the hand-off.",
               "<b>Period and torque.</b> 1 ms control period (thesis 2 ms); the real Go2 torque limits 23.7 / 23.7 "
               "/ 45.43 N m (thesis 65 N m).",
               "<b>AMB gains and template masses.</b> Tuned (950, 360, 41) and momentum-matched masses (14.954, "
@@ -528,6 +540,11 @@ def content(R, written):
               "1 cm/s; the thesis gives no criterion). The MPC adds the former swing feet at the second "
               "touchdown, so the first-promoted foot is a WBC contact with zero desired force for some tens of "
               "ms (25 ms in the transfer run). The final split is the four-foot MPC plan, not equal shares.",
+              "<b>Return to the stand.</b> Not in the thesis, whose trot host needs none. After SETTLED, "
+              "MdlDiagonalStance steps each foot to the spot it had under the body before B. The swing feet land "
+              "wherever the balance left them, so each body shift is planned from the feet as found: to the "
+              "nearest point 5 cm inside the triangle of the other three feet, the foot needing the shortest "
+              "shift first." + back,
               "<b>Metrics.</b> Table 6.6's 'total' RMSE is not defined in the thesis; pooled and summed-force RMSE "
               "are in results.json. ξ<sub>t,lim</sub> is computed by forward kinematics with only the abduction "
               "moved to its limits, at the held radius."])]
@@ -604,7 +621,8 @@ def content(R, written):
           ("p", "<b>Interactive.</b> `cd bin && ./sim.sh`, then keys in the terminal or the simulator window: S "
                 "(stand; wait for it to settle), B (diagonal stance, which hands over to balancing by itself "
                 f"{hand - t_b:.1f} s later), P in the simulator window (push: `simulation.push_force` for "
-                "`push_duration`, ramped over `push_ramp`), D (WBC: place the feet, transfer the load, sit; joint "
+                "`push_duration`, ramped over `push_ramp`), D (WBC: place the feet, transfer the load, step back to "
+                "the stand's footprint, sit; R: the same, but stay standing; joint "
                 "space: sit), Q (quit). Useful overrides: `-c \"amb.wbc = false\"` (joint-space path), "
                 "`-c \"amb.enabled = false\"` (ablation), `-c \"amb.x3_schedule = [[0.4, -340.0], [2.0, -220.0]]\"`, "
                 "`-c \"amb.pitch_amp_deg = 5\"`, `-c \"simulation.push_ramp = 2\"`."),

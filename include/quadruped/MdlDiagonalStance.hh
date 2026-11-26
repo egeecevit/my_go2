@@ -12,11 +12,15 @@
 
 class MdlLegControl;
 
-/** \brief Four-footed stand -> FL and RR on the body centreline.
+/** \brief Four-footed stand -> FL and RR on the body centreline, and back.
 
   Steps the diagonal feet one at a time with CoM shifts in between so no foot
   slides under load; SETTLED once FL/RR sit at (+-stance_x, 0, -0.278) and the
-  body is centred, which is the posture MdlAMB takes over from. */
+  body is centred, which is the posture MdlAMB takes over from.
+
+  setReverse(true) is the way back from MdlAMB's settled four-foot support:
+  every foot steps to the spot it had under the body when the first way in
+  started, so the robot ends in the stand's footprint again. */
 class MdlDiagonalStance : public rtcore::Module {
 public:
   enum Status { IDLE, ACTIVE, SETTLED, ERROR };
@@ -31,6 +35,9 @@ public:
   void update();
 
   Status getStatus() const { return _status; }
+  /** \brief Direction of the next activation; the way back (true) needs a
+      way in before it, which records the footprint to return to. */
+  void setReverse(bool reverse) { _reverse = reverse; }
 
 private:
   MdlLegControl *_legs[4] = {};
@@ -57,10 +64,20 @@ private:
   // (stance_x, 0) would leave the FL/FR/RL triangle for the RR step a sliver
   // (inradius 2.3 cm); RR first keeps both single-foot stages above 5 cm.
   enum Stage { SHIFT1, STEP_RR, SHIFT2, STEP_FL, CENTRE };
-  int _stage = SHIFT1;
+  int _stage = SHIFT1;         // the way back counts shift/step pairs instead
+  bool _last = false;          // the stage that ends in SETTLED
   double _stageStart = 0.0;
   double _duration = 1.0;
   int _stepLeg = -1;           // leg carrying the clearance hump, -1 in shift stages
+
+  // The way back. MdlAMB's swing feet land wherever the balance left them, so
+  // its shifts are planned from the feet as found, not read from a table.
+  bool _reverse = false;
+  bool _haveStand = false;
+  Eigen::Vector3d _stand[4];   // level-frame footprint at the first way in
+  bool _placed[4] = {};        // foot already back on its _stand spot
+  int _nextLeg = -1;           // foot the current shift makes room for
+  Eigen::Vector3d _shift = Eigen::Vector3d::Zero();
   // Body -> gravity-aligned frame at activation. The stand hands over a body
   // pitched several degrees, so the stage geometry lives in the level frame and
   // SHIFT1 blends this tilt out; from then on body and level frames coincide.
@@ -74,6 +91,7 @@ private:
   Eigen::Vector3d _pEnd[4];
 
   bool _checkTrackingError() const;
+  void _planReturn(int stage);
   void _beginStage(int stage, double t);
 };
 

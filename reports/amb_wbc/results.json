@@ -229,8 +229,8 @@
   "closing": {
    "max_theta1_deg": 0.3,
    "torque_saturated_pct": 0.0,
-   "tick_mean_us": 200.4,
-   "tick_max_us": 2687.7
+   "tick_mean_us": 201.2,
+   "tick_max_us": 2591.8
   },
   "amb_error": null,
   "theta_wrap_t": null,
@@ -420,6 +420,21 @@
   },
   "weight_N": 149.174862,
   "fall_before_settled": false,
+  "return_to_stand": {
+   "settled": 21.066,
+   "fall": false,
+   "foot_offset_from_stand_mm": {
+    "FL": 6.3,
+    "FR": 2.5,
+    "RL": 13.3,
+    "RR": 4.0
+   },
+   "max_roll_pitch_deg": [
+    3.36,
+    1.15
+   ],
+   "under_three_feet_loaded_ms": 16
+  },
   "gate": {
    "gate": "load transfer: four-foot support, no fall, desired-vs-solved RMSE < 10 N",
    "result": "pass",
@@ -2123,21 +2138,15 @@
    }
   },
   "experiments_run": [
-   "ablation"
+   "transfer"
   ],
   "fall_criteria": {
    "ablation": "torso height < 0.16 m",
    "others": "torso height < 0.16 m or |roll|/|pitch| > 45 deg"
   },
-  "wall_time_s": 51.2,
+  "wall_time_s": 8.3,
   "run_wall_times_s": {
-   "ablation/wbc_on": 4.6,
-   "ablation/wbc_off": 2.9,
-   "ablation/joint_on": 2.9,
-   "ablation/joint_off": 2.7,
-   "ablation/wbc_thesis_gains": 4.7,
-   "ablation/wbc_on_long": 16.3,
-   "ablation/wbc_thesis_ori_gains_long": 13.7
+   "transfer/wbc": 6.9
   },
   "log_period_ms": 2,
   "script": [

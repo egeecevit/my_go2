@@ -7,7 +7,7 @@ exit_time = 0
 autorun_trot_duration = 0
 
 # Positive values run stand, diagonal stance, BALANCE for the requested duration, then sit and exit; exclusive with autorun_trot_duration.
-# With [amb] wbc = true the stop first places the swing feet and transfers the load to four feet (about 8 s more), as the D key does.
+# With [amb] wbc = true the stop first places the swing feet, transfers the load to four feet and steps back to the stand's footprint (about 16 s more), as the D key does.
 autorun_amb_duration = 0
 
 # Timed key script, "<seconds> <key>" entries sent through the normal key handler, e.g. ["2 s", "6 t", "46 d"]; exclusive with the autoruns, end the run with exit_time.

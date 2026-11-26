@@ -61,7 +61,7 @@ public:
 
 private:
   typedef enum { S_IDLE, S_STAND, S_DRAW, S_DRAW_STOPPING, S_TROT, S_TROT_STOPPING,
-                 S_DIAG, S_AMB, S_AMB_STOPPING, S_SIT, S_EXIT } _state_t;
+                 S_DIAG, S_AMB, S_AMB_STOPPING, S_AMB_RETURN, S_SIT, S_EXIT } _state_t;
   int _state = S_IDLE;
 
   MdlDrawSquare *_wm = nullptr;
@@ -78,6 +78,9 @@ private:
   // Where the trot stop is headed: 'R' comes back to standing, 'D' sits down.
   // Both ramp the gait down through MdlTrot first; only the destination differs.
   bool _trotStopToStand = false;
+  // Same choice for the whole-body balance stop, which first comes back to the
+  // stand's footprint either way.
+  bool _ambStopToStand = false;
   double _standHeight = 0.08;
   double _mark = 0;
   double _last_print = 0;
