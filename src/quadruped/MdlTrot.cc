@@ -7,6 +7,7 @@
  */
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -275,9 +276,22 @@ void MdlTrot::init() {
                             (unsigned char*)_logTorqueRequest);
     _logserver->registerVar(LOG_DOUBLE, 12, TROTMODULE_NAME, "bodyref",
                             (unsigned char*)_logBodyReference);
+    _logserver->registerVar(LOG_DOUBLE, 45, TROTMODULE_NAME, "wbc",
+                            (unsigned char*)_logWbc);
   }
 
   _readConfig();
+
+  // MdlLegControl::init's rule for which robot has the Go2 dynamics.
+  if (_wbc && hwConfig.getString("robot_model", hwlib == "simhw" ? "go2" : "") != "go2") {
+    _mgr->warning(TROTMODULE_NAME,
+                  "[trot] wbc needs the Go2 whole-body model; trotting with per-leg commands");
+    _wbc = false;
+  }
+  if (_wbc) {
+    _wbModel = new QuadrupedDynamics(createGo2WholeBodyConfig());
+    _wbcSolver = new QuadrupedWBC();
+  }
 }
 
 void MdlTrot::_readConfig() {
@@ -380,9 +394,25 @@ void MdlTrot::_readConfig() {
   if (_cmdFailureLimit < 1) _cmdFailureLimit = 1;
   _mpcFailureLimit = (int)config.getInt("mpc_failure_limit", _mpcFailureLimit);
   if (_mpcFailureLimit < 0) _mpcFailureLimit = 0;
-  _torqueSaturationLimit =
-      (int)config.getInt("torque_saturation_limit", _torqueSaturationLimit);
-  if (_torqueSaturationLimit < 1) _torqueSaturationLimit = 1;
+
+  _wbc = config.getBool("wbc", _wbc);
+  _wbcGains.kp_ori = config.getDouble("wbc_kp_ori", _wbcGains.kp_ori);
+  _wbcGains.kd_ori = config.getDouble("wbc_kd_ori", _wbcGains.kd_ori);
+  _wbcGains.kp_pos = config.getDouble("wbc_kp_pos", _wbcGains.kp_pos);
+  _wbcGains.kd_pos = config.getDouble("wbc_kd_pos", _wbcGains.kd_pos);
+  _wbcGains.kp_foot = config.getDouble("wbc_kp_foot", _wbcGains.kp_foot);
+  _wbcGains.kd_foot = config.getDouble("wbc_kd_foot", _wbcGains.kd_foot);
+  _wbcWBase = config.getDouble("wbc_w_base", _wbcWBase);
+  _wbcWForce = config.getDouble("wbc_w_force", _wbcWForce);
+  // The QP Hessian is diag(w_base, w_force); qpOASES needs it positive definite.
+  if (!(_wbcWBase > 0.0)) _wbcWBase = 0.1;
+  if (!(_wbcWForce > 0.0)) _wbcWForce = 1.0;
+  _wbcJointKp = config.getDouble("wbc_joint_kp", _wbcJointKp);
+  _wbcJointKd = config.getDouble("wbc_joint_kd", _wbcJointKd);
+  _wbcTouchdownDepth = config.getDouble("wbc_touchdown_depth", _wbcTouchdownDepth);
+  if (!(_wbcJointKp >= 0.0)) _wbcJointKp = 30.0;
+  // MdlSimDriver replaces kd <= 0 with 5 Nm s/rad inside the stored command.
+  if (!(_wbcJointKd > 0.0)) _wbcJointKd = 3.0;
 }
 
 void MdlTrot::uninit() {
@@ -395,11 +425,16 @@ void MdlTrot::uninit() {
     _logserver->deleteVar(TROTMODULE_NAME, "torquescale");
     _logserver->deleteVar(TROTMODULE_NAME, "torquereq");
     _logserver->deleteVar(TROTMODULE_NAME, "bodyref");
+    _logserver->deleteVar(TROTMODULE_NAME, "wbc");
     _logserver = nullptr;
   }
 
   delete _kinematics;
   _kinematics = nullptr;
+  delete _wbModel;
+  _wbModel = nullptr;
+  delete _wbcSolver;
+  _wbcSolver = nullptr;
 }
 
 void MdlTrot::activate() {
@@ -411,7 +446,6 @@ void MdlTrot::activate() {
 
   for (int i = 0; i < NUM_LEGS; i++) {
     _cmdFailures[i] = 0;
-    _torqueSaturationCycles[i] = 0;
     _logTorqueScale[i] = 1.0;
     _stance[i] = true;
     _mgr->grabModule(_legs[i], this);
@@ -432,6 +466,23 @@ void MdlTrot::activate() {
     _footvel[i] = Eigen::Vector3d::Zero();
   }
 
+  if (_wbc) {
+    // Kim's locomotion weighting: the floating base gives way (0.1) and the
+    // MPC forces are kept (1). The friction pyramid and normal bounds are the
+    // MPC's, so the QP's bounds never cut into a force the MPC may plan.
+    QuadrupedWBC::params_t wp;
+    const MdlConvexMPC::params_t& mp = _mpc->getParams();
+    wp.w_base = _wbcWBase;
+    wp.w_force = _wbcWForce;
+    wp.friction = mp.friction;
+    wp.fz_min = mp.force_min;
+    wp.fz_max = mp.force_max;
+    _wbcSolver->setParams(wp);
+    _wbcFailures = 0;
+    _wbcTicks = _wbcQpFailures = _wbcFallbackTicks = _wbcSaturatedTicks = 0;
+    _wbcTimeSum = _wbcTimeMax = 0.0;
+  }
+
   _mgr->message("MdlTrot: v=[%.3f %.3f] m/s yaw=%.3f rad/s period=%.3f s duty=%.2f",
                 _vcmd.x(), _vcmd.y(), _yawRate, _gait.getParams().period,
                 _gait.getParams().duty);
@@ -439,6 +490,12 @@ void MdlTrot::activate() {
 
 void MdlTrot::deactivate() {
   DBGPRINT("MdlTrot::deactivate\n");
+
+  if (_wbc && _wbcTicks > 0)
+    _mgr->message("MdlTrot: WBC tick mean %.1f us, max %.1f us over %d ticks; QP failures %d, "
+                  "fallback ticks %d, torque saturated on %d ticks",
+                  1e6 * _wbcTimeSum / _wbcTicks, 1e6 * _wbcTimeMax, _wbcTicks, _wbcQpFailures,
+                  _wbcFallbackTicks, _wbcSaturatedTicks);
 
   // Preserve status for Supervisor inspection while releasing owned modules.
   for (int i = 0; i < NUM_LEGS; i++) _mgr->releaseModule(_legs[i], this);
@@ -842,10 +899,17 @@ bool MdlTrot::_startSwing(int leg, double elapsed, double duration) {
   const double stanceTime = _gait.getParams().duty * _gait.getParams().period;
   // Touchdown is body-frame and uses the nominal footprint plus stance and
   // feedback offsets.
-  const Eigen::Vector3d touchdown =
+  Eigen::Vector3d touchdown =
       _originFoot(leg) - 0.5 * stanceTime * stanceVelocity +
       touchdownFeedback(_vfilt, _twistCommand(), _raibertGain, _yawRateCommand(),
                         std::fabs(_origin[2]), _mpc->getParams().gravity, _centrifugalTerm);
+  // The stand sags about 10 mm under its joint PD, so the nominal footprint's
+  // height lies below the ground at the height the trot holds. The whole-body
+  // path tracks the swing reference to a few mm and would follow it into the
+  // ground 20 ms early; it aims just below where the foot left the ground
+  // instead. The per-leg path keeps the nominal height its swing lag was tuned
+  // around.
+  if (_wbc) touchdown.z() = position.z() - _wbcTouchdownDepth;
   if (!_swingTrajectory[leg].reset(position, velocity, touchdown, stanceVelocity,
                                    duration, _gait.getParams().swing_height))
     return false;
@@ -924,6 +988,10 @@ void MdlTrot::_trotDuring() {
     }
   }
 
+  // A tick the whole-body controller cannot solve falls through to the
+  // per-leg commands below.
+  if (_wbc && _wbcTick()) return;
+
   const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
   const Eigen::Vector3d gravityBody =
       _Rbw.transpose() * Eigen::Vector3d(0.0, 0.0, -_mpc->getParams().gravity);
@@ -956,16 +1024,6 @@ void MdlTrot::_trotDuring() {
       for (int axis = 0; axis < 3; axis++) {
         _logTorqueRequest[3 * i + axis] = command.requested_torque[axis];
       }
-      if (command.torque_scale < 0.999999) {
-        if (++_torqueSaturationCycles[i] >= _torqueSaturationLimit) {
-          _mgr->warning(TROTMODULE_NAME,
-                        "Leg %d torque limited for %d cycles (scale %.3f)", i,
-                        _torqueSaturationCycles[i], command.torque_scale);
-          _status = ERROR;
-        }
-      } else {
-        _torqueSaturationCycles[i] = 0;
-      }
       continue;
     }
 
@@ -977,6 +1035,205 @@ void MdlTrot::_trotDuring() {
       _status = ERROR;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+//  Whole-body impulse control (Kim, Di Carlo, Katz, Bledt, Kim 2019)
+// ---------------------------------------------------------------------------
+
+bool MdlTrot::wbcSolve(QuadrupedWBC& wbc, const wbc_input_t& in, wbc_output_t& out) {
+  const QuadrupedDynamics::terms_t& dyn = *in.dyn;
+  const Eigen::Matrix3d& R = in.state.R;
+  const Eigen::Vector3d& v_base = in.state.v_base;
+  const Eigen::Vector3d w = R * in.state.w_body;  // world axes
+  const QuadrupedDynamics::VectorV v = in.state.velocity();
+  const wbc_gains_t& k = in.gains;
+
+  QuadrupedWBC::input_t& wi = out.problem;
+  wi = QuadrupedWBC::input_t();
+  wi.dyn = in.dyn;
+  for (int leg = 0; leg < NUM_LEGS; leg++) {
+    wi.q[leg] = in.state.q[leg];
+    wi.contact[leg] = in.stance[leg];
+    wi.f_des[leg] = in.f_des[leg];
+  }
+
+  // Body orientation. J v = R w_body is the world angular velocity, and its
+  // rate R wdot_body is J vdot exactly (R (w x w) = 0), so Jdv = 0. Error:
+  // rotation vector of R_des R^T, world axes.
+  QuadrupedWBC::task_t& ori = wi.task[0];
+  ori.J.block<3, 3>(0, 3) = R;
+  const Eigen::AngleAxisd e_ori(in.R_des * R.transpose());
+  ori.pos_err = e_ori.angle() * e_ori.axis();
+  ori.vel_des = in.w_des;
+  ori.acc_cmd = k.kp_ori * ori.pos_err + k.kd_ori * (in.w_des - w);
+
+  // Base position: the base origin, whose world velocity is v[0:3].
+  QuadrupedWBC::task_t& pos = wi.task[1];
+  pos.J.block<3, 3>(0, 0).setIdentity();
+  pos.pos_err = in.p_des - in.p_base;
+  pos.vel_des = in.v_des;
+  pos.acc_cmd = k.kp_pos * pos.pos_err + k.kd_pos * (in.v_des - v_base);
+  wi.num_tasks = 2;
+
+  for (int leg = 0; leg < NUM_LEGS; leg++) {
+    if (in.stance[leg]) continue;
+    // A trot swings two feet; more would need task slots QuadrupedWBC lacks.
+    if (wi.num_tasks == QuadrupedWBC::MAX_TASKS) return false;
+    const QuadrupedDynamics::point_t& foot = dyn.foot[leg];
+    const Eigen::Vector3d& r = foot.p;  // R p_B, from the base origin
+    // R v_B: the foot's velocity relative to the body frame, in world axes.
+    const Eigen::Vector3d u = foot.J * v - v_base - w.cross(r);
+    // The leg-relative errors in world axes: R (p_B_des - p_B), R (v_B_des - v_B).
+    const Eigen::Vector3d e = R * in.foot_p[leg] - r;
+    const Eigen::Vector3d ed = R * in.foot_v[leg] - u;
+    QuadrupedWBC::task_t& sw = wi.task[wi.num_tasks++];
+    sw.J = foot.J;
+    sw.Jdv = foot.Jdv;
+    // Kinematic stage: the body-frame sample carried on the DESIRED body, Kim's
+    // world target to first order. The body levels above already move the base
+    // by pos.pos_err and turn it by ori.pos_err, which carries the foot by
+    // pos.pos_err + ori.pos_err x r, so only e is left to the swing joints:
+    // q_des - q = J_leg^-1 e_B, qd_des = J_leg^-1 v_B_des. Carried on the
+    // measured body instead, the swing joint target would be shifted by that
+    // body motion, and the joint PD, stiffer than this task, would track it.
+    sw.pos_err = e + pos.pos_err + ori.pos_err.cross(r);
+    sw.vel_des = pos.vel_des + ori.vel_des.cross(r) + R * in.foot_v[leg];
+    // p_f = p_base + R p_B differentiated twice, with the body moving as the
+    // two body tasks command (a_base, alpha) and p_B'' = a_B_des + kp e + kd e':
+    //   a_base + alpha x r + w x (w x r) + 2 w x u + R p_B''.
+    // A trot leaves the body tasks no conflicting row (3 n_c + 3 + 3 +
+    // 3 (4 - n_c) = 18), so the hierarchy meets their commands and this
+    // closes e'' + kd e' + kp e = 0 in the body frame. The QP then corrects
+    // only the base acceleration, which leaves p_B'' (joint terms) untouched.
+    sw.acc_cmd = pos.acc_cmd + ori.acc_cmd.cross(r) + w.cross(w.cross(r)) + 2.0 * w.cross(u) +
+                 R * in.foot_a[leg] + k.kp_foot * e + k.kd_foot * ed;
+  }
+  return wbc.solve(wi, out.result);
+}
+
+bool MdlTrot::_wbcTick() {
+  const auto start = std::chrono::steady_clock::now();
+  const Eigen::Vector3d& comOffset = _mpc->getParams().com_offset_body;
+
+  // _readBodyState moved the estimator's base origin to the COM; the model's
+  // generalized velocity is the base origin's, so move it back.
+  wbc_input_t in;
+  QuadrupedDynamics::state_t& st = in.state;
+  const Eigen::Vector3d rCom = _Rbw * comOffset;
+  st.R = _Rbw;
+  st.w_body = _Rbw.transpose() * _omegaWorld;
+  st.v_base = _comVel - _omegaWorld.cross(rCom);
+  in.p_base = _comPos - rCom;
+
+  MotorHW* hw = MotorHW::instance();
+  bool ok = hw != nullptr;
+  for (int idx = 0; ok && idx < 3 * NUM_LEGS; idx++) {
+    MotorHW::state_t ms;
+    ok = hw->getStatus(idx) == MotorHW::STATUS_READY;
+    hw->getState(idx, ms);
+    st.q[idx / 3](idx % 3) = ms.pos;
+    st.qd[idx / 3](idx % 3) = ms.vel;
+  }
+  QuadrupedDynamics::terms_t dyn;
+  ok = ok && _wbModel->compute(st, dyn);
+
+  in.dyn = &dyn;
+  for (int i = 0; i < NUM_LEGS; i++) {
+    in.stance[i] = _stance[i];
+    in.f_des[i] = _mpcOut.force_world[i];
+    in.foot_p[i] = _footpos[i];
+    in.foot_v[i] = _footvel[i];
+    in.foot_a[i] = _footacc[i];
+  }
+  // _desPos is a COM reference at the attitude Rz(_desYaw). The velocity is the
+  // one _integrateBodyReference integrates; the base origin's differs from it
+  // by w_des x (R_des c), at most 1.7 mm/s per rad/s of yaw rate, dropped.
+  in.R_des = _rotZ(_desYaw);
+  in.w_des = Eigen::Vector3d(0.0, 0.0, _yawRateCommand());
+  in.p_des = _desPos - in.R_des * comOffset;
+  const Eigen::Vector3d vc = _twistCommand();
+  in.v_des = in.R_des * Eigen::Vector3d(vc.x(), vc.y(), 0.0);
+  in.gains = _wbcGains;
+
+  wbc_output_t out;
+  out.result.qp_status = -1;  // logged as "not solved" unless solve() runs
+  if (ok) {
+    ok = wbcSolve(*_wbcSolver, in, out);
+    if (!ok) _wbcQpFailures++;
+  }
+  const double tickTime =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+  _wbcTicks++;
+  _wbcTimeSum += tickTime;
+  _wbcTimeMax = std::max(_wbcTimeMax, tickTime);
+  _logWbc[24] = out.result.qp_status;
+  _logWbc[43] = ok ? 0.0 : 1.0;
+  _logWbc[44] = 1e6 * tickTime;
+
+  if (!ok) {
+    _wbcFallbackTicks++;
+    if (++_wbcFailures >= _cmdFailureLimit) {
+      _mgr->warning(TROTMODULE_NAME, "WBC unsolved %d ticks running (QP status %d) at t=%.3f",
+                    _wbcFailures, out.result.qp_status, _mgr->readTime());
+      _status = ERROR;
+    }
+    return false;
+  }
+  _wbcFailures = 0;
+
+  const QuadrupedWBC::input_t& wi = out.problem;
+  for (int a = 0; a < 3; a++) {
+    _logWbc[25 + a] = wi.task[0].pos_err[a];
+    _logWbc[28 + a] = wi.task[1].pos_err[a];
+  }
+  for (int i = 0; i < NUM_LEGS; i++) {
+    // p_B_des - p_B; the swing task's pos_err also carries the body motion.
+    const Eigen::Vector3d e =
+        _stance[i] ? Eigen::Vector3d::Zero()
+                   : Eigen::Vector3d(_footpos[i] - _Rbw.transpose() * dyn.foot[i].p);
+    for (int a = 0; a < 3; a++) {
+      _logWbc[6 * i + a] = in.f_des[i][a];
+      _logWbc[6 * i + 3 + a] = out.result.f[i][a];
+      _logWbc[31 + 3 * i + a] = e[a];
+    }
+  }
+
+  // Kim: every joint gets the WBIC torque and a PD on the kinematic stage's
+  // references, with the same gains in stance and swing.
+  const Eigen::Vector3d kp = Eigen::Vector3d::Constant(_wbcJointKp);
+  const Eigen::Vector3d kd = Eigen::Vector3d::Constant(_wbcJointKd);
+  const Eigen::Vector3d& tauLimit = _wbModel->getParams().legs.torque_limit;
+  bool saturated = false;
+  for (int i = 0; i < NUM_LEGS; i++) {
+    // setJointCommand rejects a target outside the joint range.
+    Eigen::Vector3d qDes = out.result.q_des[i];
+    _kinematics->clampToJointLimits(i, qDes);
+    const Eigen::Vector3d& qdDes = out.result.qd_des[i];
+    const Eigen::Vector3d tau = out.result.tau.segment<3>(3 * i);
+    // The motor torque this command asks for at the measured state. The motor
+    // clips that sum per joint; clipping it here keeps the feedforward from
+    // asking for more and lets the closing line count the clipped ticks.
+    const Eigen::Vector3d request =
+        tau + kp.cwiseProduct(qDes - st.q[i]) + kd.cwiseProduct(qdDes - st.qd[i]);
+    const Eigen::Vector3d applied = request.cwiseMax(-tauLimit).cwiseMin(tauLimit);
+    const double scale = std::min(1.0, tauLimit.cwiseQuotient(request.cwiseAbs()).minCoeff());
+    _logTorqueScale[i] = scale;
+    for (int axis = 0; axis < 3; axis++) _logTorqueRequest[3 * i + axis] = request[axis];
+    if (scale < 0.999999) saturated = true;
+
+    if (_legs[i]->setJointCommand(qDes, qdDes, kp, kd, tau + applied - request)) {
+      _cmdFailures[i] = 0;
+      continue;
+    }
+    if (++_cmdFailures[i] >= _cmdFailureLimit) {
+      _mgr->warning(TROTMODULE_NAME, "Leg %d joint command rejected %d cycles running", i,
+                    _cmdFailures[i]);
+      _status = ERROR;
+    }
+  }
+  if (saturated) _wbcSaturatedTicks++;
+  return true;
 }
 
 // ---------------------------------------------------------------------------

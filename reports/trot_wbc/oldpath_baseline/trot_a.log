@@ -1,0 +1,110 @@
+[WW] ThreadUtil::setPriority: pthread_setschedparam to 20 failed
+[WW] ThreadUtil::setPriority: pthread_setschedparam to 1 failed
+Custom configuration string:
+simulation.headless = true
+simulation.realtime = false
+supervisor.autorun_trot_duration = 10
+supervisor.log.enable = true
+supervisor.log.file_format = "ascii"
+supervisor.log.file_name = "/tmp/claude-1000/-home-ege-legged-iros/525cfd8d-7596-4404-aa68-e50e65d5f592/scratchpad/baseline/trot_a.txt"
+supervisor.log.vars = ["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl", "MdlTrot_torquereq", "MdlTrot_footref", "MdlTrot_contact", "MdlTrot_bodyref", "MdlConvexMPC_forces"]
+initHardware(SIM): Initializing hardware components...
+MdlDrawSquare::MdlDrawSquare
+MdlDrawSquare::init
+Supervisor: Logging enabled to /tmp/claude-1000/-home-ege-legged-iros/525cfd8d-7596-4404-aa68-e50e65d5f592/scratchpad/baseline/trot_a.txt with 8 variables
+LogServer: New client 127.0.0.1:56910.
+
+  [S]tand  [W]alk(draw)  [T]rot  [B]alance  [R]un-stop  [D]own(sit)  [Q]uit
+
+
+** Current list of modules:
+  ACTIVE:	 10000 supervisor[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20000 MdlAMB[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20000 MdlDiagonalStance[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20000 MdlSit[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20000 MdlStand[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20000 MdlTrot[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20000 MdlConvexMPC[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20000 MdlDrawSquare[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20004 MdlLegControl[3], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20003 MdlLegControl[2], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20002 MdlLegControl[1], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 20001 MdlLegControl[0], 1, OWNER:none(grab = 0), UPDATEABLE
+  INACTIVE:	 11 MdlPosVelEstimator[0], 1, OWNER:MULTI(grab = 0), UPDATEABLE
+  ACTIVE:	 10 MdlOrientationEstimator[0], 1, OWNER:MULTI(grab = 0), UPDATEABLE
+  ACTIVE:	 0 LogServer[0], 1, OWNER:MULTI(grab = 0), UPDATEABLE
+  ACTIVE:	 30000 MdlSimDriver[0], 1, OWNER:none(grab = 0), UPDATEABLE
+
+** Current list of threads:
+   Number of cores:16
+      simulation, act: 1, pr:   (00), pol:other, cpuset:0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
+       logserver, act: 1, pr: 20(00), pol:other
+        locallog, act: 1, pr: 00(00), pol:other
+
+** Entering main loop...
+Supervisor: -> S_STAND
+MdlStand: activation tilt=0.0 deg
+MdlPosVelEstimator t=0.7s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0019m (drift 0.0% of 0.00m path, net 0.00m) vel rms(body)=[0.0058 0.0009 0.0193]m/s foot pos err=[0.0012 0.0012 0.0016 0.0016]m
+
+Supervisor: Found all variables at t=0.827 s
+MdlPosVelEstimator t=1.4s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0017m (drift 0.0% of 0.01m path, net 0.01m) vel rms(body)=[0.0041 0.0009 0.0136]m/s foot pos err=[0.0010 0.0010 0.0009 0.0009]m
+
+Supervisor: standing settled
+Supervisor: -> S_TROT
+MdlTrot: v=[0.700 0.000] m/s yaw=0.000 rad/s period=0.300 s duty=0.50
+MdlPosVelEstimator t=2.1s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0016m (drift 0.0% of 0.03m path, net 0.03m) vel rms(body)=[0.0034 0.0009 0.0112]m/s foot pos err=[0.0011 0.0011 0.0010 0.0010]m
+
+MdlPosVelEstimator t=2.8s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0019m (drift 0.0% of 0.04m path, net 0.04m) vel rms(body)=[0.0034 0.0010 0.0097]m/s foot pos err=[0.0020 0.0020 0.0017 0.0017]m
+
+Supervisor: Starting logging at t=3.000 s
+LogServer: New job 0x721b94001810 period = 10  length = 0
+MdlPosVelEstimator t=3.5s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0017m (drift 0.0% of 0.05m path, net 0.04m) vel rms(body)=[0.0030 0.0010 0.0087]m/s foot pos err=[0.0020 0.0020 0.0019 0.0019]m
+
+MdlPosVelEstimator t=4.2s trust=[0.67 0.58 0.58 0.67] |pos err|=0.0015m (drift 0.0% of 0.08m path, net 0.01m) vel rms(body)=[0.0029 0.0013 0.0080]m/s foot pos err=[0.0017 0.0017 0.0017 0.0017]m
+
+MdlPosVelEstimator t=4.9s trust=[0.36 0.32 0.32 0.36] |pos err|=0.0012m (drift 0.0% of 0.11m path, net 0.02m) vel rms(body)=[0.0027 0.0015 0.0074]m/s foot pos err=[0.0016 0.0017 0.0017 0.0016]m
+
+MdlPosVelEstimator t=5.6s trust=[0.30 0.43 0.43 0.30] |pos err|=0.0030m (drift 0.0% of 0.22m path, net 0.14m) vel rms(body)=[0.0026 0.0017 0.0072]m/s foot pos err=[0.0009 0.0011 0.0011 0.0009]m
+
+MdlPosVelEstimator t=6.3s trust=[0.39 0.30 0.30 0.39] |pos err|=0.0057m (drift 1.1% of 0.50m path, net 0.43m) vel rms(body)=[0.0024 0.0018 0.0071]m/s foot pos err=[0.0029 0.0031 0.0031 0.0029]m
+
+MdlPosVelEstimator t=7.0s trust=[0.36 0.32 0.32 0.36] |pos err|=0.0082m (drift 0.9% of 0.90m path, net 0.83m) vel rms(body)=[0.0023 0.0020 0.0070]m/s foot pos err=[0.0057 0.0055 0.0055 0.0057]m
+
+MdlPosVelEstimator t=7.7s trust=[0.30 0.43 0.43 0.30] |pos err|=0.0111m (drift 0.8% of 1.36m path, net 1.28m) vel rms(body)=[0.0022 0.0020 0.0069]m/s foot pos err=[0.0083 0.0084 0.0084 0.0083]m
+
+MdlPosVelEstimator t=8.4s trust=[0.39 0.30 0.30 0.39] |pos err|=0.0138m (drift 0.8% of 1.83m path, net 1.75m) vel rms(body)=[0.0021 0.0021 0.0068]m/s foot pos err=[0.0111 0.0113 0.0113 0.0111]m
+
+MdlPosVelEstimator t=9.1s trust=[0.36 0.32 0.32 0.36] |pos err|=0.0162m (drift 0.7% of 2.30m path, net 2.22m) vel rms(body)=[0.0021 0.0022 0.0067]m/s foot pos err=[0.0139 0.0137 0.0137 0.0139]m
+
+MdlPosVelEstimator t=9.8s trust=[0.30 0.42 0.42 0.30] |pos err|=0.0192m (drift 0.7% of 2.78m path, net 2.69m) vel rms(body)=[0.0020 0.0022 0.0067]m/s foot pos err=[0.0164 0.0165 0.0165 0.0164]m
+
+MdlPosVelEstimator t=10.5s trust=[0.39 0.30 0.30 0.39] |pos err|=0.0219m (drift 0.7% of 3.23m path, net 3.16m) vel rms(body)=[0.0020 0.0022 0.0066]m/s foot pos err=[0.0192 0.0194 0.0194 0.0192]m
+
+MdlPosVelEstimator t=11.2s trust=[0.36 0.33 0.33 0.36] |pos err|=0.0243m (drift 0.7% of 3.70m path, net 3.64m) vel rms(body)=[0.0019 0.0023 0.0066]m/s foot pos err=[0.0220 0.0218 0.0218 0.0220]m
+
+MdlPosVelEstimator t=11.9s trust=[0.30 0.42 0.42 0.30] |pos err|=0.0272m (drift 0.7% of 4.18m path, net 4.11m) vel rms(body)=[0.0019 0.0023 0.0066]m/s foot pos err=[0.0246 0.0246 0.0246 0.0246]m
+
+Supervisor: -> S_TROT_STOPPING (to sit)
+MdlPosVelEstimator t=12.6s trust=[0.40 0.30 0.30 0.40] |pos err|=0.0292m (drift 0.6% of 4.66m path, net 4.58m) vel rms(body)=[0.0018 0.0024 0.0065]m/s foot pos err=[0.0271 0.0273 0.0273 0.0270]m
+
+MdlPosVelEstimator t=13.3s trust=[0.64 0.61 0.61 0.64] |pos err|=0.0299m (drift 0.6% of 5.03m path, net 4.94m) vel rms(body)=[0.0020 0.0027 0.0064]m/s foot pos err=[0.0277 0.0277 0.0279 0.0278]m
+
+MdlPosVelEstimator t=14.0s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0361m (drift 0.7% of 5.21m path, net 5.12m) vel rms(body)=[0.0044 0.0027 0.0062]m/s foot pos err=[0.0340 0.0343 0.0349 0.0342]m
+
+Supervisor: -> S_SIT (from trot)
+MdlPosVelEstimator t=14.7s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0358m (drift 0.7% of 5.28m path, net 5.18m) vel rms(body)=[0.0043 0.0027 0.0061]m/s foot pos err=[0.0347 0.0348 0.0349 0.0348]m
+
+MdlPosVelEstimator t=15.4s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0345m (drift 0.7% of 5.29m path, net 5.20m) vel rms(body)=[0.0042 0.0027 0.0060]m/s foot pos err=[0.0345 0.0346 0.0347 0.0347]m
+
+MdlPosVelEstimator t=16.1s trust=[1.00 1.00 1.00 1.00] |pos err|=0.0317m (drift 0.6% of 5.30m path, net 5.19m) vel rms(body)=[0.0043 0.0038 0.0058]m/s foot pos err=[0.0338 0.0334 0.0333 0.0333]m
+
+Supervisor: sitting settled, releasing
+Supervisor: autorun complete at t=16.508 s
+
+** Main loop exited...
+LogServer: 127.0.0.1:56910 disconnected.
+LogJob(0x721b94001810) Finished
+MdlDrawSquare::uninit
+MdlDrawSquare::~MdlDrawSquare
+** Shutting down...
+cleanupHardware(SIM): Cleaning up hardware components...

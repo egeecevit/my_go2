@@ -34,6 +34,11 @@ log = {
   # vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_ctrl",
   #       "MdlTrot_torquereq", "MdlTrot_footref", "MdlTrot_contact",
   #       "MdlTrot_bodyref", "MdlPosVelEstimator_foottruth"],
+  # Alternative WBIC trot variable set ([trot] wbc = true; layout of MdlTrot_wbc at _logWbc in MdlTrot.hh).
+  # A sample line holds at most 1024 bytes (127 doubles and the time), so the MPC forces
+  # come from MdlTrot_wbc and footref is left out.
+  # vars=["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlSimDriver_grf",
+  #       "MdlTrot_torquereq", "MdlTrot_contact", "MdlTrot_bodyref", "MdlTrot_wbc"],
   # Alternative balance variable set (MdlAMB; layouts at _log and _logWbc in MdlAMB.hh).
   # vars=["MdlAMB_state", "MdlAMB_wbc", "MdlSimDriver_qpos", "MdlSimDriver_grf"],
   # Output format: "ascii", "raw", or "matlab".

@@ -17,6 +17,7 @@
 #define TROTMODULE_NAME "MdlTrot"
 
 #include "quadruped/MdlConvexMPC.hh"
+#include "quadruped/QuadrupedWBC.hh"
 
 class MdlLegControl;
 class MdlOrientationEstimator;
@@ -144,6 +145,13 @@ struct TrotGait {
   Estimator, MPC, and command failures transition to ERROR; stance has no
   position-control fallback.
 
+  With [trot] wbc = true, TROT and STOPPING command the legs through
+  whole-body impulse control instead (Kim, Di Carlo, Katz, Bledt, Kim 2019):
+  the MPC's first-step forces, the body reference and the swing samples above
+  become a task hierarchy and WBIC QP (QuadrupedWBC), and every joint gets the
+  WBIC torque plus a joint PD on the hierarchy's joint references. A tick the
+  WBC cannot solve falls back to the per-leg commands. See wbcSolve().
+
   Configuration lives in the [trot] table; see trot.toml, and in [mpc] for the
   solver; see mpc.toml.
  */
@@ -188,6 +196,62 @@ class MdlTrot : public rtcore::Module {
                                            double raibertGain, double omega_z,
                                            double height, double gravity,
                                            bool centrifugalEnable);
+
+  /** \brief Task gains of the whole-body trot: stiffness [1/s^2] and damping
+      [1/s] of each task's acceleration command (Kim et al. 2019, Table I). */
+  struct wbc_gains_t {
+    double kp_ori = 100.0, kd_ori = 10.0;
+    double kp_pos = 100.0, kd_pos = 10.0;
+    double kp_foot = 100.0, kd_foot = 10.0;
+  };
+
+  /** \brief One whole-body tick's input, free of the module framework. */
+  struct wbc_input_t {
+    /** Model terms at `state`; must outlive the call. */
+    const QuadrupedDynamics::terms_t* dyn = nullptr;
+    /** Measured R, base-origin velocity (world axes), body rate (body axes)
+        and joints, in QuadrupedDynamics' layout. */
+    QuadrupedDynamics::state_t state;
+    /** Measured base origin, world [m]. */
+    Eigen::Vector3d p_base = Eigen::Vector3d::Zero();
+    /** Scheduled contacts and the MPC's ground reaction on the robot, world
+        axes [N]; f_des is read for stance legs only. */
+    bool stance[NUM_LEGS] = {true, true, true, true};
+    Eigen::Vector3d f_des[NUM_LEGS];
+    /** Body reference, reference acceleration zero (Kim): attitude, world
+        angular velocity, base-origin position and velocity, world axes. */
+    Eigen::Matrix3d R_des = Eigen::Matrix3d::Identity();
+    Eigen::Vector3d w_des = Eigen::Vector3d::Zero();
+    Eigen::Vector3d p_des = Eigen::Vector3d::Zero();
+    Eigen::Vector3d v_des = Eigen::Vector3d::Zero();
+    /** Swing reference in body coordinates: foot centre from the base origin
+        and its first two derivatives taken in the body frame. Read for swing
+        legs only. */
+    Eigen::Vector3d foot_p[NUM_LEGS], foot_v[NUM_LEGS], foot_a[NUM_LEGS];
+    wbc_gains_t gains;
+  };
+
+  struct wbc_output_t {
+    /** The problem handed to QuadrupedWBC. Tasks in Kim's order: body
+        orientation, base position, then one per swing foot in leg order. */
+    QuadrupedWBC::input_t problem;
+    QuadrupedWBC::output_t result;
+  };
+
+  /** \brief Builds the Kim task set from the scheduled contacts and solves it.
+
+    Contacts are the stance legs' rolling contact points with the MPC forces
+    as F_des. Each swing foot is a task on its full 3x18 Jacobian, and both
+    stages leave the swing joints the leg-relative error e = p_B_des - p_B
+    the footstep law was tuned for. Kinematic stage: the reference is the
+    body-frame sample carried on the desired body, so after the body levels
+    the joint references are q + J_leg^-1 e and J_leg^-1 v_B_des. Acceleration
+    stage: the command is the absolute acceleration of the body-frame sample
+    when the body moves as the two body tasks command, so the body-frame error
+    obeys e'' + kd e' + kp e = 0. False, with out not meaningful, when more
+    feet swing than QuadrupedWBC has task slots for, or when
+    QuadrupedWBC::solve fails. */
+  static bool wbcSolve(QuadrupedWBC& wbc, const wbc_input_t& in, wbc_output_t& out);
 
  private:
   enum class _state_t { WAIT, PREP, TROT, STOPPING, CENTERING, DONE };
@@ -246,7 +310,9 @@ class MdlTrot : public rtcore::Module {
   double _logContact[NUM_LEGS] = {0};
   double _logTorqueScale[NUM_LEGS] = {1, 1, 1, 1};
   // Requested torque before the per-leg saturation scale, in the same
-  // leg-major layout as MotorHW.
+  // leg-major layout as MotorHW. With [trot] wbc: WBIC torque plus joint PD at
+  // the measured state, before a per-joint clip; torquescale is then the
+  // uniform scale the per-leg path would have applied.
   double _logTorqueRequest[NUM_LEGS * 3] = {0};
   // Body reference and ramp/clamp state, laid out as:
   //   [0] _desPos.x()      [4] desVel_world.x()   [8]  _yawUnwrapped
@@ -330,8 +396,45 @@ class MdlTrot : public rtcore::Module {
   double _trackingErrorLimit = 0.5;
   int _cmdFailureLimit = 3;
   int _mpcFailureLimit = 3;
-  int _torqueSaturationLimit = 20;
-  int _torqueSaturationCycles[NUM_LEGS] = {0, 0, 0, 0};
+
+  // -- Whole-body impulse control, [trot] wbc --------------------------------
+  //
+  // Go2 only: the floating-base model carries the Go2 link inertials, so for
+  // any other [hardware] robot_model init() warns and leaves _wbc false.
+  bool _wbc = false;
+  QuadrupedDynamics* _wbModel = nullptr;
+  QuadrupedWBC* _wbcSolver = nullptr;
+  wbc_gains_t _wbcGains;
+  // QP weights; friction and normal-force bounds are copied from [mpc] in
+  // activate() so the WBIC pyramid is the MPC's.
+  double _wbcWBase = 0.1;
+  double _wbcWForce = 1.0;
+  // Joint PD around the hierarchy's joint references, every leg.
+  double _wbcJointKp = 30.0;
+  double _wbcJointKd = 3.0;
+  double _wbcTouchdownDepth = 0.003;
+  int _wbcFailures = 0;  // consecutive ticks without a WBC command
+  // Statistics since activation, for deactivate()'s closing line.
+  int _wbcTicks = 0;
+  int _wbcQpFailures = 0;
+  int _wbcFallbackTicks = 0;
+  int _wbcSaturatedTicks = 0;
+  double _wbcTimeSum = 0.0;  // [s]
+  double _wbcTimeMax = 0.0;  // [s]
+  // Logged as MdlTrot_wbc, laid out as:
+  //   [6i .. 6i+2]    leg i desired (MPC) ground reaction, world [N]
+  //   [6i+3 .. 6i+5]  leg i solved (WBIC) ground reaction, world [N]; zero in swing
+  //   [24]            QP status: qpOASES returnValue, 0 success, -1 not solved
+  //                   (joint state or model terms unusable, or more than two
+  //                   feet swinging)
+  //   [25..27]        body orientation task error, rotation vector, world [rad]
+  //   [28..30]        base position task error, world [m]
+  //   [31+3i .. 33+3i] leg i swing error p_B_des - p_B, body axes [m]; zero in stance
+  //   [43]            1 when the tick fell back to the per-leg commands; [0..23]
+  //                   and [25..42] then hold the last solved tick's values, [24]
+  //                   is this tick's status
+  //   [44]            WBC time of the tick: model terms, tasks and QP [us]
+  double _logWbc[45] = {0};
 
   void _readConfig();
 
@@ -374,6 +477,10 @@ class MdlTrot : public rtcore::Module {
 
   void _sendTarget();
   bool _checkTrackingError() const;
+
+  /** \brief Commands all four legs through wbcSolve(). False, with nothing
+      commanded, when the WBC has no solution this tick. */
+  bool _wbcTick();
 
   void _hold();
   void _prepEntry();

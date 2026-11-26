@@ -49,6 +49,12 @@ add_executable(test_wbc test_wbc.cc)
 target_link_libraries(test_wbc quadruped rtcore rtclient)
 add_test(NAME test_wbc COMMAND test_wbc)
 
+# Same reason as test_state_estimator: pulls in MdlTrot.o, which carries the
+# rtcore Module base class alongside the whole-body trot tick being tested.
+add_executable(test_trot_wbc test_trot_wbc.cc)
+target_link_libraries(test_trot_wbc quadruped rtcore rtclient)
+add_test(NAME test_trot_wbc COMMAND test_trot_wbc)
+
 add_executable(test_config_layering test_config_layering.cc)
 target_link_libraries(test_config_layering rtcore rtclient)
 foreach(chain robotv1 sim go1)

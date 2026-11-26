@@ -97,5 +97,27 @@ command_failure_limit = 3
 # Consecutive failed MPC solves before abort while holding the last valid force; a failed first solve aborts immediately.
 mpc_failure_limit = 3
 
-# Consecutive saturated torque commands before aborting instead of hiding infeasible motion by clipping.
-torque_saturation_limit = 20
+
+# ---- WHOLE-BODY IMPULSE CONTROL (Kim, Di Carlo, Katz, Bledt, Kim 2019)
+#
+# Replace the per-leg TROT commands with WBIC: the MPC's first-step forces, the body reference and the swing samples become a task hierarchy (body orientation, base position, each swing foot) and a QP over the floating-base acceleration and the forces; every joint gets that torque plus the joint PD below. Go2 only; a tick without a solution uses the per-leg commands, command_failure_limit of them in a row abort.
+wbc = false
+
+# Task stiffness [1/s^2] and damping [1/s]: Kim et al. Table I uses 100 and 10 for every task.
+wbc_kp_ori  = 100.0
+wbc_kd_ori  = 10.0
+wbc_kp_pos  = 100.0
+wbc_kd_pos  = 10.0
+wbc_kp_foot = 100.0
+wbc_kd_foot = 10.0
+
+# QP weights on the floating-base acceleration correction and the force correction. Kim's locomotion setting: the base gives way (0.1) so the MPC forces are kept (1); weighting the base 1000 is the balance-stand setting.
+wbc_w_base  = 0.1
+wbc_w_force = 1.0
+
+# Joint PD [Nm/rad], [Nm/(rad/s)] around the hierarchy's joint references, the same on stance and swing legs as in Kim. 30/3 is the thesis' Go2 stance value (its swing joints get none); Kim uses 3/0.3 on the 9 kg Mini Cheetah. At 30/3 the PD is 10-20x stiffer than the swing task (omega^2 900-2100 against 100 1/s^2 on a lifted Go2 leg), so it sets swing tracking, and on stance legs it holds the body toward its reference outside the QP. kd must stay positive: MdlSimDriver replaces non-positive kd.
+wbc_joint_kp = 30.0
+wbc_joint_kd = 3.0
+
+# Swing touchdown height [m] below the height the foot lifted off from (body frame). The nominal footprint's z is not used: the stand sags about 10 mm under its joint PD, which put that target 12-15 mm under the ground and landed the closely tracking whole-body swing 21-26 ms early at 1.4 m/s. 3 mm is Kim's value: at 0 the foot arrives 1-2 mm short and in-place pitch rms doubles (0.18 against 0.08 deg). It suits the 0.3 s period; a long swing needs more (period 0.8 s: roll rms 0.30 deg at 3 mm, 0.07 deg at 8 mm; 1.0 s: 1.40 against 0.22 deg). The per-leg path keeps the nominal height.
+wbc_touchdown_depth = 0.003
