@@ -17,8 +17,19 @@
 #include <cstdio>
 #include <random>
 
+#include "hardware/IMUHW.hh"
+#include "hardware/MotorHW.hh"
 #include "quadruped/QuadrupedConfigs.hh"
 #include "quadruped/QuadrupedDynamics.hh"
+#include "rtcore/ClockHW.hh"
+#include "rtcore/Hardware.hh"
+
+// The singleton statics rtcore expects from whoever links it. Nothing here
+// uses them, but some toolchains pull rtcore's ModuleManager into the link.
+using namespace rtcore;
+HARDWARE_IMPL(ClockHW);
+HARDWARE_IMPL(MotorHW);
+HARDWARE_IMPL(IMUHW);
 
 // NDEBUG-proof check: the main build is Release, where assert() vanishes.
 #define T_CHECK(cond)                                                 \
