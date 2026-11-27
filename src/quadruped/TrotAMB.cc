@@ -27,13 +27,16 @@ void TrotAMB::reset() {
   _pair = -1;
 }
 
-bool TrotAMB::lineOffset(const MdlAMB::input_t& body, int pairId, double& c_h,
-                         Eigen::Vector3d& t_h) const {
+bool TrotAMB::lineOffset(const MdlAMB::input_t& body, int pairId, double& c_h, double& b_h,
+                         double& a_s, Eigen::Vector3d& t_h, Eigen::Vector3d& s) const {
   MdlAMB::proj_t pr;
   if (!MdlAMB::geometry(_legs, body.q, body.R, pairId == 0 ? MdlAMB::FL_RR : MdlAMB::RL_FR, pr))
     return false;
   c_h = pr.c_h;
+  b_h = -pr.th.dot(pr.o);  // pr.o: the support midpoint from the base origin
+  a_s = -pr.s.dot(pr.o);
   t_h = pr.th;
+  s = pr.s;
   return true;
 }
 

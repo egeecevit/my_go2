@@ -92,11 +92,14 @@ class TrotAMB {
   /** Forget the current phase; the next two-foot tick starts fresh. */
   void reset();
   void tick(const input_t& in, output_t& out);
-  /** The whole-body CoM's horizontal offset c_h [m] from the support line of
-      a diagonal (0: FL-RR, 1: FR-RL) and the unit direction t_h it is measured
-      along (world axes, in that pair's own orientation). Stateless; false on
-      a kinematics failure. */
-  bool lineOffset(const MdlAMB::input_t& body, int pairId, double& c_h, Eigen::Vector3d& t_h) const;
+  /** Where the robot is against the support line of a diagonal (0: FL-RR,
+      1: FR-RL), from the joint angles and the attitude alone: across the
+      line, along the unit t_h, the whole-body CoM's offset c_h and the base
+      origin's b_h; along the line, along the unit s, the base origin's offset
+      a_s from the support midpoint [m]. Directions in world axes, in that
+      pair's own orientation. Stateless; false on a kinematics failure. */
+  bool lineOffset(const MdlAMB::input_t& body, int pairId, double& c_h, double& b_h, double& a_s,
+                  Eigen::Vector3d& t_h, Eigen::Vector3d& s) const;
   /** Ticks since construction on which the law could not be evaluated. */
   int invalidTicks() const { return _invalid; }
   /** The MdlTrot_amb log of the last tick (layout documented at _log). */

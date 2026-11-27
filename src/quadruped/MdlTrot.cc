@@ -359,7 +359,7 @@ void MdlTrot::_readAmbConfig() {
   p.alpha_max = config.getDouble("amb_alpha_max", p.alpha_max);
   _ambJointFriction = config.getDouble("amb_joint_friction", _ambJointFriction);
   _ambSwingJointPd = config.getBool("amb_swing_joint_pd", _ambSwingJointPd);
-  _ambCentreTc = config.getDouble("amb_centre_tc", _ambCentreTc);
+  _ambCentreOn = config.getBool("amb_centre", _ambCentreOn);
   // Both are divided by, or scale a quintic's duration.
   if (!(p.ramp > 0.0)) p.ramp = 1e-3;
   if (!(p.ret > 0.0)) p.ret = 1e-3;
@@ -896,7 +896,7 @@ void MdlTrot::_trotEntry() {
   _tiltCycle = 0;
   if (_amb) _amb->reset();
   _ambCentre.setZero();
-  _ambCentreT = 0.0;
+  _ambCentrePhase = -1;
 
   // Start with zero command scale; ramp to the configured twist in TROT.
   _speedScale = 0.0;
@@ -1316,33 +1316,54 @@ bool MdlTrot::_wbcTick(double elapsed) {
     }
     std::copy(_amb->log(), _amb->log() + TrotAMB::LOG_SIZE, _logAmb);
 
-    // The swing legs move the CoM by a few millimetres at most, so a two-foot
-    // phase has to start with the CoM over its support line. While all four
-    // feet are down, the base position reference is shifted until the CoM
-    // lies over the line of the pair that stays down next (the role
-    // MdlDiagonalStance has before MdlAMB). An integrator on the offset, so
-    // it ends there whatever the task's own lag; held through the two-foot phase.
-    if (_ambCentreTc > 0.0 && _stance[0] && _stance[1] && _stance[2] && _stance[3]) {
-      // The pair further into its stance lifts first.
-      const int next = _gait.stanceProgress(0, elapsed) > _gait.stanceProgress(1, elapsed) ? 1 : 0;
-      double c_h;
-      Eigen::Vector3d t_h;
-      const double dt = elapsed - _ambCentreT;
-      if (dt > 0.0 && dt < 0.01 && _amb->lineOffset(ai.body, next, c_h, t_h)) {
-        t_h.z() = 0.0;
-        _ambCentre -= dt / _ambCentreTc * c_h * t_h;
-        const double n = _ambCentre.norm();
-        if (n > 0.03) _ambCentre *= 0.03 / n;
+    // The swing legs move the CoM by about 3 mm at most, so a two-foot phase
+    // has to start with the CoM over its support line and the body must not
+    // wander off it (the role MdlDiagonalStance has before MdlAMB). The base
+    // position task therefore takes its horizontal error from the planted
+    // feet, not from the position estimate. Across the support line: with all
+    // four feet down, the CoM's offset from the line of the pair that stays
+    // down next, so the task itself brings the CoM over that line; in a
+    // two-foot phase, the base's displacement against the stance line since
+    // the phase began. Along the line: the base's displacement since the
+    // phase began. The estimate is off by 1 to 3 cm at a touchdown of a gait
+    // this slow: a shift integrated into its reference left the CoM 4 to 7 mm
+    // off the line (a fall after 17 s with the filter in the loop), and with
+    // no position error along the line the body slid 4 cm along it in 2 s
+    // (2026-11-27). _ambCentre is the reference shift that gives the task
+    // that error. It is meant for a trot in place: a commanded velocity is
+    // not followed in position while it is on.
+    if (_ambCentreOn) {
+      const bool four = _stance[0] && _stance[1] && _stance[2] && _stance[3];
+      int line = -1;
+      if (four)  // the pair further into its stance lifts first
+        line = _gait.stanceProgress(0, elapsed) > _gait.stanceProgress(1, elapsed) ? 1 : 0;
+      else if (_stance[0] && _stance[3] && !_stance[1] && !_stance[2])
+        line = 0;
+      else if (_stance[1] && _stance[2] && !_stance[0] && !_stance[3])
+        line = 1;
+      const int phase = line < 0 ? -1 : (four ? 10 + line : line);
+      double c_h, b_h, a_s;
+      Eigen::Vector3d t_h, s_h;
+      if (line >= 0 && _amb->lineOffset(ai.body, line, c_h, b_h, a_s, t_h, s_h)) {
+        if (phase != _ambCentrePhase) {
+          _ambCentreB0 = b_h;
+          _ambCentreA0 = a_s;
+        }
+        const double across = four ? -c_h : _ambCentreB0 - b_h;
+        const Eigen::Vector3d nominal = _desPos - _rotZ(_desYaw) * comOffset;
+        const Eigen::Vector3d shift =
+            in.p_base + across * t_h + (_ambCentreA0 - a_s) * s_h - nominal;
+        _ambCentre = Eigen::Vector3d(shift.x(), shift.y(), 0.0);
       }
+      _ambCentrePhase = phase;
     }
-    _ambCentreT = elapsed;
   }
   // _desPos is a COM reference at the attitude Rz(_desYaw). The velocity is the
   // one _integrateBodyReference integrates; the base origin's differs from it
   // by w_des x (R_des c), at most 1.7 mm/s per rad/s of yaw rate, dropped.
   in.R_des = _rotZ(_desYaw);
   in.w_des = Eigen::Vector3d(0.0, 0.0, _yawRateCommand());
-  // _ambCentre is zero unless [trot] amb_centre_tc is set.
+  // _ambCentre is zero unless [trot] amb_centre is set.
   in.p_des = _desPos - in.R_des * comOffset + _ambCentre;
   const Eigen::Vector3d vc = _twistCommand();
   in.v_des = in.R_des * Eigen::Vector3d(vc.x(), vc.y(), 0.0);

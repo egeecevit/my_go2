@@ -105,6 +105,7 @@ def content(R, written):
     default_falls = sorted({x["t_two"] for x in base["default"] if x["failed"]})
     push = ip["push"]
     h = grid[1.0, "offset"]
+    long_hold = {x["case"]: x for x in st["hold"]}
 
     def pushed(c):
         return " / ".join("none" if push[c][s]["largest_survived_N"] is None else f"{push[c][s]['largest_survived_N']} N"
@@ -129,13 +130,21 @@ def content(R, written):
              f"is {basin['offset', 0.0]['ch_at_liftoff_mm'][0]:.1f} mm off each diagonal at the first lift-off. "
              "While all four feet are down, the body reference is therefore shifted until the CoM is over the next "
              "support line. Centring without AMB does not hold a phase; AMB without centring falls after "
-             f"{var['offset, no centring']['survived_s']:.1f} s.",
-             "<b>Both realizations work, and they are equivalent in quality.</b> The pass-through (thesis Eqs. "
-             "6.23, 6.26) needs the joint friction cancelled, as `MdlAMB` did; the reference offset does not.",
-             f"<b>Limits.</b> It needs a four-foot phase of about 0.5 s (0.3 s and 0.2 s fall). A 0.1 s lateral "
-             f"push in the middle of a two-foot phase is survived up to {pushed('offset')} (offset, +y / -y) and "
-             f"{pushed('passthrough')} (pass-through). With the attitude filter in the loop it falls after "
-             f"{var['offset, both filters in the loop']['survived_s']:.1f} s. Forward speed was not attempted.",
+             f"{var['no centring']['survived_s']:.1f} s.",
+             "<b>Both realizations work in the gait; in long holds the reference offset is the better one.</b> "
+             "The pass-through (thesis Eqs. 6.23, 6.26) needs the joint friction cancelled, as `MdlAMB` did, and "
+             f"even then its legs creep outward in a long stand: it {outcome(long_hold['passthrough'])} in the 30 s hold, "
+             f"which the offset mode holds within {max(long_hold['offset']['roll_peak'], long_hold['offset']['pitch_peak']):.1f} "
+             "deg (Table 3b).",
+             f"<b>It is not tied to one period and duty.</b> Two-foot phases from {two[0]:.2f} to 30 s and "
+             "four-foot phases from 0.2 to 2 s were run (Tables 3b, 4, 5). The lower bound on the two-foot phase "
+             "comes from the 0.2 s lift and descent plus AMB's return; the four-foot phase only has to let the CoM "
+             "reach the next line.",
+             f"<b>Limits.</b> A 0.1 s lateral push in the middle of a two-foot phase is survived up to "
+             f"{pushed('offset')} (offset, +y / -y) and {pushed('passthrough')} (pass-through). With the "
+             "position/velocity filter in the loop two-foot phases of 2 s run for 60 s, but a 30 s hold fails, "
+             "with or without AMB: the estimate itself sinks and slides in a gait that slow. The centring holds "
+             "the body against the feet, so it is for a trot in place only. Forward speed was not attempted.",
              "<b>Two things had to change in the trot itself</b> before any of this could be measured: the swing "
              "has to leave the ground quickly (`swing_lift_time`), and AMB has to be back on the planned "
              "trajectory before the foot comes down (Section 3)."]),
@@ -157,12 +166,13 @@ def content(R, written):
             "acceleration is a pure feedforward. Friction cancellation and joint PD off on that leg (6.28)."],
            ["Swing lift time", "`SwingTrajectory::sampleLifted`, `swing_lift_time`",
             "The foot rises in a fixed time, holds, and comes down in the same time."],
-           ["CoM centring", "`MdlTrot::_wbcTick`, `amb_centre_tc`",
-            "In four-foot phases an integrator shifts the base position reference until the CoM is over the next "
-            "support line."]],
+           ["CoM centring", "`MdlTrot::_wbcTick`, `amb_centre`",
+            "The base position task takes its horizontal error from the planted feet, not from the position "
+            "estimate: with four feet down, the CoM's offset from the next support line; in a two-foot phase, the "
+            "base's displacement against the stance line since the phase began."]],
           [0.20, 0.30, 0.50]),
          ("p", f"Settings of the runs below: `swing_lift_time = 0.2`, `wbc_touchdown_depth = {R['depth']['chosen']}` "
-               f"(Section 6), `amb_centre_tc = 0.3` where centring is on, law gains {cfg['amb_gains']}, template as "
+               f"(Section 6), `amb_centre = true` where centring is on, law gains {cfg['amb_gains']}, template as "
                f"`[amb]` (the centreline fit was not redone: it held), `amb_alpha_max = {cfg['amb_alpha_max']}`, "
                f"`amb_return = {cfg['amb_return']}`."),
          ("p", f"Checks: `ctest` {R['tests']['summary'][1].strip()} (22 with the new `test_trot_amb`; "
@@ -209,9 +219,25 @@ def content(R, written):
             ", ".join(fx(v, 1) for v in cen[c, f]["ch_at_liftoff_mm"])]
            for c in ("centring only", "offset", "passthrough") for f in ("FL-RR", "FR-RL")],
           [0.16, 0.13, 0.19, 0.16, 0.18, 0.18]),
-         ("p", "The first lift-off comes 0.5 s after TROT entry, when the centring has brought the CoM from 9 to "
-               "5.5 mm only. The offset mode absorbed that start here; the pass-through did not. In the gait runs "
-               "below, with shorter phases, both get through the first phase."),
+         ("p", "The first lift-off comes 0.5 s after TROT entry, before the centring has settled (the CoM starts "
+               "9 mm off): the first phase is the hardest of a run, and the CoM offsets at the lift-offs in the "
+               "last column show what each case started from."),
+         ("table", f"Table 3b. One two-foot phase of {st['hold'][0]['t_two']:.0f} s after "
+                   f"{st['hold'][0]['t_four']:.0f} s on four feet, default footprint: can a centred robot stay on a "
+                   "diagonal?",
+          ["Case", "Outcome", "Phase held", "Peak roll / pitch [deg]", "Roll / pitch rms [deg]", "Leg travel [deg]"],
+          [[x["case"], outcome(x), held(x), tilt(x),
+            "–" if x["failed"] else f"{fx(x['roll_rms'])} / {fx(x['pitch_rms'])}",
+            fx((x.get("amb") or {}).get("leg_travel_peak_deg"), 0)] for x in st["hold"]],
+          [0.34, 0.18, 0.10, 0.14, 0.14, 0.10]),
+         ("p", "On ground truth the answer is yes for the offset mode: once the CoM is over the line and the body "
+               "at rest, the swing legs settle at a constant angle and nothing drifts over the 30 s. The "
+               "pass-through's legs creep outward at about 5 deg/s, with a small constant L the law keeps answering, "
+               "until they run out of travel: nothing in that mode ties the legs to a position. With the "
+               "position/velocity filter in the loop a hold this long fails, and so does the same gait with AMB "
+               "off: in the 2 s on four feet before the lift the body already sinks about 2 cm and slides several "
+               "centimetres, which is the filter's estimate in a gait this slow (period 64 s), not the balance. At "
+               "two-foot phases of 2 s the filter is tolerated (Table 5)."),
          ("h2", "5. Trot in place with long two-foot phases (step 2)"),
          ("table", "Table 4. Four-foot phase 0.5 s. Nothing: AMB and centring off, same lift profile.",
           ["Two-foot phase [s]", "Case", "Outcome", "Two-foot phases held", "Peak roll / pitch [deg]",
@@ -228,12 +254,15 @@ def content(R, written):
          ("table", "Table 5. Variants of the 1.0 s / 0.5 s gait, AMB in offset mode.",
           ["Variant", "Outcome", "Two-foot phases held", "Peak roll / pitch [deg]", "Roll / pitch rms [deg]"],
           [["as Table 4", outcome(h), held(h), tilt(h), f"{fx(h['roll_rms'])} / {fx(h['pitch_rms'])}"]] +
-          [[x["case"].replace("offset, ", ""), outcome(x), held(x), tilt(x),
+          [[x["case"], outcome(x), held(x), tilt(x),
             "–" if x["failed"] else f"{fx(x['roll_rms'])} / {fx(x['pitch_rms'])}"] for x in ip["variants"]],
           [0.36, 0.18, 0.14, 0.16, 0.16]),
          ("p", "The attitude integral does not disturb AMB: with it off the result is the same or slightly "
-               "smoother. The position/velocity filter in the loop costs a factor of two to three in rms; the "
-               "attitude filter's noise is not tolerated."),
+               "smoother. The filters in the loop (position/velocity alone is the simulator's default "
+               "configuration) cost a factor of three to five in rms and no phase. A first version of the centring "
+               "shifted the estimator-based position reference: on ground truth it gave the same results, with "
+               "the position/velocity filter in the loop the 2.0 s gait fell after 17 s, because the position "
+               "estimate is off by 1 to 3 cm at a touchdown of a gait this slow."),
          ("table", f"Table 6. Lateral 0.1 s push at the base CoM in the middle of a two-foot phase (t = "
                    f"{ip['push_time_s']} s), in {10} N steps to the first fall.",
           ["Case", "Largest push survived, +y [N]", "Largest push survived, -y [N]", "Note"],
@@ -245,8 +274,8 @@ def content(R, written):
            ["passthrough", fx(push["passthrough"]["plus_y"]["largest_survived_N"], 0),
             fx(push["passthrough"]["minus_y"]["largest_survived_N"], 0), ""]],
           [0.16, 0.22, 0.22, 0.40]),
-         ("p", "A two-foot stand held by the swing legs has a small basin: 1 to 2 N s. The trot without AMB shrugs "
-               "off far larger pushes because it is already leaning on a third foot."),
+         ("p", "A two-foot stand held by the swing legs has a small basin, a few N s. The trot without AMB "
+               "shrugs off far larger pushes because it is already leaning on a third foot."),
          ("h2", "6. Baseline without AMB, and the touchdown depth (step 0)"),
          ("table", "Table 7. The trot as it was before this work (AMB off, default swing profile, 8 mm touchdown "
                    "depth), attitude integral on.",
@@ -263,7 +292,7 @@ def content(R, written):
                "; ".join(f"{1e3 * x['depth']:.0f} mm: {outcome(x)}" +
                          ("" if x["failed"] else f", rms {fx(x['roll_rms'])} / {fx(x['pitch_rms'])} deg")
                          for x in R["depth"]["rows"]) +
-               f". {1e3 * R['depth']['chosen']:.0f} mm is used; the 3 mm run fell at the stop."),
+               f". {1e3 * R['depth']['chosen']:.0f} mm is used."),
          ("h2", "7. Departures from the thesis and from the plan"),
          ("ol", [
              "Mode `offset` replaces Eqs. (6.23) and (6.28): the tangential references are the integrated motion, "
@@ -274,23 +303,25 @@ def content(R, written):
              "CoM centring and the swing lift time are not in the thesis. The centring has the role "
              "`MdlDiagonalStance` has before `MdlAMB`.",
              "The template was not refitted for the trot posture: the centreline parameters held every case here.",
-             "The stop key is placed in a four-foot phase. A stop during a long two-foot phase can fall (seen at "
-             "the 3 mm depth and after one static hold); the stop ramp takes AMB's authority away with the lift "
-             "scale."]),
+             "The stop key is placed in a four-foot phase. A stop during a long two-foot phase can fall (seen "
+             "after one static hold); the stop ramp takes AMB's authority away with the lift scale."]),
          ("h2", "8. Open"),
          ("ol", [
-             "Four-foot phases shorter than 0.5 s: the centring integrator (0.3 s) does not converge in time, and "
-             "0.1 s is unstable against the base position task.",
-             "The small push basin and the attitude-noise failure; both are the swing legs' authority.",
-             "Forward speeds (step 3): the body shift used by the centring is not what a moving trot wants; "
-             "foot placement relative to the CoM is the natural replacement.",
+             "Four-foot phases below 0.2 s and two-foot phases below 0.75 s were not run.",
+             "The small push basin, which is the swing legs' authority, and the pass-through's creep in long "
+             "holds.",
+             "Forward speeds (step 3): the centring holds the body against the planted feet and ignores the "
+             "commanded position; foot placement relative to the CoM is the natural replacement (Ege, 2026-11-27: "
+             "the centring is fine for now and is to be fixed later).",
              "Two-foot phases of 0.5 s: with a 0.2 s lift and descent AMB has no window left "
-             "(`amb_min_swing`)."]),
+             "(`amb_min_swing`).",
+             "The position/velocity filter in very long phases (Table 3b): the estimate sinks and slides while "
+             "the robot stands on four feet."]),
          ("h2", "9. Reproduce"),
          ("code", "cd /home/ege/legged/iros/project\n"
                   "cmake --build build -j 12 && cmake --install build && (cd build && ctest)\n"
-                  "/home/ege/legged/iros/.venv/bin/python figs/trot_amb/run_experiments.py     # all runs, 15 min\n"
-                  "cd bin && ./sim.sh -c \"trot.wbc = true\" -c \"trot.amb = true\" -c \"trot.amb_centre_tc = 0.3\" \\\n"
+                  "/home/ege/legged/iros/.venv/bin/python figs/trot_amb/run_experiments.py     # all runs, six at a time\n"
+                  "cd bin && ./sim.sh -c \"trot.wbc = true\" -c \"trot.amb = true\" -c \"trot.amb_centre = true\" \\\n"
                   "  -c \"trot.swing_lift_time = 0.2\" -c \"trot.wbc_touchdown_depth = 0.012\" \\\n"
                   "  -c \"trot.forward_velocity = 0.0\" -c \"trot.period = 3.0\" -c \"trot.duty = 0.6666667\"   # S, T, D")]
     return B

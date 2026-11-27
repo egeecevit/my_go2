@@ -481,11 +481,15 @@ class MdlTrot : public rtcore::Module {
   // stays on.
   double _ambJointFriction = 0.2;
   bool _ambSwingJointPd = false;
-  // CoM centring in the four-foot phases: time constant [s] (0: off), and the
-  // horizontal shift of the base position reference it has built up, world [m].
-  double _ambCentreTc = 0.0;
+  // CoM centring, [trot] amb_centre: the shift of the base position reference
+  // that makes its horizontal error the one measured from the planted feet
+  // (world [m]); the contact phase it was last computed in (-1: none, 0/1:
+  // two-foot on that diagonal, 10/11: four feet with that diagonal next); and
+  // the base's offsets across and along the line when that phase began.
+  bool _ambCentreOn = false;
   Eigen::Vector3d _ambCentre = Eigen::Vector3d::Zero();
-  double _ambCentreT = 0.0;
+  int _ambCentrePhase = -1;
+  double _ambCentreB0 = 0.0, _ambCentreA0 = 0.0;
 
   void _readConfig();
   void _readAmbConfig();

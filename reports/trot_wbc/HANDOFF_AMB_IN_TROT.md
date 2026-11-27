@@ -7,7 +7,7 @@ point for that work.
 ## Status after the second session (2026-11-27, branch `amb-trot`, uncommitted)
 
 Steps 0 to 2 of the agreed order are done. Report: `reports/trot_amb/REPORT.pdf`, rebuilt by
-`/home/ege/legged/iros/.venv/bin/python figs/trot_amb/run_experiments.py` (about 80 runs, 15 min; `--only`,
+`/home/ege/legged/iros/.venv/bin/python figs/trot_amb/run_experiments.py` (about 100 runs, 6 min; `--only`,
 `--out`). Tests: `ctest` 22/22. With the new keys at their defaults the trot (both paths) and key-B `MdlAMB`
 log the same values tick for tick as before. The rest of this file is the state before that session; where
 the two disagree, this section and the report are newer.
@@ -18,14 +18,18 @@ What exists now (all `[trot]` keys, defaults leave the trot unchanged):
   current stance pair in every two-foot phase. `MdlAMB::geometry/robotMomentum/project` take a `pair_t`; the
   second diagonal is ordered **RL to FR** (mirror image, proven in `test_trot_amb`).
 - `swing_lift_time`: the swing rises in a fixed time, holds, comes down in the same time.
-- `amb_centre_tc`: in four-foot phases the base position reference is shifted until the CoM is over the next
-  support line.
+- `amb_centre`: the base position task takes its horizontal error from the planted feet, not from the
+  position estimate. With four feet down it brings the CoM over the next support line; in a two-foot phase it
+  holds the base where it was against the stance line. **In place only** (a commanded velocity is not followed
+  in position). Ege, 2026-11-27: fine for now, to be fixed later.
 
-Measured, in place, ground truth:
+Measured, in place, ground truth unless stated:
 
-- **AMB with centring gives a slow trot in place**: two-foot phases of 0.75 to 2.0 s with a 0.5 s four-foot
-  phase, every phase a real two-foot stand, roll and pitch within 2.3 deg, both modes. Static: 8 s on each
-  diagonal of the default footprint, within 1.0 deg (offset mode).
+- **AMB with centring gives a slow trot in place**: two-foot phases of 0.75 to 2.0 s, four-foot phases of 0.2
+  to 0.5 s, every phase a real two-foot stand, roll and pitch within 1.5 deg, both modes.
+- **A centred robot stays on a diagonal**: one 30 s two-foot phase after 2 s on four feet is held within
+  0.7 deg in offset mode, the legs settled at 16 deg. The pass-through's legs creep outward (about 5 deg/s)
+  and it falls after 12.7 s.
 - **Without AMB no phase of any slow gait is a two-foot stand.** The body tips about 15 deg onto a swing
   foot, or falls. The baseline table below ("How long a two-foot phase survives") measured three-foot
   phases: the old swing profile leaves the ground too slowly (0.7 mm after 0.4 s of an 8 s swing).
@@ -34,13 +38,20 @@ Measured, in place, ground truth:
   centring. Centring alone holds nothing; AMB alone falls after 2.5 s.
 - Pass-through needs joint friction cancelled (`amb_joint_friction`), as `MdlAMB` did; the offset mode does not.
 - The attitude integral does not disturb AMB (off: same or slightly smoother).
-- Limits: four-foot phase of 0.3 s or 0.2 s falls (centring too slow); a 0.1 s lateral push mid-phase is
-  survived only up to 10 to 20 N; with the attitude filter in the loop it falls after 7 s (the
-  position/velocity filter alone is fine); a stop key during a long two-foot phase can fall.
+- Filters in the loop: at 1.0 s two-foot phases both filters are tolerated (rms three to five times the
+  ground-truth value); with the position/velocity filter 2.0 s phases run 60 s. A 30 s hold fails with that
+  filter, with or without AMB: its estimate sinks 2 cm and slides several centimetres while the robot stands
+  on four feet in a gait that slow.
+- Limits: a 0.1 s lateral push mid-phase is survived up to 20 / 50 N (offset) and 10 / 20 N (pass-through);
+  a stop key during a long two-foot phase can fall.
 
-For step 3 (forward speeds): the centring moves the body, which a moving trot does not want; placing the
-landing feet so their line passes under the CoM is the natural replacement. `amb_min_swing` (0.4 s) and the
-0.2 s lift and descent leave AMB no window below about 0.75 s of two-foot phase.
+For step 3 (forward speeds): the centring ignores the commanded position; placing the landing feet so their
+line passes under the CoM is the natural replacement. `amb_min_swing` (0.4 s) and the 0.2 s lift and descent
+leave AMB no window below about 0.75 s of two-foot phase.
+
+Running: simulations no longer exclude each other. `-c "logserver.server_port = N"` gives each its own port
+(two at once log the same values as either alone); the harness uses 5510 and up, six runs at a time, and
+leaves the default 5500 to an interactive `bin/sim.sh`.
 
 ## The research question (Ege, 2026-11-26)
 

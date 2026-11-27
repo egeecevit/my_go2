@@ -26,8 +26,10 @@ A gait is given by its two-foot time t_two (one diagonal carries the robot, the
 other swings) and its four-foot time t_four: period = 2 (t_two + t_four), duty =
 1 - t_two / period. Every run is one bin/sim.sh call on the whole-body trot,
 driven by the Supervisor key script: stand, T at 2.5 s, the trot, then the
-normal stop. Controller state is simulator ground truth on every run but the
-two marked filter runs. The attitude integral is on (its default) unless a run
+normal stop. Up to six simulations run side by side, each on its own LogServer
+port (5510 and up), so an interactive bin/sim.sh on the default port is not in
+the way. Controller state is simulator ground truth on every run but the
+marked filter runs. The attitude integral is on (its default) unless a run
 says otherwise. Logs: runs/trot_amb/<experiment>/<run>.mat and .log; results.json,
 figs/ and the report in reports/trot_amb/ (--out DIR puts all under DIR).
 Torso state, CoM and L come from simulator truth through figs/trot_wbc's Run;
@@ -36,11 +38,15 @@ include/quadruped/TrotAMB.hh).
 """
 
 import argparse
+import concurrent.futures
 import importlib.util
 import json
 import os
+import queue
+import signal
 import subprocess
 import sys
+import threading
 import time
 
 import matplotlib
@@ -69,13 +75,22 @@ VARS_AMB = ["MdlSimDriver_qpos", "MdlSimDriver_qvel", "MdlTrot_contact", "MdlTro
 MODES = ("offset", "passthrough")
 # Settings every slow-gait run shares. LIFT: swing_lift_time, without which a long swing creeps off the ground.
 # DEPTH: touchdown depth below the lift-off height (the handoff's value for slow gaits; `depth` re-checks it).
-LIFT, DEPTH, CENTRE = "trot.swing_lift_time = 0.2", "trot.wbc_touchdown_depth = 0.008", "trot.amb_centre_tc = 0.3"
+LIFT, DEPTH, CENTRE = "trot.swing_lift_time = 0.2", "trot.wbc_touchdown_depth = 0.008", "trot.amb_centre = true"
 # The law's switch on but no swing long enough for it to act: the four-foot CoM centring alone.
 CENTRE_ONLY = ["trot.amb = true", "trot.amb_min_swing = 99.0", CENTRE]
 SWAP = "trot.phase_offset = [0.5, 0.0, 0.0, 0.5]"   # the FR-RL diagonal carries the first two-foot phase
 TWO, FOUR = [0.50, 0.75, 1.0, 1.5, 2.0], [0.0, 0.2, 0.5]
 SLOW_TWO, SLOW_FOUR = [0.75, 1.0, 1.5, 2.0], 0.5
 STATIC_TWO, STATIC_FOUR = 8.0, 0.5
+HOLD_TWO, HOLD_FOUR = 30.0, 2.0                           # one long hold, after the centring has settled
+# Simulations run side by side, each with its own LogServer port (the default
+# 5500 is left to an interactive bin/sim.sh): two runs at once log the same
+# values as either alone (checked 2026-11-27). figs/trot_wbc's Run works on one
+# shared MuJoCo model, so loading and scoring a log is serialised.
+PORTS, JOBS = range(5510, 5540), 6
+_ports, _analysis = queue.Queue(), threading.Lock()
+for _p in PORTS:
+    _ports.put(_p)
 ORIGINS = [0.0, -0.005, -0.009, -0.013, -0.017, -0.021]   # footprint fore-aft origin [m]: moves the CoM across the diagonals
 HEAD = (1.0, 0.5)                                         # the gait of the push, integral and filter runs
 PUSH_STEP, PUSH_CAP = 10, 150                             # [N]
@@ -112,6 +127,37 @@ def overrides(path, t_two, t_four, trot_s, extra=(), logvars=None, push=None):
         over += [f"simulation.push_force = [0.0, {push[0]:.1f}, 0.0]", f"simulation.push_duration = {T.PULSE}",
                  f"simulation.push_time = {push[1]:.4f}", "simulation.push_ramp = 0.0"]
     return over + list(extra)
+
+
+def simulate(path, over, exit_time):
+    """One headless bin/sim.sh run with the given overrides -> path.mat, path.log; its wall time [s]."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    for e in (".mat", ".log"):
+        if os.path.exists(path + e):
+            os.remove(path + e)
+    port, t0 = _ports.get(), time.time()
+    over = over + [f"logserver.server_port = {port}"]
+    try:
+        with open(path + ".log", "w") as log:
+            log.write("overrides: " + json.dumps(over) + "\n")
+            log.flush()
+            # Own process group: sim.sh does not exec ./simulation, so killing the shell alone would leave the
+            # simulator running.
+            p = subprocess.Popen(["./sim.sh"] + [x for c in over for x in ("-c", c)], cwd=T.BIN,
+                                 stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                 start_new_session=True)
+            try:
+                rc = p.wait(timeout=3 * exit_time + 60)
+            except BaseException:
+                os.killpg(p.pid, signal.SIGKILL)
+                p.wait()
+                raise
+    finally:
+        _ports.put(port)
+    if rc != 0 or not os.path.exists(path + ".mat"):
+        raise RuntimeError(f"{path}: exit {rc}, no log (see {path}.log)")
+    print(f"  [{time.time() - t0:4.1f} s] {os.path.join(*path.split(os.sep)[-2:])}", flush=True)
+    return round(time.time() - t0, 1)
 
 
 def amb_on(mode):
@@ -199,11 +245,20 @@ class Experiments:
         trot_s = trot_s or trot_time(t_two, t_four)
         path = os.path.join(self.logs, exp, name)
         over = overrides(path, t_two, t_four, trot_s, amb_on(mode) + list(extra), logvars, push)
-        self.wall[f"{exp}/{name}"] = T.simulate(path, over)
+        self.wall[f"{exp}/{name}"] = simulate(path, over, T_KEY + PREP + trot_s + STOP)
         period, duty = gait(t_two, t_four)
-        R = T.Run(path, "wbc", {"vx": 0.0, "vy": 0.0, "yaw": 0.0, "period": period, "duty": duty})
-        row = dict(name=name, t_two=t_two, t_four=t_four, mode=mode or "off", trot_s=trot_s, **summary(R, trot_s))
+        with _analysis:
+            R = T.Run(path, "wbc", {"vx": 0.0, "vy": 0.0, "yaw": 0.0, "period": period, "duty": duty})
+            row = dict(name=name, t_two=t_two, t_four=t_four, mode=mode or "off", trot_s=trot_s,
+                       **summary(R, trot_s))
         return (row, R) if keep else row
+
+    def many(self, calls):
+        """Rows of several runs made side by side, in the order given. Each
+        call: (tags merged into the row, self.slow/self.run, args, kwargs)."""
+        with concurrent.futures.ThreadPoolExecutor(JOBS) as pool:
+            futs = [pool.submit(fn, *args, **kw) for _tags, fn, args, kw in calls]
+            return [dict(tags, **f.result()) for (tags, *_), f in zip(calls, futs)]
 
     # -- tests -------------------------------------------------------------------
     def tests(self):
@@ -224,9 +279,9 @@ class Experiments:
         little leaves the foot short of the ground at the scheduled touchdown,
         too much lands it early and hard. Scored on the headline gait with AMB
         and centring on, where every phase is a two-foot stand."""
-        rows = [dict(depth=d, **self.run("depth", f"d{1e3 * d:.0f}", *HEAD, "offset",
-                                         [LIFT, CENTRE, f"trot.wbc_touchdown_depth = {d}"]))
-                for d in (0.003, 0.008, 0.012)]
+        rows = self.many([({"depth": d}, self.run, ("depth", f"d{1e3 * d:.0f}", *HEAD, "offset",
+                                                    [LIFT, CENTRE, f"trot.wbc_touchdown_depth = {d}"]), {})
+                          for d in (0.003, 0.008, 0.012)])
         ok = [x for x in rows if not x["failed"]]
         best = min(ok, key=lambda x: x["roll_rms"] + x["pitch_rms"])["depth"] if ok else 0.008
         return {"rows": rows, "chosen": best}
@@ -235,14 +290,11 @@ class Experiments:
     def baseline(self, res):
         """AMB off. `default`: the trot as it was before this work, at the
         handoff's 8 mm touchdown depth. `lift`: the same with swing_lift_time."""
-        out = {"default": [], "lift": []}
-        for t_four in FOUR:
-            for t_two in TWO:
-                out["default"].append(self.run("baseline", f"default_two{t_two:.2f}_four{t_four:.1f}", t_two, t_four,
-                                               extra=[DEPTH]))
-        for t_two in SLOW_TWO:
-            out["lift"].append(self.slow("baseline", f"lift_two{t_two:.2f}", t_two, SLOW_FOUR))
-        return out
+        return {"default": self.many([({}, self.run, ("baseline", f"default_two{t_two:.2f}_four{t_four:.1f}", t_two,
+                                                       t_four), {"extra": [DEPTH]})
+                                      for t_four in FOUR for t_two in TWO]),
+                "lift": self.many([({}, self.slow, ("baseline", f"lift_two{t_two:.2f}", t_two, SLOW_FOUR), {})
+                                   for t_two in SLOW_TWO])}
 
     # -- static ------------------------------------------------------------------
     def static(self, res):
@@ -250,75 +302,92 @@ class Experiments:
         four-foot phase after it), the footprint moved fore-aft so the CoM
         starts at different distances from the support line, no centring.
         `centred`: both diagonals in one run on the default footprint with the
-        four-foot CoM centring, and again with the other diagonal first."""
+        CoM centring, and again with the other diagonal first. `hold`: one
+        30 s two-foot phase after 2 s on four feet."""
         one = STATIC_TWO + 1.5 * STATIC_FOUR            # stop key in the four-foot phase after the first swing
         both = 2.0 * STATIC_TWO + 3.5 * STATIC_FOUR     # ... after the second
-        out = {"basin": [], "centred": [], "aids": []}
-        for mode in MODES:
-            for ox in ORIGINS:
-                row = self.slow("static", f"basin_{mode}_ox{1e3 * ox:+.0f}", STATIC_TWO, STATIC_FOUR, mode,
-                                [f"trot.origin = [{ox}, 0.10, -0.28]"], trot_s=one)
-                out["basin"].append(dict(origin_x=ox, **row))
         ox = f"trot.origin = [{ORIGINS[3]}, 0.10, -0.28]"
-        out["aids"] = [dict(case=c, **self.slow("static", f"aids_{c}", STATIC_TWO, STATIC_FOUR, m, [ox] + e, trot_s=one))
-                       for c, m, e in (("off", None, []),
-                                       ("passthrough_no_friction", "passthrough", ["trot.amb_joint_friction = 0.0"]),
-                                       ("passthrough_joint_pd_on", "passthrough", ["trot.amb_swing_joint_pd = true"]),
-                                       ("passthrough_both_aids", "passthrough", []))]
-        for first, swap in (("FL-RR", []), ("FR-RL", [SWAP])):
-            for case, mode, extra in (("centring only", None, CENTRE_ONLY), ("offset", "offset", [CENTRE]),
-                                      ("passthrough", "passthrough", [CENTRE])):
-                row = self.slow("static", f"centred_{case.replace(' ', '_')}_{first}", STATIC_TWO, STATIC_FOUR, mode,
-                                extra + swap, trot_s=both)
-                out["centred"].append(dict(case=case, first=first, **row))
-        return out
+        PV = "posvelestimator.use_ground_truth = false"
+        hold_s = HOLD_FOUR + HOLD_TWO + 0.5 * HOLD_FOUR
+        return {
+            "basin": self.many([({"origin_x": o}, self.slow,
+                                 ("static", f"basin_{mode}_ox{1e3 * o:+.0f}", STATIC_TWO, STATIC_FOUR, mode,
+                                  [f"trot.origin = [{o}, 0.10, -0.28]"]), {"trot_s": one})
+                                for mode in MODES for o in ORIGINS]),
+            "aids": self.many([({"case": c}, self.slow, ("static", f"aids_{c}", STATIC_TWO, STATIC_FOUR, m, [ox] + e),
+                                {"trot_s": one})
+                               for c, m, e in (("off", None, []),
+                                               ("passthrough_no_friction", "passthrough",
+                                                ["trot.amb_joint_friction = 0.0"]),
+                                               ("passthrough_joint_pd_on", "passthrough",
+                                                ["trot.amb_swing_joint_pd = true"]),
+                                               ("passthrough_both_aids", "passthrough", []))]),
+            "centred": self.many([({"case": case, "first": first}, self.slow,
+                                   ("static", f"centred_{case.replace(' ', '_')}_{first}", STATIC_TWO, STATIC_FOUR,
+                                    mode, extra + swap), {"trot_s": both})
+                                  for first, swap in (("FL-RR", []), ("FR-RL", [SWAP]))
+                                  for case, mode, extra in (("centring only", None, CENTRE_ONLY),
+                                                            ("offset", "offset", [CENTRE]),
+                                                            ("passthrough", "passthrough", [CENTRE]))]),
+            "hold": self.many([({"case": case}, self.slow,
+                                ("static", "hold_" + case.replace(",", "").replace(" ", "_").replace("/", "_"),
+                                 HOLD_TWO, HOLD_FOUR, mode, extra), {"trot_s": hold_s})
+                               for case, mode, extra in (
+                                   ("nothing", None, []), ("offset", "offset", [CENTRE]),
+                                   ("passthrough", "passthrough", [CENTRE]),
+                                   ("offset, position/velocity filter in the loop", "offset", [CENTRE, PV]),
+                                   ("nothing, position/velocity filter in the loop", None, [PV]))])}
 
     # -- inplace -----------------------------------------------------------------
     def inplace(self, res):
         """Step 2: trot in place with long two-foot phases."""
-        out = {"grid": [], "variants": [], "push": {}}
+        out = {"push": {}}
         cases = (("nothing", None, []), ("centring only", None, CENTRE_ONLY), ("offset", "offset", [CENTRE]),
                  ("passthrough", "passthrough", [CENTRE]))
-        for t_two in SLOW_TWO:
-            for case, mode, extra in cases:
-                row = self.slow("inplace", f"grid_two{t_two:.2f}_{case.replace(' ', '_')}", t_two, SLOW_FOUR, mode,
-                                extra)
-                out["grid"].append(dict(case=case, **row))
-        for name, mode, t_four, extra in (
-                ("offset, no centring", "offset", HEAD[1], []),
-                ("offset, four-foot phase 0.3 s", "offset", 0.3, [CENTRE]),
-                ("offset, four-foot phase 0.2 s", "offset", 0.2, [CENTRE]),
-                ("offset, attitude integral off", "offset", HEAD[1], [CENTRE, T.KI_OFF]),
-                ("offset, attitude integral off, two-foot 1.5 s", "offset", HEAD[1], [CENTRE, T.KI_OFF]),
-                ("offset, position/velocity filter in the loop", "offset", HEAD[1],
-                 [CENTRE, "posvelestimator.use_ground_truth = false"]),
-                ("offset, both filters in the loop", "offset", HEAD[1],
-                 [CENTRE, "orientationestimator.use_ground_truth = false",
-                  "posvelestimator.use_ground_truth = false"])):
-            t_two = 1.5 if "1.5 s" in name else HEAD[0]
-            row = self.slow("inplace", "var_" + name.replace(",", "").replace(" ", "_").replace("/", "_"), t_two,
-                            t_four, mode, extra)
-            out["variants"].append(dict(case=name, **row))
+        out["grid"] = self.many([({"case": case}, self.slow,
+                                  ("inplace", f"grid_two{t_two:.2f}_{case.replace(' ', '_')}", t_two, SLOW_FOUR, mode,
+                                   extra), {}) for t_two in SLOW_TWO for case, mode, extra in cases])
+        PV = "posvelestimator.use_ground_truth = false"
+        out["variants"] = self.many([
+            ({"case": name}, self.slow,
+             ("inplace", "var_" + name.replace(",", "").replace(" ", "_").replace("/", "_"), t_two, t_four, "offset",
+              extra), {"trot_s": trot_s})
+            for name, t_two, t_four, extra, trot_s in (
+                ("no centring", HEAD[0], HEAD[1], [], None),
+                ("four-foot phase 0.3 s", HEAD[0], 0.3, [CENTRE], None),
+                ("four-foot phase 0.2 s", HEAD[0], 0.2, [CENTRE], None),
+                ("attitude integral off", HEAD[0], HEAD[1], [CENTRE, T.KI_OFF], None),
+                ("attitude integral off, two-foot 1.5 s", 1.5, HEAD[1], [CENTRE, T.KI_OFF], None),
+                ("position/velocity filter in the loop", HEAD[0], HEAD[1], [CENTRE, PV], None),
+                ("position/velocity filter in the loop, two-foot 2.0 s, 60 s", 2.0, HEAD[1], [CENTRE, PV], 60.0),
+                ("ground truth, two-foot 2.0 s, 60 s", 2.0, HEAD[1], [CENTRE], 60.0),
+                ("both filters in the loop", HEAD[0], HEAD[1],
+                 [CENTRE, "orientationestimator.use_ground_truth = false", PV], None))])
         # Lateral 0.1 s pulse at the base CoM in the middle of the fifth two-foot phase (FL-RR stance), both
-        # signs, from PUSH_STEP up to the first run that falls or loses a two-foot phase after the pulse.
+        # signs, from PUSH_STEP up to the first run that falls. The six sweeps run side by side.
         entry = next(x["entry_t"] for x in out["grid"] if x["t_two"] == HEAD[0] and x["case"] == "offset")
         tp = entry + HEAD[1] + 4.0 * sum(HEAD) + 0.5 * HEAD[0]
         out["push_time_s"] = r(tp, 3)
-        for case, mode, extra in (("nothing", None, []), ("offset", "offset", [CENTRE]),
-                                  ("passthrough", "passthrough", [CENTRE])):
-            for sign in (1, -1):
-                rows, F = [], PUSH_STEP
-                while F <= PUSH_CAP:
-                    row = self.slow("inplace", f"push_{case}_{'p' if sign > 0 else 'm'}{F}", *HEAD, mode, extra,
-                                    push=(sign * F, tp))
-                    rows.append(dict(F=sign * F, failed=row["failed"], phases=row["phases"],
-                                     phases_held=row["phases_held"], survived_s=row["survived_s"]))
-                    if row["failed"]:
-                        break
-                    F += PUSH_STEP
-                ok = [abs(x["F"]) for x in rows if not x["failed"]]
-                out["push"].setdefault(case, {})["plus_y" if sign > 0 else "minus_y"] = {
-                    "largest_survived_N": max(ok) if ok else None, "rows": rows}
+
+        def sweep(case, mode, extra, sign):
+            rows, F = [], PUSH_STEP
+            while F <= PUSH_CAP:
+                row = self.slow("inplace", f"push_{case}_{'p' if sign > 0 else 'm'}{F}", *HEAD, mode, extra,
+                                push=(sign * F, tp))
+                rows.append(dict(F=sign * F, failed=row["failed"], phases=row["phases"],
+                                 phases_held=row["phases_held"], survived_s=row["survived_s"]))
+                if row["failed"]:
+                    break
+                F += PUSH_STEP
+            ok = [abs(x["F"]) for x in rows if not x["failed"]]
+            return {"largest_survived_N": max(ok) if ok else None, "rows": rows}
+
+        specs = [(case, mode, extra, sign) for case, mode, extra in
+                 (("nothing", None, []), ("offset", "offset", [CENTRE]), ("passthrough", "passthrough", [CENTRE]))
+                 for sign in (1, -1)]
+        with concurrent.futures.ThreadPoolExecutor(len(specs)) as pool:
+            for (case, _m, _e, sign), f in zip(specs, [pool.submit(sweep, *sp) for sp in specs]):
+                out["push"].setdefault(case, {})["plus_y" if sign > 0 else "minus_y"] = f.result()
         return out
 
 
@@ -327,7 +396,6 @@ def main():
     ap.add_argument("--only", nargs="+", choices=EXPERIMENTS, help="experiments to run (default: all)")
     ap.add_argument("--out", help="root for logs, results and figures (default: runs/trot_amb, reports/trot_amb)")
     a = ap.parse_args()
-    T.check_no_simulation()
     out = a.out and os.path.abspath(a.out)
     logs = os.path.join(out, "runs") if out else os.path.join(REPO, "runs", "trot_amb")
     rep = out or os.path.join(REPO, "reports", "trot_amb")
@@ -352,7 +420,7 @@ def main():
                        "fall": f"base z < {T.FALL_Z} m or |roll|, |pitch| > 45 deg",
                        "state": "simulator ground truth (orientation and position/velocity) unless a run says "
                                 "otherwise", "config": {k: trot[k] for k in CONFIG_KEYS if k in trot},
-                       "logs": os.path.relpath(logs, REPO), "experiment_wall_s": walls}
+                       "logs": os.path.relpath(logs, REPO), "experiment_wall_s": walls, "parallel_runs": JOBS}
         with open(path, "w") as f:
             json.dump(res, f, indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
     print(f"\nwall time {sum(walls[n] for n in only):.0f} s; results in {path}")
