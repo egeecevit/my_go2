@@ -121,3 +121,12 @@ wbc_joint_kd = 3.0
 
 # Swing touchdown height [m] below the height the foot lifted off from (body frame). The nominal footprint's z is not used: the stand sags about 10 mm under its joint PD, which put that target 12-15 mm under the ground and landed the closely tracking whole-body swing 21-26 ms early at 1.4 m/s. 3 mm is Kim's value: at 0 the foot arrives 1-2 mm short and in-place pitch rms doubles (0.18 against 0.08 deg). It suits the 0.3 s period; a long swing needs more (period 0.8 s: roll rms 0.30 deg at 3 mm, 0.07 deg at 8 mm; 1.0 s: 1.40 against 0.22 deg). The per-leg path keeps the nominal height.
 wbc_touchdown_depth = 0.003
+
+# Attitude integral on the MPC's roll and pitch reference, whole-body path only; 0 turns it off. Nothing else integrates attitude error: the MPC answers a tilt with a moment in proportion (2-3 N m/deg measured), so every steady moment its rigid-body model lacks left a steady tilt (-0.11 deg at 1.0 m/s, -0.88 deg at duty 0.35 and 0.35 m/s). At the end of each gait cycle this share of the cycle's mean tilt is moved into the reference, against the tilt, as Kim's released controller does continuously (rpy_int, rpy_comp in ConvexMPCLocomotion.cpp; theirs is scaled by speed, this one is not because the tilt exists in place too). Once per cycle, on the cycle mean: the tilt the gait repeats every cycle never enters, and the correction slows with the cadence. A continuous integrator at 2 /s held the mean as well at the 0.3 s gait but rocked the body at 0.6 Hz from a 0.7 s period on (roll rms 0.44 deg against 0.05). 0.5 leaves 5 % of an offset after about 8 cycles; 1.0 rocks the body from a 0.5 s period on (2026-11-27).
+wbc_attitude_integral_gain = 0.5
+
+# Largest mean tilt [rad] one gait cycle may contribute to the integral. A steady offset is corrected a little more slowly (at most gain * this per cycle); a push, which tilts the body by tens of degrees for about a second, barely moves the reference. Without it a 155 N lateral push ran the reference to its bound within a cycle and the recovery failed, where the trot without the integral recovers up to 160 N (2026-11-27).
+wbc_attitude_integral_input = 0.01
+
+# Bound on the reference [rad]. The largest a clean run needed was 0.038 rad (duty 0.35 at 1.0 m/s).
+wbc_attitude_integral_limit = 0.05

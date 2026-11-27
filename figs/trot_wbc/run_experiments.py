@@ -17,8 +17,9 @@ gated and plotted.
   amb_ablation figs/amb_wbc's ablation re-run (--only ablation) against reports/amb_wbc/results.json
   core         in place, forward 0.35/0.70/1.00, lateral 0.20, yaw 0.5, circle, all on ground-truth state;
                forward 0.70 with the position/velocity filter and with both filters in the loop; both
-               modes; plus the measurement-chain checks
-  diagnosis    targeted runs and analyses of the core logs behind the WBC's pitch offset and early touchdown
+               modes; the WBC runs again with the attitude integral off; plus the measurement-chain checks
+  diagnosis    targeted runs and analyses of the core logs behind the WBC's pitch offset (attitude integral
+               off) and early touchdown
                (needs core's logs)
   duty         duty factor 0.30 ... 0.70 at the default period, in place and forward 0.35, both modes
                (below 0.5: flight phases)
@@ -118,6 +119,9 @@ PHASES = {"touchdown": 0.0, "midstance": 0.5 * DUTY * 0.3}       # FL-RR stance 
 # Diagnosis only: a 1 um clamp holds the horizontal body reference on the estimate (the key rejects 0), so the
 # WBC sees no horizontal position error; the MPC weights position 0 and does not notice.
 NO_POS_ERR = "trot.position_reference_clamp = 1e-6"
+# The attitude integral off: the whole-body trot as Kim's paper has it, the reference the pitch diagnosis needs.
+KI_OFF = "trot.wbc_attitude_integral_gain = 0.0"
+ATT_TOL = 0.05                         # [deg] mean roll and pitch the attitude integral must hold on ground truth
 COM_SHIFT = 0.002                      # [m] the MPC's CoM belief moved forward: a known nose-up moment
 # The defaults every run starts from (config/default shadows the version and robot tiers), for the report.
 CONFIG = {"trot": {k: v for k, v in tomllib.load(open(os.path.join(REPO, "config", "default", "trot.toml"), "rb"))
@@ -328,6 +332,9 @@ def metrics(R):
                  rms_sol_sim_N=np.sqrt(np.mean((sol - sim) ** 2, 0)).round(3).tolist(),
                  sum_sol_mean_N=sum(R.W[w, 6 * k + 3:6 * k + 6] for k in range(4)).mean(0).round(3).tolist())
     out["grf"] = g
+    if R.mode == "wbc":   # the MPC's roll and pitch reference (attitude integral), mean and largest
+        ref = np.degrees(R.W[w, 45:47])
+        out["attitude_ref_deg"] = {"mean": ref.mean(0).round(3).tolist(), "max_abs": np.abs(ref).max(0).round(3).tolist()}
     # Swing-foot error p_B_des - p_B (ctrl): the WBC logs it; the baseline's
     # reference minus the truth forward kinematics (the same joint angles).
     sw = [w & (R.C[:, k] == 0) for k in range(4)]
@@ -651,6 +658,9 @@ class Experiments:
                 res["runs"][mode][name] = dict(metrics(R), cmd=[vx, vy, yaw], extra=extra)
                 if name in SUPPORT_RUNS:
                     res["support_line"][mode][name] = support_line(R, mujoco_contacts=True)[0]
+        # The same WBC runs with the attitude integral off: what the integral removes, and the diagnosis' reference.
+        res["runs"]["wbc_noint"] = {c[0]: dict(metrics(self.core_run("wbc", c[0], noint=True, rerun=True)),
+                                               cmd=list(c[1:4]), extra=c[4]) for c in CORE}
         res["chain"] = self.chain()
         res["figs"] = self.core_figs(res)
         return res
@@ -739,18 +749,22 @@ class Experiments:
         return figs
 
     # -- diagnosis ---------------------------------------------------------------
-    def core_run(self, mode, name):
-        """A core run from the cache, else from its log (core must have run once)."""
+    def core_run(self, mode, name, noint=False, rerun=False):
+        """A core run from the cache, else from its log (core must have run once). noint: the WBC run with the
+        attitude integral off."""
         c = next(c for c in CORE if c[0] == name)
-        return self.cache.get(("core", mode, name)) or self.run(
-            "core", name, mode, {"vx": c[1], "vy": c[2], "yaw": c[3], "period": 0.3}, c[4], rerun=False)
+        tag = name + "_noint" * noint
+        return (not rerun and self.cache.get(("core", mode, tag))) or self.run(
+            "core", tag, mode, {"vx": c[1], "vy": c[2], "yaw": c[3], "period": 0.3}, c[4] + [KI_OFF] * noint,
+            rerun=rerun)
 
     def diagnosis(self):
         """Targeted runs and log analyses behind the tracking gate's miss (the WBC's nose-up pitch offset at speed)
         and the early touchdown. The variants set keys outside [trot] wbc_* for diagnosis only; trot.toml keeps
-        its values."""
+        its values. The offset is what the attitude integral removes, so every WBC run here has the integral
+        off and is compared with the core run that has it off."""
         B = {c[0]: metrics(self.core_run("baseline", c[0])) for c in CORE}
-        W = {c[0]: self.core_run("wbc", c[0]) for c in CORE}
+        W = {c[0]: self.core_run("wbc", c[0], noint=True) for c in CORE}
 
         def row(R, base):
             m = metrics(R)
@@ -767,7 +781,7 @@ class Experiments:
             for c in CORE:
                 if c[0] in names:
                     R = self.run("diagnosis", f"{c[0]}_{tag}", mode, {"vx": c[1], "vy": c[2], "yaw": c[3],
-                                                                      "period": 0.3}, c[4] + extra)
+                                                                      "period": 0.3}, c[4] + extra + [KI_OFF])
                     out[c[0]] = row(R, B[c[0]])
             return out
 
@@ -790,7 +804,8 @@ class Experiments:
         res["pitch_stiffness"] = {}
         for mode in MODES:
             R = self.run("diagnosis", "inplace_comshift", mode, {"vx": 0.0, "vy": 0.0, "yaw": 0.0, "period": 0.3},
-                         [f"mpc.com_offset_body = [{COM_OFFSET[0] + COM_SHIFT:.5f}, {COM_OFFSET[1]}, {COM_OFFSET[2]}]"])
+                         [f"mpc.com_offset_body = [{COM_OFFSET[0] + COM_SHIFT:.5f}, {COM_OFFSET[1]}, {COM_OFFSET[2]}]",
+                          KI_OFF])
             p0, p1 = (B["inplace"] if mode == "baseline" else metrics(W["inplace"]))["pitch_mean"], metrics(R)["pitch_mean"]
             res["pitch_stiffness"][mode] = {"pitch_mean_core": p0, "pitch_mean_shifted": p1,
                                             "moment_Nm": r(-MASS * 9.81 * COM_SHIFT, 4),
@@ -799,7 +814,8 @@ class Experiments:
         # reference, the MPC holds the estimated velocity on the command.
         res["estimator"] = {mode: estimator_rates(self.run(
             "diagnosis", "fwd070_est", mode, {"vx": 0.7, "vy": 0.0, "yaw": 0.0, "period": 0.3},
-            ["posvelestimator.use_ground_truth = false"], TRUTH + ["MdlPosVelEstimator_state"])) for mode in MODES}
+            ["posvelestimator.use_ground_truth = false", KI_OFF], TRUTH + ["MdlPosVelEstimator_state"]))
+            for mode in MODES}
         # 6. Analyses of the core logs.
         fwd = ("inplace", "fwd035", "fwd070", "fwd100")
         speed = {n: next(c[1] for c in CORE if c[0] == n) for n in fwd}
@@ -807,9 +823,11 @@ class Experiments:
         A = np.array([[speed[n], m == "baseline", 1.0] for m in MODES for n in fwd])
         y = np.array([pm[m][n] for m in MODES for n in fwd])
         k = np.linalg.lstsq(A, y, rcond=None)[0]
+        pm["wbc_integral"] = {n: metrics(self.core_run("wbc", n))["pitch_mean"] for n in fwd}
         res["pitch_vs_speed"] = {"pitch_mean": pm, "deg_per_m_s": r(k[0], 4), "baseline_offset_deg": r(k[1], 4),
                                  "intercept_deg": r(k[2], 4), "rms_residual_deg": r(amb.rms(A @ k - y), 4)}
         res["force_balance"] = {m: {c[0]: force_balance(self.core_run(m, c[0])) for c in CORE} for m in MODES}
+        res["force_balance"]["wbc_noint"] = {n: force_balance(R) for n, R in W.items()}
         res["touchdown"] = {m: {n: touchdown_detail(self.core_run(m, n)) for n in fwd} for m in MODES}
         res["touchdown"]["wbc_nopos"] = {n: touchdown_detail(self.cache["diagnosis", "wbc", f"{n}_nopos"]) for n in fwd}
         res["leg_gravity_baseline"] = {n: leg_gravity(self.core_run("baseline", n)) for n in ("inplace", "fwd070")}
@@ -821,7 +839,10 @@ class Experiments:
         v = [speed[n] for n in fwd]
         for lab, ys, c, ls in (("baseline", [res["pitch_vs_speed"]["pitch_mean"]["baseline"][n] for n in fwd],
                                 COL["off"], "-"),
-                               ("wbc", [res["pitch_vs_speed"]["pitch_mean"]["wbc"][n] for n in fwd], COL["on"], "-"),
+                               ("wbc", [res["pitch_vs_speed"]["pitch_mean"]["wbc_integral"][n] for n in fwd],
+                                COL["ink"], "-"),
+                               ("wbc, no attitude integral", [res["pitch_vs_speed"]["pitch_mean"]["wbc"][n] for n in fwd],
+                                COL["on"], "-"),
                                ("wbc, no position error", [res["no_position_error"][n]["pitch_mean"] for n in fwd],
                                 COL["on"], "--"),
                                ("wbc, joint PD 20/2", [res["joint_pd_20_2"][n]["pitch_mean"] for n in fwd],
@@ -865,6 +886,13 @@ class Experiments:
                         w = R.win(*row["window_s"])
                         row["airborne_ms"] = r(1e3 * 0.5 * P * np.mean((R.grf[w, 2::3] < CONTACT).all(1)), 2)
                     res[mode].append(row)
+        # The flight gaits without the attitude integral, for the pitch it removes.
+        res["wbc_noint"] = []
+        for vx in DUTY_SPEEDS:
+            for d in [x for x in DUTIES if x < 0.5]:
+                m = metrics(self.run("duty", f"v{vx:.2f}_d{d:.2f}_noint", "wbc", {"vx": vx, "vy": 0.0, "yaw": 0.0,
+                                     "period": P, "duty": d}, [f"trot.duty = {d}", KI_OFF]))
+                res["wbc_noint"].append(dict(duty=d, vx_cmd=vx, **m))
         return res
 
     # -- cadence -----------------------------------------------------------------
@@ -1054,6 +1082,18 @@ def gates(res):
                      "(below 0.5 the gait has a flight phase, which the whole-body path must solve)", not bad,
              "; ".join(bad) or f"all {sum(len(D[m]) for m in MODES)} runs clean; 0 QP failures, 0 fallback ticks "
                                f"over {sum(c['ticks'] for c in cs)} WBC ticks")
+    if "core" in res and "duty" in res:
+        # Ground-truth runs only: with a filter in the loop the integral zeroes the estimated tilt, not the true one.
+        rows = [(n, x) for n, x in res["core"]["runs"]["wbc"].items() if not x["extra"]] + \
+               [(f"duty {x['duty']} v{x['vx_cmd']}", x) for x in res["duty"]["wbc"]]
+        bad = [f"{n}: roll {x.get('roll_mean')}, pitch {x.get('pitch_mean')}" for n, x in rows
+               if "pitch_mean" not in x or max(abs(x["roll_mean"]), abs(x["pitch_mean"])) > ATT_TOL]
+        ok = [x for _, x in rows if "pitch_mean" in x]
+        gate("attitude", f"WBC mode, every ground-truth core and duty run: |mean roll| and |mean pitch| at most "
+                         f"{ATT_TOL} deg over the steady window (the attitude integral)", not bad,
+             "; ".join(bad) or f"{len(rows)} runs: largest |mean roll| {max(abs(x['roll_mean']) for x in ok):.3f} deg, "
+                               f"|mean pitch| {max(abs(x['pitch_mean']) for x in ok):.3f} deg; largest MPC pitch "
+                               f"reference {max(x['attitude_ref_deg']['max_abs'][1] for x in ok):.2f} deg")
     return G
 
 

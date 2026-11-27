@@ -414,6 +414,16 @@ class MdlTrot : public rtcore::Module {
   double _wbcJointKp = 30.0;
   double _wbcJointKd = 3.0;
   double _wbcTouchdownDepth = 0.003;
+  // Attitude integral: the share of a gait cycle's mean tilt moved into the
+  // MPC's roll and pitch reference at the end of that cycle, the bound on that
+  // reference [rad] and the largest mean tilt a cycle may contribute [rad].
+  double _wbcAttitudeGain = 0.5;
+  double _wbcAttitudeLimit = 0.05;
+  double _wbcAttitudeInput = 0.01;
+  Eigen::Vector2d _attitudeComp = Eigen::Vector2d::Zero();  // roll, pitch [rad]
+  Eigen::Vector2d _tiltSum = Eigen::Vector2d::Zero();
+  int _tiltCount = 0;
+  int _tiltCycle = 0;
   int _wbcFailures = 0;  // consecutive ticks without a WBC command
   // Statistics since activation, for deactivate()'s closing line.
   int _wbcTicks = 0;
@@ -435,7 +445,8 @@ class MdlTrot : public rtcore::Module {
   //                   and [25..42] then hold the last solved tick's values, [24]
   //                   is this tick's status
   //   [44]            WBC time of the tick: model terms, tasks and QP [us]
-  double _logWbc[45] = {0};
+  //   [45], [46]      the MPC's roll and pitch reference [rad] (attitude integral)
+  double _logWbc[47] = {0};
 
   void _readConfig();
 

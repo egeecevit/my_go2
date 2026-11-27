@@ -87,6 +87,7 @@ def words(s):
 def content(R, written):
     core, cad, push, meta, dg = R["core"], R["cadence"], R["push"], R["meta"], R["diagnosis"]
     B, W, ch, sl = core["runs"]["baseline"], core["runs"]["wbc"], core["chain"], core["support_line"]
+    N = core["runs"]["wbc_noint"]   # the WBC with the attitude integral off
     C = {"baseline": B, "wbc": W}
     gates = {g["gate"]: g for g in R["gates"]}
     cfg, lim = meta["config"], meta["torque_limit_Nm"]
@@ -105,7 +106,9 @@ def content(R, written):
     grf_x = max(abs(x[0]) for x in res)
     ratio = {n: {k: W[n][k] / B[n][k] for k in ("roll_rms", "pitch_rms", "v_err")} for n in CORE}
     over = [n for n in CORE if ratio[n]["pitch_rms"] > 1.5]
-    tn = {k: i for i, k in enumerate(("gates", "core", "pieces", "velocity", "attitude", "diagnosis", "forces",
+    ratioN = {n: {k: N[n][k] / B[n][k] for k in ("roll_rms", "pitch_rms", "v_err")} for n in CORE}
+    GT = [n for n in CORE if not W[n]["extra"]]   # ground-truth state input
+    tn = {k: i for i, k in enumerate(("gates", "core", "pieces", "velocity", "attitude", "integral", "diagnosis", "forces",
                                        "swing", "touchdown", "filters", "duty", "support", "cadence", "push"), 1)}
     fn = {k: i for i, k in enumerate(("core", "diagnosis", "support", "cadence"), 1)}
     seen = []
@@ -154,10 +157,10 @@ def content(R, written):
                   "with that error held at zero every core run meets the rule. " if tr.get("cause") else "") +
                  "The controller is judged on the simulator's own state (attitude, position and velocity from ground "
                  "truth), so that estimator error does not enter the comparison; two runs put the filters in the loop "
-                 "(Sec. 3.5). At speed the WBC holds a small nose-up pitch ("
-                 f"{seq(lambda n: W[n]['pitch_mean'], ('fwd070', 'fwd100'), 2, '+')} deg at 0.70 / 1.00 m/s, "
-                 f"{W['fwd070_pv']['pitch_mean']:+.2f} deg at 0.70 m/s with the position/velocity filter); Sec. 3.2 "
-                 "gives its cause. It is documented, not removed. "
+                 "(Sec. 3.5). An integrator on the MPC's roll and pitch reference (`wbc_attitude_integral_gain`, as in "
+                 "Kim's released code, not in the paper) holds the mean attitude: the mean pitch is within "
+                 f"{max(abs(W[n]['pitch_mean']) for n in GT):.2f} deg in every ground-truth core run, against up to "
+                 f"{max(abs(N[n]['pitch_mean']) for n in GT):.2f} deg without it (Sec. 3.2). "
                  "Nothing of angular-momentum balancing (AMB) is in the trot; Sec. 4 records, without a gate, the "
                  "quantities a later AMB study needs."),
            ("table", T("gates", "Gates. Criterion, result and value as stored in results.json."),
@@ -218,7 +221,8 @@ def content(R, written):
            ("ol", [
                f"<b>Switch and keys.</b> `[trot] wbc` (default `{str(tc['wbc']).lower()}` in trot.toml and "
                "MdlTrot.hh): T trots as before until it is flipped. `wbc_kp_*` / `wbc_kd_*` (ori, pos, foot), "
-               "`wbc_w_base`, `wbc_w_force`, `wbc_joint_kp` / `wbc_joint_kd`, `wbc_touchdown_depth`, all read in init().",
+               "`wbc_w_base`, `wbc_w_force`, `wbc_joint_kp` / `wbc_joint_kd`, `wbc_touchdown_depth`, "
+               "`wbc_attitude_integral_gain` / `_input` / `_limit`, all read in init().",
                "<b>Failure handling.</b> A tick without a solution (QP failure, unusable joint state) "
                "uses the per-leg commands; `command_failure_limit` "
                f"({tc['command_failure_limit']}) such ticks in a row is a module ERROR. A torque request beyond the "
@@ -286,27 +290,63 @@ def content(R, written):
                  f"and its yaw-rate error at or below {max(W[n]['yaw_err'] for n in CORE):.3f} rad/s. The WBC holds "
                  f"the commanded base height ({span([hd[n][0] for n in CORE], 1, ' mm')} from the target), while the "
                  f"baseline rides {span([hd[n][1] for n in CORE], 1, ' mm')} above it. Its roll and pitch oscillate "
-                 "less (sd), but its pitch carries a nose-up offset that grows with speed; Sec. 3.2 gives the cause. "
+                 "less (sd), and the attitude integral holds its mean roll and pitch at zero (Sec. 3.2). "
                  "The two filter runs are in Sec. 3.5."),
            ("fig", "core_tracking_attitude.png", 0.64,
             F("core", "Core runs: velocity and yaw-rate error with the gate tolerance, swing-foot error, roll and pitch rms, "
               "pitch mean. Orange: baseline, blue: WBC."))]
 
     # 3.2 diagnosis
-    exc = {n: fb["wbc"][n]["stance_simulated_N"] - fb["wbc"][n]["stance_desired_N"] for n in FWD}
+    exc = {n: fb["wbc_noint"][n]["stance_simulated_N"] - fb["wbc_noint"][n]["stance_desired_N"] for n in FWD}
     nopos_ok = all(x["ratio_to_baseline"][k] <= 1.5 for x in nopos.values() for k in ("pitch_rms", "roll_rms", "v_err"))
-    worse20 = [NAMES[n] for n in CORE if j20[n]["pitch_rms"] > W[n]["pitch_rms"]]
+    worse20 = [NAMES[n] for n in CORE if j20[n]["pitch_rms"] > N[n]["pitch_rms"]]
     ctl = dg["no_position_error_baseline_control"]
-    Bl += [("h3", "3.2 The pitch offset at speed"),
-           ("p", "<b>Mechanism, measured.</b> The kinematic stage moves the base by the base-position task error "
+    FL = [x for x in R["duty"]["wbc"] if x["duty"] < 0.5 and "pitch_mean" in x]
+    FLN = {(x["duty"], x["vx_cmd"]): x for x in R["duty"]["wbc_noint"]}
+    int_rows = [(NAMES[n], N[n], W[n]) for n in CORE] + \
+               [(f"duty {x['duty']:.2f}, {x['vx_cmd']:.2f} m/s", FLN[x["duty"], x["vx_cmd"]], x) for x in FL
+                if x["duty"] in (0.4, 0.3)]
+    Bl += [("h3", "3.2 The pitch offset and the attitude integral"),
+           ("p", "As Kim's paper has it, the controller holds a steady pitch that depends on the gait and the speed: "
+                 f"{seq(lambda n: N[n]['pitch_mean'], FWD, 2, '+')} deg in place / 0.35 / 0.70 / 1.00 m/s, and up to "
+                 f"{min(x['pitch_mean'] for x in FLN.values() if 'pitch_mean' in x):+.2f} deg in a gait with a flight "
+                 "phase (Sec. 3.7). The common cause is structural: the MPC answers a tilt with a moment in "
+                 "proportion and nothing integrates the attitude error, so every steady moment the MPC's rigid-body "
+                 "model lacks leaves a steady tilt; the rest of this section and Sec. 3.7 measure two such moments. "
+                 "Kim's released controller meets this with an integrator on the MPC's roll and pitch reference "
+                 "(`rpy_int`, `rpy_comp` in ConvexMPCLocomotion.cpp). `wbc_attitude_integral_gain` "
+                 f"({tc['wbc_attitude_integral_gain']:g}; the reference is bounded at "
+                 f"{tc['wbc_attitude_integral_limit']:g} rad) does the "
+                 "same here: at the end of each gait cycle that share of the cycle's mean tilt is moved into the "
+                 "MPC's reference, against the tilt, while the whole-body tasks keep the level reference. Theirs "
+                 "is continuous and scaled by speed; this one is not scaled, because the tilt exists in place too, "
+                 "and it steps once per cycle so that the tilt the gait repeats never enters and the correction "
+                 f"slows with the cadence. Table {tn['integral']}: the mean pitch falls to within "
+                 f"{max(abs(w['pitch_mean']) for _, _, w in int_rows if not w.get('extra')):.2f} deg on ground truth, "
+                 "the oscillation (sd) is unchanged or smaller, and the reference the MPC needs reaches "
+                 f"{max(abs(w['attitude_ref_deg']['mean'][1]) for _, _, w in int_rows):.2f} deg. With a filter in the "
+                 "loop the integral zeroes the estimated tilt, so the true one keeps the filter's bias. A continuous "
+                 "integrator at 2 /s, tried first, held the mean as well at the 0.3 s gait but rocked the body at "
+                 "0.6 Hz from a 0.7 s period on (roll rms 0.44 deg against 0.05); a per-cycle gain of 1.0 does the "
+                 "same from 0.5 s on (check runs, 2026-11-27). A cycle's mean tilt counts only up to "
+                 f"`wbc_attitude_integral_input` ({tc['wbc_attitude_integral_input']:g} rad): taken whole, the tilt of "
+                 "a push recovery ran the reference to its bound within a cycle, and a 155 N lateral push then "
+                 "failed where the trot without the integral recovers up to 160 N (Sec. 4.3)."),
+           ("table", T("integral", "The attitude integral, WBC runs: without / with. Mean and sd of the true pitch over the "
+                       "steady window, roll rms, and the MPC's mean pitch reference with the integral."),
+            ["Run", "Pitch mean [deg]", "Pitch sd [deg]", "Roll rms [deg]", "MPC pitch reference [deg]"],
+            [[lab, f"{n['pitch_mean']:+.2f} / {w['pitch_mean']:+.2f}", f"{n['pitch_sd']:.2f} / {w['pitch_sd']:.2f}",
+              f"{n['roll_rms']:.2f} / {w['roll_rms']:.2f}", f"{w['attitude_ref_deg']['mean'][1]:+.2f}"]
+             for lab, n, w in int_rows], [0.32, 0.17, 0.17, 0.17, 0.17]),
+           ("p", "<b>Mechanism at speed, measured without the integral.</b> The kinematic stage moves the base by the base-position task error "
                  "with no gain, so every leg's q<sub>des</sub> absorbs that error, and the "
                  f"{tc['wbc_joint_kp']:g}/{tc['wbc_joint_kd']:g} joint PD turns it into a force at the feet outside "
                  "the QP and outside the MPC's plan. The error (reference − position, along the heading) grows with "
-                 f"speed: {seq(lambda n: fb['wbc'][n]['position_error_mm'], FWD, 1)} mm in place / 0.35 / 0.70 / 1.00 "
+                 f"speed: {seq(lambda n: fb['wbc_noint'][n]['position_error_mm'], FWD, 1)} mm in place / 0.35 / 0.70 / 1.00 "
                  f"m/s. Three runs isolate the path (Table {tn['diagnosis']}). Holding the horizontal body reference on "
                  f"the measured position (`{dg['variants']['nopos']}`, diagnosis only) removes the error and turns the "
                  f"offset around: pitch mean {seq(lambda n: nopos[n]['pitch_mean'], FWD, 2, '+')} deg against "
-                 f"{seq(lambda n: W[n]['pitch_mean'], FWD, 2, '+')} deg. " +
+                 f"{seq(lambda n: N[n]['pitch_mean'], FWD, 2, '+')} deg. " +
                  f"With the position task's gains at zero (`{dg['variants']['kppos0']}`) the offset stays "
                  f"({k0['pitch_mean']:+.2f} deg at 0.70 m/s), so the task's acceleration is not the path; the joint "
                  "PD on the shifted q<sub>des</sub> is. The baseline with the same clamp is "
@@ -315,14 +355,14 @@ def content(R, written):
                  "so the clamp changes nothing else. Whether stance or swing legs carry most of the push is not "
                  "separated; the clamp changes the swing error too."),
            ("p", "<b>Where the error comes from.</b> On ground truth the body runs at the commanded speed "
-                 f"({W['fwd070']['vx']:.3f} m/s at 0.70) and trails its position reference by a steady "
-                 f"{fb['wbc']['fwd070']['position_error_mm']:.0f} mm; the MPC's net forward plan on the stance feet is "
-                 f"{seq(lambda n: fb['wbc'][n]['stance_desired_N'], FWD, 1, '+')} N (in place to 1.00 m/s). Why this "
+                 f"({N['fwd070']['vx']:.3f} m/s at 0.70) and trails its position reference by a steady "
+                 f"{fb['wbc_noint']['fwd070']['position_error_mm']:.0f} mm; the MPC's net forward plan on the stance feet is "
+                 f"{seq(lambda n: fb['wbc_noint'][n]['stance_desired_N'], FWD, 1, '+')} N (in place to 1.00 m/s). Why this "
                  "lag settles where it does is not established (hypothesis: the MPC, which weights forward velocity "
                  f"{sw[9]:g} and horizontal position {sw[3]:g}, plans a small braking force and the error settles "
                  "where the PD's push balances it). With the position/velocity filter in the loop the error is "
-                 f"larger ({fb['wbc']['fwd070_pv']['position_error_mm']:.0f} mm at 0.70 m/s) and so is the offset "
-                 f"({W['fwd070_pv']['pitch_mean']:+.2f} deg), because the filter's position advances "
+                 f"larger ({fb['wbc_noint']['fwd070_pv']['position_error_mm']:.0f} mm at 0.70 m/s) and so is the offset "
+                 f"({N['fwd070_pv']['pitch_mean']:+.2f} deg), because the filter's position advances "
                  f"{1e3 * (ew['estimated_vx_mean'] - ew['estimated_position_rate']):.1f} mm/s slower than its own "
                  f"velocity estimate (baseline run {1e3 * (eb['estimated_vx_mean'] - eb['estimated_position_rate']):.1f}"
                  " mm/s): the position task holds the estimated position on the reference, and the body then runs at "
@@ -334,7 +374,7 @@ def content(R, written):
                  f"{ps['wbc']['stiffness_Nm_per_deg']:.1f} N m/deg with the WBC, so a few tenths of a N m the MPC "
                  "does not model move the pitch by a tenth of a degree. The baseline has its own offset in "
                  f"place ({B['inplace']['pitch_mean']:+.2f} deg) that the WBC does not "
-                 f"({W['inplace']['pitch_mean']:+.2f} deg): its stance forces miss the plan by "
+                 f"({N['inplace']['pitch_mean']:+.2f} deg): its stance forces miss the plan by "
                  f"{lg['inplace']['measured_simulated_minus_desired']['pitch_Nm']:+.2f} N m about the CoM, and the "
                  "stance legs' own gravity torque, which the per-leg τ = J<sup>T</sup>(−f) leaves out and the WBC's "
                  f"inverse dynamics carries, accounts for {lg['inplace']['leg_gravity_term']['pitch_Nm']:+.2f} N m of "
@@ -344,26 +384,27 @@ def content(R, written):
            ("p", f"<b>A softer joint PD, rejected.</b> `{dg['variants']['joint20']}` pushes less per mm of error "
                  f"(pitch mean {seq(lambda n: j20[n]['pitch_mean'], ('fwd070', 'fwd100'), 2, '+')} deg at 0.70 / 1.00 "
                  f"m/s), but the swing error grows in "
-                 f"{sum(j20[n]['swing_err_mm'] > W[n]['swing_err_mm']['rms'] for n in CORE)} of {len(CORE)} runs "
+                 f"{sum(j20[n]['swing_err_mm'] > N[n]['swing_err_mm']['rms'] for n in CORE)} of {len(CORE)} runs "
                  f"(Table {tn['diagnosis']})" + ((" and pitch rms rises in " + "; ".join(worse20)) if worse20 else "") +
                  ". It weakens the path instead of removing the error, so the plan's "
                  f"{tc['wbc_joint_kp']:g}/{tc['wbc_joint_kd']:g} stays."),
-           ("table", T("diagnosis", "Pitch-offset diagnosis, WBC runs: the core run, the same with the base position error held "
-                       "at zero ('no pos.'), and with joint PD 20 / 2 ('PD 20/2'). Logs in diagnosis/."),
+           ("table", T("diagnosis", "Pitch-offset diagnosis, WBC runs with the attitude integral off: the core run, the same with "
+                       "the base position error held at zero ('no pos.'), and with joint PD 20 / 2 ('PD 20/2'). Logs in "
+                       "diagnosis/."),
             ["Run", "Pitch mean [deg]: baseline / WBC / no pos. / PD 20/2",
              "Pitch rms ÷ baseline: WBC / no pos. / PD 20/2", "|Δv| [m/s]: WBC / no pos. / PD 20/2",
              "Swing rms [mm]: WBC / no pos. / PD 20/2", "Position error [mm]: WBC / PD 20/2"],
-            [[NAMES[n], f"{B[n]['pitch_mean']:+.2f} / {W[n]['pitch_mean']:+.2f} / {nopos[n]['pitch_mean']:+.2f} / "
+            [[NAMES[n], f"{B[n]['pitch_mean']:+.2f} / {N[n]['pitch_mean']:+.2f} / {nopos[n]['pitch_mean']:+.2f} / "
                         f"{j20[n]['pitch_mean']:+.2f}",
-              f"{ratio[n]['pitch_rms']:.2f} / {nopos[n]['ratio_to_baseline']['pitch_rms']:.2f} / "
+              f"{ratioN[n]['pitch_rms']:.2f} / {nopos[n]['ratio_to_baseline']['pitch_rms']:.2f} / "
               f"{j20[n]['ratio_to_baseline']['pitch_rms']:.2f}",
-              f"{W[n]['v_err']:.3f} / {nopos[n]['v_err']:.3f} / {j20[n]['v_err']:.3f}",
-              f"{W[n]['swing_err_mm']['rms']:.1f} / {nopos[n]['swing_err_mm']:.1f} / {j20[n]['swing_err_mm']:.1f}",
-              f"{fb['wbc'][n]['position_error_mm']:.1f} / {j20[n]['force_balance']['position_error_mm']:.1f}"]
+              f"{N[n]['v_err']:.3f} / {nopos[n]['v_err']:.3f} / {j20[n]['v_err']:.3f}",
+              f"{N[n]['swing_err_mm']['rms']:.1f} / {nopos[n]['swing_err_mm']:.1f} / {j20[n]['swing_err_mm']:.1f}",
+              f"{fb['wbc_noint'][n]['position_error_mm']:.1f} / {j20[n]['force_balance']['position_error_mm']:.1f}"]
              for n in CORE], [0.18, 0.22, 0.17, 0.16, 0.14, 0.13]),
            ("fig", "diagnosis.png", 0.98,
-            F("diagnosis", "Left: pitch mean against forward speed for the baseline, the WBC, the WBC with no base position "
-              "error and the WBC with joint PD 20 / 2. Middle and right: FL around its scheduled touchdown at 0.70 "
+            F("diagnosis", "Left: pitch mean against forward speed for the baseline, the WBC (black), and the WBC without the "
+              "attitude integral: as built, with no base position error and with joint PD 20 / 2. Middle and right: FL around its scheduled touchdown at 0.70 "
               "m/s, averaged over the steady window's touchdowns: swing reference and contact-point height (a loaded "
               "foot sinks a few mm into MuJoCo's soft contact), and simulated F<sub>z</sub>. The WBC foot lands "
               "when its reference passes through the ground (Sec. 3.4)."))]
@@ -458,8 +499,9 @@ def content(R, written):
            ("p", "Every run above feeds the controller the simulator's state. Two more runs at 0.70 m/s put the "
                  "filters in the loop: the position/velocity Kalman filter alone "
                  "(`posvelestimator.use_ground_truth = false`), and that filter together with the Mahony attitude "
-                 f"filter on the simulated noisy IMU (Table {tn['filters']}). With the position/velocity filter the "
-                 f"WBC's nose-up pitch grows from {W[f7]['pitch_mean']:+.2f} to {W[pv]['pitch_mean']:+.2f} deg and its "
+                 f"filter on the simulated noisy IMU (Table {tn['filters']}). With the position/velocity filter and no "
+                 f"attitude integral the WBC's nose-up pitch grows from {N[f7]['pitch_mean']:+.2f} to "
+                 f"{N[pv]['pitch_mean']:+.2f} deg (with the integral: {W[pv]['pitch_mean']:+.2f} deg) and its "
                  f"mean speed from {W[f7]['vx']:.3f} to {W[pv]['vx']:.3f} m/s: the filter's position advances "
                  f"{1e3 * (ew['estimated_vx_mean'] - ew['estimated_position_rate']):.1f} mm/s slower than its own "
                  "velocity estimate, the base-position task holds that position on the reference, so the body runs "
@@ -504,6 +546,7 @@ def content(R, written):
     fl = {m: [x for x in dut[m] if x["duty"] < 0.5 and "window_s" in x] for m in MODES}
     lowest = {m: min(fl[m], key=lambda x: (x["duty"], -x["vx_cmd"])) for m in MODES}   # lowest duty, moving
     mv = {m: [x for x in dut[m] if x["vx_cmd"] > 0 and "window_s" in x] for m in MODES}
+    lowN = next(x for x in dut["wbc_noint"] if (x["duty"], x["vx_cmd"]) == (lowest["wbc"]["duty"], lowest["wbc"]["vx_cmd"]))
     Bl += [("h3", "3.7 Duty factor: overlap and flight"),
            ("p", f"The gait clock takes any duty factor. At the default {P0} s period a duty above 0.5 overlaps the "
                  "two diagonals on four feet; below 0.5 no foot is scheduled down for (0.5 − duty) · period per "
@@ -521,16 +564,29 @@ def content(R, written):
                  f"{bw(lowest['baseline'], lowest['wbc'], lambda x: x['airborne_ms'], 0)} ms per half cycle "
                  f"(baseline / WBC) of the scheduled {lowest['wbc']['flight_scheduled_ms']:.0f} ms. The WBC holds "
                  f"the commanded speed at every duty ({span([x['vx'] for x in mv['wbc']], 3, ' m/s')}; baseline "
-                 f"{span([x['vx'] for x in mv['baseline']], 3, ' m/s')}). With flight it carries a nose-down pitch "
-                 f"that grows as the duty factor falls, to {lowest['wbc']['pitch_mean']:+.2f} deg at duty "
-                 f"{lowest['wbc']['duty']:.2f}, and its base runs up to "
-                 f"{-min(x['z_minus_target_mm'] for x in fl['wbc']):.0f} mm below the commanded height; the "
-                 "baseline's pitch at speed stays within "
-                 f"{max(abs(x['pitch_mean']) for x in fl['baseline'] if x['vx_cmd'] > 0):.2f} deg. Check runs of "
-                 "2026-11-27 at duty 0.35 (outside this script): holding the base-position error at zero "
-                 "(Sec. 3.2's mechanism) takes the pitch at 0.35 m/s from −0.88 to −0.52 deg; a touchdown "
-                 "target 10 mm higher removes the early touchdown and doubles the pitch, so touchdown timing is not "
-                 "the cause. The rest is not explained."),
+                 f"{span([x['vx'] for x in mv['baseline']], 3, ' m/s')}). Its base runs up to "
+                 f"{-min(x['z_minus_target_mm'] for x in fl['wbc']):.0f} mm below the commanded height. Without the "
+                 "attitude integral it carries a nose-up pitch that grows as the duty factor falls, to "
+                 f"{lowN['pitch_mean']:+.2f} deg at duty {lowN['duty']:.2f}; with the integral the mean pitch at that "
+                 f"duty is {lowest['wbc']['pitch_mean']:+.2f} deg (Table {tn['integral']}), for a pitch reference of "
+                 f"{lowest['wbc']['attitude_ref_deg']['mean'][1]:+.2f} deg."),
+           ("p", "<b>Where that pitch comes from</b> (analysis of duty 0.35 logs without the integral and check runs "
+                 "of 2026-11-27, outside this script). The legs are 8.3 of the robot's 15.2 kg and all four knees bend the same "
+                 "way, so when the legs extend at push-off all four thighs turn together (2.2 rad/s) and carry "
+                 "pitch angular momentum. In place the robot leaves the ground with 0.11 kg m²/s nose-up about its "
+                 "CoM, of which the trunk holds 0.02. The MPC is a single rigid body fed the trunk's rate, so it "
+                 "sees almost none of it. In flight the legs stop extending and the trunk takes the momentum: its "
+                 "pitch rate goes from −4.5 to −13.8 deg/s with no foot on the ground (0.11 kg m²/s over the "
+                 "MPC's 0.488 kg m² is 13 deg/s). The rear feet then land first and the stance turns the trunk "
+                 "back, but not to zero before the next flight. Interventions at duty 0.35, pitch mean in place / "
+                 "at 0.35 m/s, from −0.37 / −0.88 deg: the MPC fed the whole-robot angular momentum over its "
+                 "inertia in place of the trunk rate (a temporary build) −0.02 / −0.64; the base-position "
+                 "error held at zero (Sec. 3.2's mechanism) – / −0.52; both – / −0.38. Not the cause: touchdown "
+                 "timing (a target 10 mm higher lands on time and doubles the pitch) and the MPC's 200 N force "
+                 "cap (the plan sits on it for 7 % of ticks; 400 N changes neither height nor pitch). About 0.4 "
+                 "deg at speed is not explained, nor is the height loss. Feeding the MPC the whole-robot momentum "
+                 "is not a fix by itself: at duty 0.5 and 0.35 m/s it moves the pitch from −0.06 to −0.30 deg. "
+                 "The attitude integral removes the mean whatever its source."),
            ("table", T("duty", f"Duty factor at the {P0} s period, baseline / WBC, ground-truth state. Scheduled phase: "
                        "four-foot overlap or flight per half cycle. Airborne: mean time per half cycle with no "
                        "foot in contact. Height: mean base height minus the commanded one. Saturated: share of "
@@ -705,6 +761,11 @@ def content(R, written):
                "contact points one foot radius lower.",
                "<b>Not carried over.</b> No stance-foot Cartesian damping and no knee barrier (extras in "
                "Cheetah-Software's code, not in the paper).",
+               "<b>Attitude integral.</b> Not in the paper; Cheetah-Software has it on the MPC's roll and pitch "
+               "reference, continuous, scaled by the body speed and switched off for pronking. Here it steps once per "
+               f"gait cycle on the cycle's mean tilt (gain {tc['wbc_attitude_integral_gain']:g}, with an input limit "
+               "against wind-up under a push), at any speed and in every gait, on the whole-body path only "
+               "(Sec. 3.2).",
                "<b>Robustness additions.</b> Go2-only guard; a tick without a solution falls back to the per-leg "
                "commands, with an ERROR after `command_failure_limit` in a row; the torque request is clipped to the "
                "Go2 limits. Kim has none of these.",
@@ -716,15 +777,13 @@ def content(R, written):
     ab = R["amb_ablation"]
     Bl += [("h2", "6. Open issues and limits"),
            ("ol", [
-               "<b>Pitch offset at speed: documented, not removed</b> (Ege, 2026-11-26). It is "
-               f"{seq(lambda n: W[n]['pitch_mean'], ('fwd070', 'fwd100'), 2, '+')} deg at 0.70 / 1.00 m/s on ground "
-               f"truth and {W['fwd070_pv']['pitch_mean']:+.2f} deg at 0.70 m/s with the position/velocity filter. "
-               "Holding the horizontal reference on the measured position (`trot.position_reference_clamp` tiny"
-               + ("; it changes nothing on the per-leg path" if ctl["identical_to_core"] else "") + ") turns it to "
-               f"{seq(lambda n: nopos[n]['pitch_mean'], ('fwd070', 'fwd100'), 2, '+')} deg at the cost of velocity "
-               f"error ({seq(lambda n: nopos[n]['v_err'], ('fwd070', 'fwd100'), 3)} m/s against "
-               f"{seq(lambda n: W[n]['v_err'], ('fwd070', 'fwd100'), 3)}). Untested: horizontal position weight in the "
-               "MPC (Cheetah-Software's MPC has one), or a position/velocity filter whose position agrees with its "
+               "<b>The pitch offset is removed in the mean, not at its source</b> (attitude integral, Ege, "
+               "2026-11-27). The moments behind it are still there and the MPC's pitch reference carries them: "
+               f"{seq(lambda n: W[n]['attitude_ref_deg']['mean'][1], ('fwd070', 'fwd100'), 2, '+')} deg at 0.70 / "
+               f"1.00 m/s, {lowest['wbc']['attitude_ref_deg']['mean'][1]:+.2f} deg at duty "
+               f"{lowest['wbc']['duty']:.2f}. The integral acts on the estimated attitude, so an attitude filter's "
+               "bias stays in the true pitch (Sec. 3.5). Untested sources: horizontal position weight in the MPC "
+               "(Cheetah-Software's MPC has one), or a position/velocity filter whose position agrees with its "
                "velocity.",
                "<b>Hypotheses left open:</b> why a position lag remains on ground truth; stance against swing legs "
                "in the PD's push; the per-leg path's left-out leg gravity as the "
@@ -735,12 +794,15 @@ def content(R, written):
                "0.8 s period the WBC's roll / pitch rms is 0.30 / 0.32 deg with 3 mm and 0.07 / 0.10 deg with 8 mm; at "
                "1.0 s it is 1.40 / 1.24 deg against 0.22 / 0.19 deg (check runs on ground truth, 2026-11-26, outside "
                "this script). A slow-cadence study has to set this depth first, or the comparison measures it.",
-               "<b>Flight phases</b> (Sec. 3.7) run, but below duty 0.5 the WBC pitches nose-down (to "
-               f"{lowest['wbc']['pitch_mean']:+.2f} deg at duty {lowest['wbc']['duty']:.2f}) and rides up to "
-               f"{-min(x['z_minus_target_mm'] for x in fl['wbc']):.0f} mm low, and the robot is airborne for at most "
-               "about half the scheduled time. The base-position error explains part of the pitch; the rest, the height "
-               "loss and the late lift-off are not examined. The MPC is the same in both modes and is untuned for "
-               "flight.",
+               "<b>Flight phases</b> (Sec. 3.7) run, but below duty 0.5 the WBC rides up to "
+               f"{-min(x['z_minus_target_mm'] for x in fl['wbc']):.0f} mm low and the robot is airborne for at most "
+               "about half the scheduled time. Of the pitch the attitude integral removes there, leg angular "
+               "momentum the MPC does not see and the base-position error explain a little over half at speed; the "
+               "rest, the height loss and the late lift-off are not explained.",
+               "<b>The push limit is not a clean boundary.</b> The sweep steps 20 N to the first failure and "
+               "then 5 N, so it can step over an isolated failure: in check runs of 2026-11-27 (push to the "
+               "left at FL-RR touchdown) the WBC recovered at 160, 180 and 185 N and fell at 170 and 190 N, with "
+               "and without the attitude integral.",
                "<b>Cadence boundary</b> not reached up to "
                f"{min(last[m]['period'] for m in MODES)} s; a longer sweep would find where prolonged diagonal support "
                "fails.",

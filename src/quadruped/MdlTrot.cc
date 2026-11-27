@@ -276,7 +276,7 @@ void MdlTrot::init() {
                             (unsigned char*)_logTorqueRequest);
     _logserver->registerVar(LOG_DOUBLE, 12, TROTMODULE_NAME, "bodyref",
                             (unsigned char*)_logBodyReference);
-    _logserver->registerVar(LOG_DOUBLE, 45, TROTMODULE_NAME, "wbc",
+    _logserver->registerVar(LOG_DOUBLE, 47, TROTMODULE_NAME, "wbc",
                             (unsigned char*)_logWbc);
   }
 
@@ -410,6 +410,9 @@ void MdlTrot::_readConfig() {
   _wbcJointKp = config.getDouble("wbc_joint_kp", _wbcJointKp);
   _wbcJointKd = config.getDouble("wbc_joint_kd", _wbcJointKd);
   _wbcTouchdownDepth = config.getDouble("wbc_touchdown_depth", _wbcTouchdownDepth);
+  _wbcAttitudeGain = config.getDouble("wbc_attitude_integral_gain", _wbcAttitudeGain);
+  _wbcAttitudeLimit = config.getDouble("wbc_attitude_integral_limit", _wbcAttitudeLimit);
+  _wbcAttitudeInput = config.getDouble("wbc_attitude_integral_input", _wbcAttitudeInput);
   if (!(_wbcJointKp >= 0.0)) _wbcJointKp = 30.0;
   // MdlSimDriver replaces kd <= 0 with 5 Nm s/rad inside the stored command.
   if (!(_wbcJointKd > 0.0)) _wbcJointKd = 3.0;
@@ -682,7 +685,7 @@ bool MdlTrot::_solveMPC(double elapsed) {
     p.x() += v.x() * dtm;
     p.y() += v.y() * dtm;
 
-    in.reference[k].rpy = Eigen::Vector3d(0.0, 0.0, yaw);
+    in.reference[k].rpy = Eigen::Vector3d(_attitudeComp.x(), _attitudeComp.y(), yaw);
     // Hold the COM height captured at TROT entry.
     in.reference[k].com_position_world = Eigen::Vector3d(p.x(), p.y(), _desPos.z());
     in.reference[k].angular_velocity_world = Eigen::Vector3d(0.0, 0.0, yawRate);
@@ -806,6 +809,10 @@ void MdlTrot::_trotEntry() {
   _mpcFailures = 0;
   _vfiltValid = false;
   _haveYaw = false;
+  _attitudeComp.setZero();
+  _tiltSum.setZero();
+  _tiltCount = 0;
+  _tiltCycle = 0;
 
   // Start with zero command scale; ramp to the configured twist in TROT.
   _speedScale = 0.0;
@@ -936,6 +943,38 @@ void MdlTrot::_trotDuring() {
   }
 
   _updateGaitScales(elapsed);
+
+  // Nothing else integrates attitude error. The MPC answers a pitch or roll
+  // error with a moment in proportion, so a steady moment its rigid-body model
+  // lacks (the joint PD's push, leg momentum in a flight gait, an estimator
+  // bias) leaves a steady tilt. The MPC's roll and pitch reference is moved
+  // against the tilt until the mean tilt is zero, as in Kim's released
+  // controller (rpy_int, rpy_comp); the whole-body tasks keep the level
+  // reference. The step is taken once per gait cycle on that cycle's mean
+  // tilt: the tilt the gait itself repeats every cycle then never enters, and
+  // the correction slows down with the cadence as the body's answer does (a
+  // continuous integrator at 2 /s rocked the body at 0.6 Hz once the period
+  // reached 0.7 s). A cycle's mean tilt counts only up to _wbcAttitudeInput: a
+  // push tilts the body by tens of degrees for a second, and taken whole that
+  // ran the reference to its bound and made the recovery fail. Whole-body
+  // path only: the per-leg path stays as it was.
+  if (_wbc) {
+    _tiltSum += _rpy.head<2>();
+    _tiltCount++;
+    const int cycle = (int)std::floor(elapsed / _gait.getParams().period);
+    if (cycle != _tiltCycle) {
+      const Eigen::Vector2d tilt = (_tiltSum / _tiltCount)
+                                       .cwiseMax(-_wbcAttitudeInput)
+                                       .cwiseMin(_wbcAttitudeInput);
+      _attitudeComp -= _wbcAttitudeGain * tilt;
+      _attitudeComp = _attitudeComp.cwiseMax(-_wbcAttitudeLimit).cwiseMin(_wbcAttitudeLimit);
+      _tiltSum.setZero();
+      _tiltCount = 0;
+      _tiltCycle = cycle;
+    }
+  }
+  _logWbc[45] = _attitudeComp.x();
+  _logWbc[46] = _attitudeComp.y();
 
   bool maskChanged = false;
   for (int i = 0; i < NUM_LEGS; i++) {

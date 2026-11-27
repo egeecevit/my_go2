@@ -31,7 +31,7 @@ durations, not by period and duty: `period = 2 (t_two + t_four)`, `duty = 1 − 
   `config/default/trot.toml`, `figs/trot_wbc/`, `reports/trot_wbc/`). Ege commits; Claude only when asked.
 - `[trot] wbc = true` selects the whole-body trot. Default is `false`: key T runs the old per-leg trot.
 - Results: `reports/trot_wbc/REPORT.pdf` (10 pages), rebuilt by
-  `/home/ege/legged/iros/.venv/bin/python figs/trot_wbc/run_experiments.py` (173 runs, 18 min; `--only`, `--out`).
+  `/home/ege/legged/iros/.venv/bin/python figs/trot_wbc/run_experiments.py` (189 runs, 20 min; `--only`, `--out`).
 - Tests: `cd build && ctest` gives 21/21.
 - Plan of this session: `/home/ege/.claude/plans/i-want-to-investigate-hazy-hammock.md`.
   Earlier handoff (still valid for the AMB side): `/home/ege/legged/iros/docs/HANDOFF_trot_wbc_amb.md`.
@@ -46,18 +46,28 @@ durations, not by period and duty: `period = 2 (t_two + t_four)`, `duty = 1 − 
 | Seam in the old code | `MdlTrot::_trotDuring`: `if (_wbc && _wbcTick()) return;` | gait clock, footstep law, swing quintic, body reference, MPC call are shared with the old path |
 | Solver, model | `QuadrupedWBC`, `QuadrupedDynamics` | `MAX_TASKS = 6`: two body tasks and up to four swing feet; a problem with no contact (flight) is solved, the base then falls freely |
 | Touchdown height | `_startSwing`: `wbc_touchdown_depth` below the foot's lift-off height | old path keeps the nominal footprint height |
-| Log | `MdlTrot_wbc` (45 doubles, layout at `_logWbc` in `MdlTrot.hh`) | desired and solved forces, QP status, task errors, swing errors, tick time |
+| Log | `MdlTrot_wbc` (47 doubles, layout at `_logWbc` in `MdlTrot.hh`) | desired and solved forces, QP status, task errors, swing errors, tick time, the MPC's roll and pitch reference |
+| Attitude integral | `_trotDuring`, before the body reference is integrated | `_attitudeComp` enters `_solveMPC` as the reference roll and pitch |
 
 Decisions Ege took on 2026-11-26:
 
 - **Torque is capped, never an error.** The 20-tick saturation abort was removed from both trot paths and
   `torque_saturation_limit` no longer exists.
-- **Pitch offset at speed is documented, not fixed** (−0.08° at 0.70 m/s on ground truth; report Sec. 3.2).
+- **Pitch offset**: first documented, not fixed (2026-11-26); on 2026-11-27 Ege had the **attitude integral**
+  added (`wbc_attitude_integral_gain = 0.5`, whole-body path only, on by default). Once per gait cycle half of
+  that cycle's mean roll and pitch is moved into the MPC's roll/pitch reference, as Kim's released code does
+  continuously (`rpy_int`, `rpy_comp`). It holds the mean tilt within about 0.01° at every speed, cadence and
+  duty tested. `wbc_attitude_integral_input` (0.01 rad) is its anti-wind-up for pushes. Report Sec. 3.2.
+  For any study of the uncompensated controller set the gain to 0 (the harness' `KI_OFF`).
 - **Touchdown fixed** for the whole-body path (feet land 1–5 ms early at ≤ 0.14 m/s instead of 21–26 ms early).
 - **Flight phases are handled by the whole-body path** (Ege, 2026-11-27). Before, any duty below 0.5 ended in a
   module ERROR at the first flight phase. Report Sec. 3.7 has the duty sweep (harness experiment `duty`, 0.30 to
-  0.70 at the 0.3 s period): all runs complete; with flight the whole-body trot pitches nose-down (−1.2° at duty
-  0.30, 0.35 m/s), rides up to 12 mm low and is airborne at most about half the scheduled time. Unexplained so far.
+  0.70 at the 0.3 s period): all runs complete; with flight the whole-body trot pitches nose-up (−1.2° at duty
+  0.30, 0.35 m/s; positive pitch is nose down), rides up to 12 mm low and is airborne at most about half the
+  scheduled time. Cause found for part of it: the legs (8.3 of 15.2 kg, all knees one way) carry pitch angular
+  momentum at push-off that the rigid-body MPC does not see; in flight it moves to the trunk. Sec. 3.7 has the
+  numbers and what is still unexplained. The attitude integral now removes the mean; the moments behind it
+  remain and show as the MPC's pitch reference (about +2° at duty 0.30).
 
 ## Rules for the next session
 
@@ -68,6 +78,11 @@ Decisions Ege took on 2026-11-26:
   `supervisor.log.file_name` (`bin/localconf.toml` enables logging into `bin/deneme.mat`).
 - Compare logs aligned on the control tick; the log thread starts and stops on wall-clock-dependent ticks.
 - A log line holds 127 doubles: `MdlTrot_wbc` does not fit next to the full default variable list.
+- **AMB and the attitude integral both act on roll.** The integral moves the MPC's roll reference once per
+  cycle on the cycle-mean roll; an AMB term would act within the two-foot phase. Decide early whether the
+  integral stays on in AMB runs (it removes a mean, not the rocking) and say so with every result.
+- The viewer's red marker and trail are the shadow filter's estimate, drawn on purpose even in ground-truth
+  mode; the controller gets truth (checked).
 
 ## Measured baselines without AMB
 
@@ -97,7 +112,8 @@ effect. Reproduce with the harness' `overrides()` plus `trot.duty`, `trot.period
   of the line. At 0.70 m/s: peak 1.82–1.87 kg m²/s every stance and the CoM sweeps 53–58 mm across the line.
   That large value belongs to the gait: the body moves forward over a diagonal that is oblique to the motion.
 - dL/dt = M g c_h holds on two-foot stance (correlation 0.99; slope 0.90–0.96 about the line frozen at stance start).
-- Lateral 0.1 s push, in place, 0.3 s gait: recovers from 175–200 N (whole-body) and 140–160 N (old path).
+- Lateral 0.1 s push, in place, 0.3 s gait: recovers from 180–200 N (whole-body) and 140–160 N (old path). The
+  boundary is not clean: one case fails at 170 N between successes at 160 and 180–185 N.
 - Static diagonal balance (earlier work, centreline posture): without AMB the robot falls 1.2 s after lift-off;
   with AMB it balances and recovers 9–12 N pushes.
 - **Touchdown depth depends on swing time.** 3 mm suits the 0.3 s gait; at a 1.0 s period roll rms is 1.40° with
@@ -164,7 +180,8 @@ forces, and through the foothold.
 
 ## Open items carried over
 
-- Why a 9–11 mm position lag remains on ground truth at speed (it drives the pitch offset).
+- Why a 9–11 mm position lag remains on ground truth at speed (it drives the pitch offset the attitude integral
+  now covers).
 - Uncapped torque requests reach hundreds of times the limit in recovered pushes near the boundary (roll above
   27°); the cap makes it harmless, the cause is not examined.
 - After a module ERROR the Supervisor's sit can roll the robot over.
