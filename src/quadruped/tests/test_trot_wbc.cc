@@ -410,11 +410,75 @@ static void testSwingRidesBody() {
   report("flight: floating-base rows of M vdot + h (rel)", worst_fall, TOL_QP);
 }
 
+// (v) AMB pass-through (thesis 6.23, 6.26) on the swing tasks, swing joints at
+// rest: along the direction t the foot accelerates as the planned acceleration
+// plus AMB's feedforward alone, the task's PD acting only across t, and the
+// kinematic stage leaves the joint references no component along t either,
+// so the joint PD does not pull there. A share of zero is test (iv).
+static void testAmbPassThrough() {
+  g_case = "amb pass-through";
+  std::printf("(v) AMB pass-through along a tangential direction, %d random states\n", TRIALS);
+  const QuadrupedKinematics kin(createGo2Config());
+  const QuadrupedDynamics model(createGo2WholeBodyConfig());
+  QuadrupedWBC wbc;
+  wbc.setParams(kimParams());
+
+  double worst = 0.0, worst_t = 0.0, worst_q = 0.0;
+  for (int trial = 0; trial < TRIALS; trial++) {
+    MdlTrot::wbc_input_t in;
+    randomState(kin, FEET_DIAG[trial % 2], true, in);
+    QuadrupedDynamics::terms_t dyn;
+    T_CHECK(model.compute(in.state, dyn));
+    in.dyn = &dyn;
+    randomBodyReference(in);
+    randomForces(in);
+    const Eigen::Matrix3d& R = in.state.R;
+    Eigen::Vector3d p_B[NL];
+    for (int leg = 0; leg < NL; leg++) {
+      Eigen::Vector3d v_B;  // zero for the swing legs
+      measuredFoot(kin, in, leg, p_B[leg], v_B);
+      in.foot_p[leg] = p_B[leg] + uni3(-0.02, 0.02);
+      in.foot_v[leg] = uni3(-1.0, 1.0);
+      in.foot_a[leg] = uni3(-30.0, 30.0);
+      in.amb_dir[leg] = uni3(-1.0, 1.0).normalized();
+      in.amb_share[leg] = in.stance[leg] ? 0.0 : (trial % 4 == 3 ? uni(0.1, 0.9) : 1.0);
+      in.amb_acc[leg] = uni(-20.0, 20.0) * in.amb_dir[leg];
+    }
+    MdlTrot::wbc_output_t out;
+    T_CHECK(MdlTrot::wbcSolve(wbc, in, out));
+    T_CHECK(out.result.qp_status == 0);
+    const double scale = 1.0 + maxAbs(out.result.vdot);
+    for (int leg = 0; leg < NL; leg++) {
+      if (in.stance[leg]) continue;
+      Eigen::Matrix3d J;
+      T_CHECK(kin.jacobian(leg, in.state.q[leg], J));
+      const Eigen::Vector3d& t = in.amb_dir[leg];
+      const double s = in.amb_share[leg];
+      const Eigen::Vector3d e = R * (in.foot_p[leg] - p_B[leg]), ed = R * in.foot_v[leg];
+      const Eigen::Vector3d law = R * in.foot_a[leg] + in.gains.kp_foot * (e - s * e.dot(t) * t) +
+                                  in.gains.kd_foot * (ed - s * ed.dot(t) * t) + in.amb_acc[leg];
+      const Eigen::Vector3d acc = R * (J * out.result.vdot.segment<3>(6 + 3 * leg));
+      worst = std::max(worst, maxAbs(acc - law) / scale);
+      if (s == 1.0) {
+        // No feedback at all along t.
+        worst_t = std::max(worst_t, std::abs(t.dot(acc - R * in.foot_a[leg] - in.amb_acc[leg])) / scale);
+        const Eigen::Vector3d dq = out.result.q_des[leg] - in.state.q[leg];
+        worst_q = std::max(worst_q, std::abs(t.dot(R * (J * dq))));
+        worst_q = std::max(worst_q, std::abs(t.dot(R * (J * out.result.qd_des[leg]))));
+      }
+    }
+  }
+  report("J_leg qdd - (a_B_des + PD across t + amb_acc) / (1 + |vdot|)", worst, TOL_REL);
+  report("share 1: acceleration along t less planned and feedforward", worst_t, TOL_REL);
+  report("share 1: joint references along t, J (q_des - q) and J qd_des", worst_q, 1e-10);
+}
+
 int main() {
   testStaticStand();
   testDiagonalStance();
   testSwingTask();
   testSwingRidesBody();
+  testAmbPassThrough();
   std::printf("PASS test_trot_wbc\n");
   return 0;
 }

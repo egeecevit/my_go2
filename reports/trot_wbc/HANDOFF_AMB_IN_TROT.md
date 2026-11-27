@@ -1,7 +1,46 @@
 # Handoff: AMB inside the WBIC + MPC trot
 
-Written 2026-11-26, at the end of the session that put the trot on whole-body impulse control
-(Kim et al. 2019). Nothing of AMB is in the trot yet. This file is the starting point for that work.
+Written 2026-11-26 and brought up to date on 2026-11-27, at the end of the session that put the trot on
+whole-body impulse control (Kim et al. 2019). Nothing of AMB is in the trot yet. This file is the starting
+point for that work.
+
+## Status after the second session (2026-11-27, branch `amb-trot`, uncommitted)
+
+Steps 0 to 2 of the agreed order are done. Report: `reports/trot_amb/REPORT.pdf`, rebuilt by
+`/home/ege/legged/iros/.venv/bin/python figs/trot_amb/run_experiments.py` (about 80 runs, 15 min; `--only`,
+`--out`). Tests: `ctest` 22/22. With the new keys at their defaults the trot (both paths) and key-B `MdlAMB`
+log the same values tick for tick as before. The rest of this file is the state before that session; where
+the two disagree, this section and the report are newer.
+
+What exists now (all `[trot]` keys, defaults leave the trot unchanged):
+
+- `amb`, `amb_mode = "offset" | "passthrough"`: `TrotAMB` (`TrotAMB.{hh,cc}`) runs `MdlAMB::ambLaw` on the
+  current stance pair in every two-foot phase. `MdlAMB::geometry/robotMomentum/project` take a `pair_t`; the
+  second diagonal is ordered **RL to FR** (mirror image, proven in `test_trot_amb`).
+- `swing_lift_time`: the swing rises in a fixed time, holds, comes down in the same time.
+- `amb_centre_tc`: in four-foot phases the base position reference is shifted until the CoM is over the next
+  support line.
+
+Measured, in place, ground truth:
+
+- **AMB with centring gives a slow trot in place**: two-foot phases of 0.75 to 2.0 s with a 0.5 s four-foot
+  phase, every phase a real two-foot stand, roll and pitch within 2.3 deg, both modes. Static: 8 s on each
+  diagonal of the default footprint, within 1.0 deg (offset mode).
+- **Without AMB no phase of any slow gait is a two-foot stand.** The body tips about 15 deg onto a swing
+  foot, or falls. The baseline table below ("How long a two-foot phase survives") measured three-foot
+  phases: the old swing profile leaves the ground too slowly (0.7 mm after 0.4 s of an 8 s swing).
+- **The swing legs absorb a CoM start within about 3 mm of the line** (held at -3.1 to +2.7 mm, lost at 5.5
+  and -6.0 mm). The default footprint has the CoM 9 mm off each diagonal at the first lift-off, hence the
+  centring. Centring alone holds nothing; AMB alone falls after 2.5 s.
+- Pass-through needs joint friction cancelled (`amb_joint_friction`), as `MdlAMB` did; the offset mode does not.
+- The attitude integral does not disturb AMB (off: same or slightly smoother).
+- Limits: four-foot phase of 0.3 s or 0.2 s falls (centring too slow); a 0.1 s lateral push mid-phase is
+  survived only up to 10 to 20 N; with the attitude filter in the loop it falls after 7 s (the
+  position/velocity filter alone is fine); a stop key during a long two-foot phase can fall.
+
+For step 3 (forward speeds): the centring moves the body, which a moving trot does not want; placing the
+landing feet so their line passes under the CoM is the natural replacement. `amb_min_swing` (0.4 s) and the
+0.2 s lift and descent leave AMB no window below about 0.75 s of two-foot phase.
 
 ## The research question (Ege, 2026-11-26)
 
@@ -25,10 +64,9 @@ durations, not by period and duty: `period = 2 (t_two + t_four)`, `duty = 1 − 
 
 ## Where things are
 
-- Repo `/home/ege/legged/iros/project`, branch `amb`. The whole-body trot is commit `99655d6` ("wbic+mpc
-  implementation done", not pushed when this was written). On top of it, **uncommitted**: the flight-phase fix of
-  2026-11-27 (`QuadrupedWBC.{hh,cc}`, `MdlTrot.{hh,cc}`, `tests/test_wbc.cc`, `tests/test_trot_wbc.cc`,
-  `config/default/trot.toml`, `figs/trot_wbc/`, `reports/trot_wbc/`). Ege commits; Claude only when asked.
+- Repo `/home/ege/legged/iros/project`, branch `amb`, in step with `origin/amb`. Three commits hold this work:
+  `99655d6` "wbic+mpc implementation done", `885dc7a` "flight phase handled in wbc", `47e1f48` "attitude integral
+  added". Ege commits; Claude only when asked.
 - `[trot] wbc = true` selects the whole-body trot. Default is `false`: key T runs the old per-leg trot.
 - Results: `reports/trot_wbc/REPORT.pdf` (10 pages), rebuilt by
   `/home/ege/legged/iros/.venv/bin/python figs/trot_wbc/run_experiments.py` (189 runs, 20 min; `--only`, `--out`).
@@ -49,7 +87,7 @@ durations, not by period and duty: `period = 2 (t_two + t_four)`, `duty = 1 − 
 | Log | `MdlTrot_wbc` (47 doubles, layout at `_logWbc` in `MdlTrot.hh`) | desired and solved forces, QP status, task errors, swing errors, tick time, the MPC's roll and pitch reference |
 | Attitude integral | `_trotDuring`, before the body reference is integrated | `_attitudeComp` enters `_solveMPC` as the reference roll and pitch |
 
-Decisions Ege took on 2026-11-26:
+Decisions Ege took (2026-11-26 and 27):
 
 - **Torque is capped, never an error.** The 20-tick saturation abort was removed from both trot paths and
   `torque_saturation_limit` no longer exists.
@@ -89,7 +127,8 @@ Decisions Ege took on 2026-11-26:
 All on ground-truth state, in place unless stated. Report Sec. 4 has the tables.
 
 **How long a two-foot phase survives** (15 s of trot, `wbc_touchdown_depth = 0.008`, one run each, scratch
-runs of 2026-11-26, not in `results.json`):
+runs of 2026-11-26, not in `results.json`; measured **before the attitude integral existed**, so step 0 below
+has to repeat them with the integral on, its default, before any AMB comparison):
 
 | Two-foot phase | Four-foot phase | Whole-body trot | Old path |
 |---|---|---|---|
@@ -186,5 +225,11 @@ forces, and through the foothold.
   27°); the cap makes it harmless, the cause is not examined.
 - After a module ERROR the Supervisor's sit can roll the robot over.
 - `test_trot_wbc` does not check the body tasks' error signs.
-- With both filters in the loop the whole-body trot loses most of its advantage over the old path
-  (roll rms 0.49° against 0.50°); the attitude filter drifts 1.5° in yaw over 12 s.
+- With both filters in the loop the whole-body trot keeps less of its advantage over the old path (roll rms
+  0.29° against 0.50°, pitch rms 0.33° against 0.41°), the true pitch keeps the attitude filter's bias (+0.11°,
+  the integral zeroes the estimated tilt), and the attitude filter drifts 1.5° in yaw over 12 s.
+- Other gaits run by changing `trot.phase_offset` alone (bound, pace, pronk; check runs of 2026-11-27, not in
+  the harness): no falls at duty 0.5, bounding rough (pitch rms 3–5°). Hard limit: a flight phase longer than
+  the MPC horizon (`mpc.horizon × mpc.dt` = 0.15 s) leaves solves with no contact in the horizon and the trot
+  ends in a module ERROR (pronk at duty 0.4).
+- Flight gaits ride up to 12 mm low and are airborne at most about half the scheduled time; not explained.

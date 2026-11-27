@@ -102,9 +102,11 @@ double planeAngle(const Eigen::Vector3d& s, const Eigen::Vector3d& w) {
 double mod2pi(double a) { return a - 2.0 * M_PI * std::floor(a / (2.0 * M_PI)); }
 double wrapPi(double a) { return a - 2.0 * M_PI * std::floor((a + M_PI) / (2.0 * M_PI)); }
 
+}  // namespace
+
 // Plan steps 1-2 at one configuration; project() differences it for the rates.
-bool geometry(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
-              const Eigen::Matrix3d& R, MdlAMB::proj_t& out) {
+bool MdlAMB::geometry(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
+                      const Eigen::Matrix3d& R, const pair_t& pair, proj_t& out) {
   const QuadrupedLegDynamics::params_t& prm = dyn.getParams();
   Eigen::Vector3d foot[4];
   Eigen::Vector3d c_B = BASE_MASS * BASE_COM, b_B = c_B;
@@ -117,10 +119,10 @@ bool geometry(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
       const double m = prm.leg[leg].joint[j].link.mass;
       c_B += m * kin.com_position[j];
       m_all += m;
-      // theta1 follows the CoM of {trunk, FL, RR} (the template's link 1), not
-      // the whole body: the robot balances at theta1 = 0 whatever the swing legs
-      // do, while the template's CoM moves with x2 (estimator.py body_point).
-      if (leg == 0 || leg == 3) {
+      // theta1 follows the CoM of {trunk, stance legs} (the template's link 1),
+      // not the whole body: the robot balances at theta1 = 0 whatever the swing
+      // legs do, while the template's CoM moves with x2 (estimator.py body_point).
+      if (leg == pair.a || leg == pair.b) {
         b_B += m * kin.com_position[j];
         m_sup += m;
       }
@@ -128,8 +130,8 @@ bool geometry(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
   }
 
   const Eigen::Vector3d ez = Eigen::Vector3d::UnitZ();
-  const Eigen::Vector3d p_a = R * foot[0] - FOOT_RADIUS * ez;
-  const Eigen::Vector3d p_b = R * foot[3] - FOOT_RADIUS * ez;
+  const Eigen::Vector3d p_a = R * foot[pair.a] - FOOT_RADIUS * ez;
+  const Eigen::Vector3d p_b = R * foot[pair.b] - FOOT_RADIUS * ez;
   const Eigen::Vector3d u = p_b - p_a;
   const double len = u.norm();
   out.s = u / len;
@@ -141,8 +143,10 @@ bool geometry(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
   // Swing anchors are the abduction joints: the hip roll then rotates f - h
   // rigidly in the plane, which is what makes j_c, j_d unit-sized.
   const double th1 = planeAngle(out.s, R * (b_B / m_sup) - out.o);
-  const double a_c = planeAngle(out.s, R * (foot[1] - prm.leg[1].joint[0].parent_translation));
-  const double a_d = planeAngle(out.s, R * (foot[2] - prm.leg[2].joint[0].parent_translation));
+  const double a_c = planeAngle(
+      out.s, R * (foot[pair.sw2] - prm.leg[pair.sw2].joint[0].parent_translation));
+  const double a_d = planeAngle(
+      out.s, R * (foot[pair.sw3] - prm.leg[pair.sw3].joint[0].parent_translation));
   // A leg hanging straight down sits on the atan2 cut, so the plain (-pi, pi]
   // wrap would jump there; theta2 in (-2pi, 0] and theta3 in (0, 2pi] put
   // legs-down at (-pi, +pi), i.e. x3 = -2pi (projection.py wrap_branches).
@@ -169,10 +173,10 @@ bool geometry(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
 // swing), so Mt(0,:) xd fed into k0 and the observer grows a 5 Hz swing until
 // the rolls hit their range (reproduced in the planar Python with
 // L_source = "template"; its default is the robot's L, plant.py).
-double robotMomentum(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
-                     const Eigen::Vector3d qd[4], const Eigen::Matrix3d& R,
-                     const Eigen::Vector3d& w, const Eigen::Vector3d& o,
-                     const Eigen::Vector3d& s) {
+double MdlAMB::robotMomentum(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
+                             const Eigen::Vector3d qd[4], const Eigen::Matrix3d& R,
+                             const Eigen::Vector3d& w, const Eigen::Vector3d& o,
+                             const Eigen::Vector3d& s, const pair_t& pair) {
   const QuadrupedLegDynamics::params_t& prm = dyn.getParams();
   // project() has already run geometry() on this q, so the chain cannot fail here.
   QuadrupedLegDynamics::kinematics_t kin[4];
@@ -180,12 +184,12 @@ double robotMomentum(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4]
   // The stance feet roll without slipping: their ground CONTACT points are at
   // rest while each sphere centre moves at r (omega_foot x e_z), omega_foot
   // being the calf's rate. The base origin's velocity follows, averaged over
-  // FL and RR. Taking the centres as fixed instead undercounts a pure roll by
+  // the two stance feet. Taking the centres as fixed instead undercounts a pure roll by
   // M r c_v omega (~7% of Mt(0,0) omega), which the observer would then read
   // as an external torque, and it would contradict geometry(), whose contact
   // points sit under the centres (d theta1 / d roll = 1 - r / l_b).
   Eigen::Vector3d v_base = Eigen::Vector3d::Zero();
-  for (int leg : {0, 3}) {
+  for (int leg : {pair.a, pair.b}) {
     const Eigen::Vector3d w_foot = w + kin[leg].com_angular_jacobian[2] * qd[leg];
     v_base += 0.5 * (FOOT_RADIUS * (R * w_foot).cross(Eigen::Vector3d::UnitZ()) -
                      R * (w.cross(kin[leg].foot_position) + kin[leg].foot_jacobian * qd[leg]));
@@ -206,8 +210,6 @@ double robotMomentum(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4]
   }
   return s.dot(H);
 }
-
-}  // namespace
 
 MdlAMB::MdlAMB() : Module(AMBMODULE_NAME, 0, SINGLE_USER) {}
 MdlAMB::~MdlAMB() {}
@@ -393,8 +395,8 @@ bool MdlAMB::stopBalancing() {
 }
 
 bool MdlAMB::project(const params_t& p, const input_t& in, const QuadrupedLegDynamics& dyn,
-                     proj_t& out) {
-  if (!geometry(dyn, in.q, in.R, out)) return false;
+                     proj_t& out, const pair_t& pair) {
+  if (!geometry(dyn, in.q, in.R, pair, out)) return false;
 
   // Rates as the wrapped difference of the geometry advanced by fd_step along
   // (qd, w_body) (thesis Sec. 5.5.5): one more geometry() call instead of an
@@ -406,25 +408,22 @@ bool MdlAMB::project(const params_t& p, const input_t& in, const QuadrupedLegDyn
   const double wn = in.w_body.norm();
   if (wn > 0.0) R1 = in.R * Eigen::AngleAxisd(wn * h, in.w_body / wn).toRotationMatrix();
   proj_t adv;
-  if (!geometry(dyn, q1, R1, adv)) return false;
+  if (!geometry(dyn, q1, R1, pair, adv)) return false;
   // theta2 and theta3 live on branches 2pi wide, so a step across a cut must
   // not read as a 2pi/h rate.
   for (int i = 0; i < 3; i++) out.thetad(i) = wrapPi(adv.theta(i) - out.theta(i)) / h;
   out.ch_dot = (adv.c_h - out.c_h) / h;
   out.lc_dot = (adv.l_c - out.l_c) / h;
 
-  // FR roll drives theta2, RL roll drives theta3. Measured at runtime so a
-  // wrong abduction sign convention fails loudly (|j| far from 1) instead of
-  // silently inverting the balance loop.
+  // The sw2 roll drives theta2, the sw3 roll theta3 (FR and RL on the
+  // centreline stance, where both are unit-sized).
   for (int k = 0; k < 2; k++) {
-    const int leg = (k == 0) ? 1 : 2;
+    const int leg = (k == 0) ? pair.sw2 : pair.sw3;
     for (int i = 0; i < 4; i++) q1[i] = in.q[i];
     q1[leg](0) += h;
     proj_t pert;
-    if (!geometry(dyn, q1, in.R, pert)) return false;
-    const double j = wrapPi(pert.theta(1 + k) - out.theta(1 + k)) / h;
-    if (std::abs(j) < 0.5) return false;
-    (k == 0 ? out.j_c : out.j_d) = j;
+    if (!geometry(dyn, q1, in.R, pair, pert)) return false;
+    (k == 0 ? out.j_c : out.j_d) = wrapPi(pert.theta(1 + k) - out.theta(1 + k)) / h;
   }
   return true;
 }
@@ -595,6 +594,10 @@ bool MdlAMB::tangentialFeedforward(double rho, double thdd, const Eigen::Vector3
 bool MdlAMB::computeTick(const input_t& in, cmd_t out[4]) {
   proj_t pr;
   if (!project(_p, in, *_dyn, pr)) return false;
+  // The joint-space path divides by these. Checked at runtime so a wrong
+  // abduction sign convention fails loudly (|j| far from 1) instead of
+  // silently inverting the balance loop.
+  if (std::abs(pr.j_c) < 0.5 || std::abs(pr.j_d) < 0.5) return false;
   const QuadrupedKinematics::params_t& geo = _kin->getKinematicParams();
 
   if (_first) {
@@ -645,7 +648,7 @@ bool MdlAMB::computeTick(const input_t& in, cmd_t out[4]) {
   // measured L, so the law and the observer see one consistent momentum.
   kin_t k;
   templateKin(_p, x, xd, k);  // Mt depends on x only
-  const double L = robotMomentum(*_dyn, in.q, in.qd, in.R, in.w_body, pr.o, pr.s);
+  const double L = robotMomentum(*_dyn, in.q, in.qd, in.R, in.w_body, pr.o, pr.s, FL_RR);
   xd(0) = (L - k.Mt(0, 1) * xd(1) - k.Mt(0, 2) * xd(2)) / k.Mt(0, 0);
   templateKin(_p, x, xd, k);
   const double Ld = M * GRAVITY * pr.c_h;

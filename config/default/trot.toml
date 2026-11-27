@@ -130,3 +130,43 @@ wbc_attitude_integral_input = 0.01
 
 # Bound on the reference [rad]. The largest a clean run needed was 0.038 rad (duty 0.35 at 1.0 m/s).
 wbc_attitude_integral_limit = 0.05
+
+# ---- SLOW SWINGS
+#
+# Time [s] a swing takes to rise to swing_height and, at the end, to come down from it (a quintic step each way); in between the foot stays up, and its horizontal motion keeps the whole swing. 0 keeps the default clearance profile, which is what the 0.3 s gait uses. That profile grows with the cube of the swing's progress, so a long swing barely leaves the ground at first: an 8 s swing is 0.7 mm up after 0.4 s. A foot that is scheduled to swing but still on the ground gets loaded as the body starts to tip (46 N for 70 ms measured) and kicks the body about the support line, and the "two-foot phase" then runs on three feet (CoM 71 mm off the line, no fall; 2026-11-27). A gait with long two-foot phases needs the foot clear within tens of milliseconds. Swings no longer than twice this time keep the default profile.
+swing_lift_time = 0.0
+
+# ---- ANGULAR-MOMENTUM BALANCING IN THE TWO-FOOT PHASES (thesis Ch. 4-6, TrotAMB)
+#
+# In every two-foot diagonal phase the AMB law of MdlAMB runs on the current stance pair and swings the two free legs about axes through their hips, parallel to the support line. Needs wbc = true. The law's state is reset at every phase; four-foot and flight phases are idle.
+amb = false
+
+# How the law's swing-leg angular acceleration reaches the feet. "offset": integrated into a rotation of the planned foot reference about the hip, which the swing task and the joint PD track (same feedforward, plus feedback on the commanded motion). "passthrough": thesis (6.23), (6.26), the swing task's error is removed along the tangential direction and the acceleration is a pure feedforward there.
+amb_mode = "offset"
+
+# Law gains k0 k1 k2 on L, L_dot, L_ddot and the opening-angle PD, as [amb] (the centreline balance).
+amb_gains = [950.0, 360.0, 41.0]
+amb_kp3 = 100.0
+amb_kd3 = 40.0
+amb_observer_tc = 0.05
+
+# Cross-bar template. These are [amb]'s values, momentum-matched on the centreline stance at x3 = -304 deg; on the trot's footprint the swing hips sit about 0.15 m from the support line and the legs hang near x3 = -360 deg.
+amb_template_m = [14.954, 0.2296, 0.0594]
+amb_template_l = [0.30605, 0.31773, 0.56403]
+amb_template_d = 0.093
+
+# "passthrough" only, on the share of a swing leg AMB holds, as thesis (6.28) and MdlAMB's whole-body mode: dry joint friction [N m] cancelled in the swing torque (the simulator's 0.2; joint_damping is the viscous part), and the joint PD taken off that leg (true keeps it). Without the cancellation the feedforward accelerations stall in the friction and the legs creep outward until the robot falls, 4.7 s into an 8 s two-foot phase (2026-11-27).
+amb_joint_friction = 0.2
+amb_swing_joint_pd = false
+
+# Timing within a swing [s]: authority ramps in over amb_ramp after lift-off, and the law stops amb_return before the scheduled touchdown so the feet are back on their planned trajectory when they land. A swing shorter than amb_min_swing leaves AMB off for that phase: the law's dominant time constant is about 0.28 s, and the default gait's 0.15 s swing would be all ramp and return.
+amb_ramp = 0.05
+amb_return = 0.15
+amb_min_swing = 0.4
+
+# CoM centring in the four-foot phases: time constant [s] of an integrator that shifts the base position reference until the whole-body CoM lies over the support line of the pair that stays down next; 0 turns it off. The swing legs move the CoM by about 3 mm either way (static hold on the trot's footprint: a two-foot phase started 2.7 mm off the line is held for 8 s, one started 5.5 mm off is lost), and the lift-off offsets a gait produces by itself are larger than that (3 to 10 mm measured at 1.0 s two-foot phases). Needs a four-foot phase a few time constants long. The shift is held through the two-foot phase and bounded at 3 cm.
+amb_centre_tc = 0.0
+
+# Bound on the "offset" rotation [rad] and on the foot acceleration AMB may ask for [m/s^2] (thesis Table 6.2). At 0.6 rad the static hold lost a phase started 2.7 mm off the line that the pass-through, which has no such bound, held with 36 deg of leg travel; at 1.0 rad it held it with 38 deg.
+amb_alpha_max = 0.9
+amb_foot_acc_max = 50.0

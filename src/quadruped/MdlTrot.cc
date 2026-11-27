@@ -21,6 +21,7 @@
 #include "quadruped/QuadrupedConfigs.hh"
 #include "quadruped/QuadrupedKinematics.hh"
 #include "quadruped/TrajectoryUtils.hh"
+#include "quadruped/TrotAMB.hh"
 #include "rtcore/ConfigTable.hh"
 #include "rtcore/LogServer.hh"
 #include "rtcore/ModuleManager.hh"
@@ -140,6 +141,32 @@ void SwingTrajectory::sample(double time, double scale, double scale_dot,
   velocity.z() += _height * (scale * bump_dot + scale_dot * bump);
   acceleration.z() +=
       _height * (scale * bump_ddot + 2.0 * scale_dot * bump_dot + scale_ddot * bump);
+}
+
+void SwingTrajectory::sampleLifted(double time, double lift, double scale, double scale_dot,
+                                   double scale_ddot, Eigen::Vector3d& position,
+                                   Eigen::Vector3d& velocity,
+                                   Eigen::Vector3d& acceleration) const {
+  if (!_valid || !(lift > 0.0) || _duration <= 2.0 * lift) {
+    sample(time, scale, scale_dot, scale_ddot, position, velocity, acceleration);
+    return;
+  }
+  // The start-to-end polynomial on its own clock, without sample()'s
+  // clearance bump: that bump grows with the cube of the swing's progress.
+  sample(time, 0.0, 0.0, 0.0, position, velocity, acceleration);
+  const double t = std::max(0.0, std::min(_duration, time));
+  double b = 1.0, bd = 0.0, bdd = 0.0;
+  if (t < lift) {
+    TrajectoryUtils::sampleQuintic(t / lift, lift, b, bd, bdd);
+  } else if (t > _duration - lift) {
+    TrajectoryUtils::sampleQuintic((t - (_duration - lift)) / lift, lift, b, bd, bdd);
+    b = 1.0 - b;
+    bd = -bd;
+    bdd = -bdd;
+  }
+  position.z() += _height * scale * b;
+  velocity.z() += _height * (scale * bd + scale_dot * b);
+  acceleration.z() += _height * (scale * bdd + 2.0 * scale_dot * bd + scale_ddot * b);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +305,8 @@ void MdlTrot::init() {
                             (unsigned char*)_logBodyReference);
     _logserver->registerVar(LOG_DOUBLE, 47, TROTMODULE_NAME, "wbc",
                             (unsigned char*)_logWbc);
+    _logserver->registerVar(LOG_DOUBLE, TrotAMB::LOG_SIZE, TROTMODULE_NAME, "amb",
+                            (unsigned char*)_logAmb);
   }
 
   _readConfig();
@@ -292,6 +321,52 @@ void MdlTrot::init() {
     _wbModel = new QuadrupedDynamics(createGo2WholeBodyConfig());
     _wbcSolver = new QuadrupedWBC();
   }
+  _readAmbConfig();
+}
+
+void MdlTrot::_readAmbConfig() {
+  static_assert(sizeof(_logAmb) == TrotAMB::LOG_SIZE * sizeof(double), "MdlTrot_amb log size");
+  ConfigTable config;
+  if (!_mgr->getConfigTable("trot", config) || !config.getBool("amb", false)) return;
+  if (!_wbc) {
+    _mgr->warning(TROTMODULE_NAME, "[trot] amb acts through the whole-body path; it stays off");
+    return;
+  }
+  TrotAMB::params_t p;
+  const std::string mode = config.getString("amb_mode", "offset");
+  if (mode == "passthrough")
+    p.mode = TrotAMB::PASSTHROUGH;
+  else if (mode != "offset")
+    _mgr->warning(TROTMODULE_NAME, "Unknown [trot] amb_mode \"%s\"; using \"offset\"",
+                  mode.c_str());
+  // A short array keeps the default: a zero template mass makes the law singular.
+  const auto vec3 = [&config](const char* key, Eigen::Vector3d& v) {
+    ConfigArray arr;
+    if (!config.getArray(key, arr) || arr.size() < 3) return;
+    for (int i = 0; i < 3; i++) v(i) = arr.getDoubleAt(i, v(i));
+  };
+  vec3("amb_template_m", p.law.template_m);
+  vec3("amb_template_l", p.law.template_l);
+  vec3("amb_gains", p.law.gains);
+  p.law.template_d = config.getDouble("amb_template_d", p.law.template_d);
+  p.law.kp3 = config.getDouble("amb_kp3", p.law.kp3);
+  p.law.kd3 = config.getDouble("amb_kd3", p.law.kd3);
+  p.law.observer_tc = config.getDouble("amb_observer_tc", p.law.observer_tc);
+  p.law.foot_acc_max = config.getDouble("amb_foot_acc_max", p.law.foot_acc_max);
+  p.ramp = config.getDouble("amb_ramp", p.ramp);
+  p.ret = config.getDouble("amb_return", p.ret);
+  p.min_swing = config.getDouble("amb_min_swing", p.min_swing);
+  p.alpha_max = config.getDouble("amb_alpha_max", p.alpha_max);
+  _ambJointFriction = config.getDouble("amb_joint_friction", _ambJointFriction);
+  _ambSwingJointPd = config.getBool("amb_swing_joint_pd", _ambSwingJointPd);
+  _ambCentreTc = config.getDouble("amb_centre_tc", _ambCentreTc);
+  // Both are divided by, or scale a quintic's duration.
+  if (!(p.ramp > 0.0)) p.ramp = 1e-3;
+  if (!(p.ret > 0.0)) p.ret = 1e-3;
+  _amb = new TrotAMB(createGo2DynamicsConfig());
+  _amb->setParams(p);
+  _mgr->message("MdlTrot: AMB in the two-foot phases, mode %s, return %.3f s, min swing %.3f s",
+                p.mode == TrotAMB::OFFSET ? "offset" : "passthrough", p.ret, p.min_swing);
 }
 
 void MdlTrot::_readConfig() {
@@ -410,6 +485,7 @@ void MdlTrot::_readConfig() {
   _wbcJointKp = config.getDouble("wbc_joint_kp", _wbcJointKp);
   _wbcJointKd = config.getDouble("wbc_joint_kd", _wbcJointKd);
   _wbcTouchdownDepth = config.getDouble("wbc_touchdown_depth", _wbcTouchdownDepth);
+  _swingLiftTime = config.getDouble("swing_lift_time", _swingLiftTime);
   _wbcAttitudeGain = config.getDouble("wbc_attitude_integral_gain", _wbcAttitudeGain);
   _wbcAttitudeLimit = config.getDouble("wbc_attitude_integral_limit", _wbcAttitudeLimit);
   _wbcAttitudeInput = config.getDouble("wbc_attitude_integral_input", _wbcAttitudeInput);
@@ -429,6 +505,7 @@ void MdlTrot::uninit() {
     _logserver->deleteVar(TROTMODULE_NAME, "torquereq");
     _logserver->deleteVar(TROTMODULE_NAME, "bodyref");
     _logserver->deleteVar(TROTMODULE_NAME, "wbc");
+    _logserver->deleteVar(TROTMODULE_NAME, "amb");
     _logserver = nullptr;
   }
 
@@ -438,6 +515,8 @@ void MdlTrot::uninit() {
   _wbModel = nullptr;
   delete _wbcSolver;
   _wbcSolver = nullptr;
+  delete _amb;
+  _amb = nullptr;
 }
 
 void MdlTrot::activate() {
@@ -499,6 +578,8 @@ void MdlTrot::deactivate() {
                   "fallback ticks %d, torque saturated on %d ticks",
                   1e6 * _wbcTimeSum / _wbcTicks, 1e6 * _wbcTimeMax, _wbcTicks, _wbcQpFailures,
                   _wbcFallbackTicks, _wbcSaturatedTicks);
+  if (_amb)
+    _mgr->message("MdlTrot: AMB law not evaluable on %d ticks", _amb->invalidTicks());
 
   // Preserve status for Supervisor inspection while releasing owned modules.
   for (int i = 0; i < NUM_LEGS; i++) _mgr->releaseModule(_legs[i], this);
@@ -813,6 +894,9 @@ void MdlTrot::_trotEntry() {
   _tiltSum.setZero();
   _tiltCount = 0;
   _tiltCycle = 0;
+  if (_amb) _amb->reset();
+  _ambCentre.setZero();
+  _ambCentreT = 0.0;
 
   // Start with zero command scale; ramp to the configured twist in TROT.
   _speedScale = 0.0;
@@ -996,9 +1080,9 @@ void MdlTrot::_trotDuring() {
       _footvel[i] = dv;
       _footacc[i].setZero();
     } else {
-      _swingTrajectory[i].sample(elapsed - _swingStart[i], _liftScale,
-                                 _liftScaleDot, _liftScaleDDot, _footpos[i],
-                                 _footvel[i], _footacc[i]);
+      _swingTrajectory[i].sampleLifted(elapsed - _swingStart[i], _swingLiftTime, _liftScale,
+                                       _liftScaleDot, _liftScaleDDot, _footpos[i],
+                                       _footvel[i], _footacc[i]);
     }
 
     _stance[i] = scheduledStance;
@@ -1029,7 +1113,7 @@ void MdlTrot::_trotDuring() {
 
   // A tick the whole-body controller cannot solve falls through to the
   // per-leg commands below.
-  if (_wbc && _wbcTick()) return;
+  if (_wbc && _wbcTick(elapsed)) return;
 
   const Eigen::Vector3d zero = Eigen::Vector3d::Zero();
   const Eigen::Vector3d gravityBody =
@@ -1122,8 +1206,20 @@ bool MdlTrot::wbcSolve(QuadrupedWBC& wbc, const wbc_input_t& in, wbc_output_t& o
     // R v_B: the foot's velocity relative to the body frame, in world axes.
     const Eigen::Vector3d u = foot.J * v - v_base - w.cross(r);
     // The leg-relative errors in world axes: R (p_B_des - p_B), R (v_B_des - v_B).
-    const Eigen::Vector3d e = R * in.foot_p[leg] - r;
-    const Eigen::Vector3d ed = R * in.foot_v[leg] - u;
+    Eigen::Vector3d e = R * in.foot_p[leg] - r;
+    Eigen::Vector3d ed = R * in.foot_v[leg] - u;
+    // AMB pass-through: for its share of the direction t the reference is the
+    // measured foot (6.23), so the errors lose that share of their t component
+    // and the velocity reference becomes the measured one there; AMB's
+    // feedforward (6.26) is the only command left along t.
+    Eigen::Vector3d v_ref = R * in.foot_v[leg], a_amb = Eigen::Vector3d::Zero();
+    if (in.amb_share[leg] > 0.0) {
+      const Eigen::Vector3d& t = in.amb_dir[leg];
+      v_ref -= in.amb_share[leg] * ed.dot(t) * t;
+      e -= in.amb_share[leg] * e.dot(t) * t;
+      ed -= in.amb_share[leg] * ed.dot(t) * t;
+      a_amb = in.amb_acc[leg];
+    }
     QuadrupedWBC::task_t& sw = wi.task[wi.num_tasks++];
     sw.J = foot.J;
     sw.Jdv = foot.Jdv;
@@ -1135,7 +1231,7 @@ bool MdlTrot::wbcSolve(QuadrupedWBC& wbc, const wbc_input_t& in, wbc_output_t& o
     // measured body instead, the swing joint target would be shifted by that
     // body motion, and the joint PD, stiffer than this task, would track it.
     sw.pos_err = e + pos.pos_err + ori.pos_err.cross(r);
-    sw.vel_des = pos.vel_des + ori.vel_des.cross(r) + R * in.foot_v[leg];
+    sw.vel_des = pos.vel_des + ori.vel_des.cross(r) + v_ref;
     // p_f = p_base + R p_B differentiated twice, with the body moving as the
     // two body tasks command (a_base, alpha) and p_B'' = a_B_des + kp e + kd e':
     //   a_base + alpha x r + w x (w x r) + 2 w x u + R p_B''.
@@ -1144,12 +1240,12 @@ bool MdlTrot::wbcSolve(QuadrupedWBC& wbc, const wbc_input_t& in, wbc_output_t& o
     // closes e'' + kd e' + kp e = 0 in the body frame. The QP then corrects
     // only the base acceleration, which leaves p_B'' (joint terms) untouched.
     sw.acc_cmd = pos.acc_cmd + ori.acc_cmd.cross(r) + w.cross(w.cross(r)) + 2.0 * w.cross(u) +
-                 R * in.foot_a[leg] + k.kp_foot * e + k.kd_foot * ed;
+                 R * in.foot_a[leg] + k.kp_foot * e + k.kd_foot * ed + a_amb;
   }
   return wbc.solve(wi, out.result);
 }
 
-bool MdlTrot::_wbcTick() {
+bool MdlTrot::_wbcTick(double elapsed) {
   const auto start = std::chrono::steady_clock::now();
   const Eigen::Vector3d& comOffset = _mpc->getParams().com_offset_body;
 
@@ -1183,12 +1279,71 @@ bool MdlTrot::_wbcTick() {
     in.foot_v[i] = _footvel[i];
     in.foot_a[i] = _footacc[i];
   }
+  // AMB changes what the swing tasks ask for; _footpos and the footref log
+  // keep the planned trajectory.
+  if (_amb && ok) {
+    TrotAMB::input_t ai;
+    ai.body.R = st.R;
+    ai.body.w_body = st.w_body;
+    ai.body.t = elapsed;
+    for (int i = 0; i < NUM_LEGS; i++) {
+      ai.body.q[i] = st.q[i];
+      ai.body.qd[i] = st.qd[i];
+      ai.stance[i] = _stance[i];
+      ai.swing_time[i] = elapsed - _swingStart[i];
+      // The feet must be back on their planned trajectory before they come
+      // down, not at the touchdown: with swing_lift_time the descent takes the
+      // last part of the swing, and a foot that met the ground still carrying
+      // AMB's offset landed 3 to 7 cm off its target (2026-11-27).
+      const double duration = _swingEnd[i] - _swingStart[i];
+      const bool lifted = _swingLiftTime > 0.0 && duration > 2.0 * _swingLiftTime;
+      ai.swing_left[i] = _swingEnd[i] - elapsed - (lifted ? _swingLiftTime : 0.0);
+      ai.foot_p[i] = _footpos[i];
+      ai.foot_v[i] = _footvel[i];
+      ai.foot_a[i] = _footacc[i];
+    }
+    // No AMB swing while the stop ramp keeps the feet on the ground.
+    ai.scale = _liftScale;
+    TrotAMB::output_t ao;
+    _amb->tick(ai, ao);
+    for (int i = 0; i < NUM_LEGS; i++) {
+      in.foot_p[i] = ao.foot_p[i];
+      in.foot_v[i] = ao.foot_v[i];
+      in.foot_a[i] = ao.foot_a[i];
+      in.amb_dir[i] = ao.dir[i];
+      in.amb_acc[i] = ao.acc[i];
+      in.amb_share[i] = ao.share[i];
+    }
+    std::copy(_amb->log(), _amb->log() + TrotAMB::LOG_SIZE, _logAmb);
+
+    // The swing legs move the CoM by a few millimetres at most, so a two-foot
+    // phase has to start with the CoM over its support line. While all four
+    // feet are down, the base position reference is shifted until the CoM
+    // lies over the line of the pair that stays down next (the role
+    // MdlDiagonalStance has before MdlAMB). An integrator on the offset, so
+    // it ends there whatever the task's own lag; held through the two-foot phase.
+    if (_ambCentreTc > 0.0 && _stance[0] && _stance[1] && _stance[2] && _stance[3]) {
+      // The pair further into its stance lifts first.
+      const int next = _gait.stanceProgress(0, elapsed) > _gait.stanceProgress(1, elapsed) ? 1 : 0;
+      double c_h;
+      Eigen::Vector3d t_h;
+      const double dt = elapsed - _ambCentreT;
+      if (dt > 0.0 && dt < 0.01 && _amb->lineOffset(ai.body, next, c_h, t_h)) {
+        t_h.z() = 0.0;
+        _ambCentre -= dt / _ambCentreTc * c_h * t_h;
+        const double n = _ambCentre.norm();
+        if (n > 0.03) _ambCentre *= 0.03 / n;
+      }
+    }
+    _ambCentreT = elapsed;
+  }
   // _desPos is a COM reference at the attitude Rz(_desYaw). The velocity is the
   // one _integrateBodyReference integrates; the base origin's differs from it
   // by w_des x (R_des c), at most 1.7 mm/s per rad/s of yaw rate, dropped.
   in.R_des = _rotZ(_desYaw);
   in.w_des = Eigen::Vector3d(0.0, 0.0, _yawRateCommand());
-  in.p_des = _desPos - in.R_des * comOffset;
+  // _ambCentre is zero unless [trot] amb_centre_tc is set.
+  in.p_des = _desPos - in.R_des * comOffset + _ambCentre;
   const Eigen::Vector3d vc = _twistCommand();
   in.v_des = in.R_des * Eigen::Vector3d(vc.x(), vc.y(), 0.0);
   in.gains = _wbcGains;
@@ -1228,7 +1383,7 @@ bool MdlTrot::_wbcTick() {
     // p_B_des - p_B; the swing task's pos_err also carries the body motion.
     const Eigen::Vector3d e =
         _stance[i] ? Eigen::Vector3d::Zero()
-                   : Eigen::Vector3d(_footpos[i] - _Rbw.transpose() * dyn.foot[i].p);
+                   : Eigen::Vector3d(in.foot_p[i] - _Rbw.transpose() * dyn.foot[i].p);
     for (int a = 0; a < 3; a++) {
       _logWbc[6 * i + a] = in.f_des[i][a];
       _logWbc[6 * i + 3 + a] = out.result.f[i][a];
@@ -1238,8 +1393,8 @@ bool MdlTrot::_wbcTick() {
 
   // Kim: every joint gets the WBIC torque and a PD on the kinematic stage's
   // references, with the same gains in stance and swing.
-  const Eigen::Vector3d kp = Eigen::Vector3d::Constant(_wbcJointKp);
-  const Eigen::Vector3d kd = Eigen::Vector3d::Constant(_wbcJointKd);
+  const Eigen::Vector3d kpAll = Eigen::Vector3d::Constant(_wbcJointKp);
+  const Eigen::Vector3d kdAll = Eigen::Vector3d::Constant(_wbcJointKd);
   const Eigen::Vector3d& tauLimit = _wbModel->getParams().legs.torque_limit;
   bool saturated = false;
   for (int i = 0; i < NUM_LEGS; i++) {
@@ -1247,7 +1402,30 @@ bool MdlTrot::_wbcTick() {
     Eigen::Vector3d qDes = out.result.q_des[i];
     _kinematics->clampToJointLimits(i, qDes);
     const Eigen::Vector3d& qdDes = out.result.qd_des[i];
-    const Eigen::Vector3d tau = out.result.tau.segment<3>(3 * i);
+    Eigen::Vector3d tau = out.result.tau.segment<3>(3 * i);
+    Eigen::Vector3d kp = kpAll, kd = kdAll;
+    if (in.amb_share[i] > 0.0) {
+      // AMB pass-through asks the swing joints for small accelerations by
+      // feedforward torque alone. The joints' viscous and dry friction are not
+      // in the model's h: uncancelled, the 0.2 N m of dry friction stalls
+      // those accelerations and the legs creep outward until the robot falls
+      // (4.7 s into an 8 s two-foot phase; MdlAMB found the same). The sign at
+      // rest is taken from the commanded acceleration, as in MdlAMB.
+      const double share = in.amb_share[i];
+      const Eigen::Vector3d qdd = out.result.vdot.segment<3>(6 + 3 * i);
+      for (int j = 0; j < 3; j++) {
+        const double qd = st.qd[i](j);
+        const double sv = std::tanh((qd + 0.01 * qdd(j)) / 0.02);
+        tau(j) += share * (_jointDamping * qd +
+                           _ambJointFriction * (sv + (1.0 - std::abs(sv)) * std::tanh(qdd(j) / 0.1)));
+      }
+      // Thesis (6.28): no joint PD beside the Cartesian task on a leg AMB
+      // moves. kd stays positive: MdlSimDriver replaces kd <= 0 with 5.
+      if (!_ambSwingJointPd) {
+        kp *= 1.0 - share;
+        kd = (kd * (1.0 - share)).cwiseMax(1e-3);
+      }
+    }
     // The motor torque this command asks for at the measured state. The motor
     // clips that sum per joint; clipping it here keeps the feedforward from
     // asking for more and lets the closing line count the clipped ticks.

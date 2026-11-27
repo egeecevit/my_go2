@@ -842,7 +842,7 @@ def content(R, written):
     return Bl
 
 
-def write_pdf(blocks, path, rep):
+def write_pdf(blocks, path, rep, title=TITLE, foot="MdlTrot whole-body impulse control: verification"):
     """figs/amb_wbc's layout; its own write_pdf carries that report's title and footer."""
     fonts = os.path.join(matplotlib.get_data_path(), "fonts", "ttf")
     for name, file in (("Sans", "DejaVuSans"), ("Sans-B", "DejaVuSans-Bold"), ("Sans-I", "DejaVuSans-Oblique"),
@@ -867,13 +867,13 @@ def write_pdf(blocks, path, rep):
           "code": ParagraphStyle("code", parent=body, fontName="Mono", fontSize=7.0, leading=9.0,
                                  backColor=colors.HexColor("#f3f3f3"), borderPadding=4, spaceBefore=3, spaceAfter=8)}
     doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=14 * mm,
-                            bottomMargin=15 * mm, title=TITLE, author="quadcontrol")
+                            bottomMargin=15 * mm, title=title, author="quadcontrol")
     W, H = doc.width, doc.height
 
     def footer(c, d):
         c.setFont("Sans", 7)
         c.setFillColor(colors.HexColor("#666666"))
-        c.drawString(doc.leftMargin, 8 * mm, "MdlTrot whole-body impulse control: verification")
+        c.drawString(doc.leftMargin, 8 * mm, foot)
         c.drawRightString(doc.leftMargin + W, 8 * mm, f"page {d.page}")
 
     flow = []

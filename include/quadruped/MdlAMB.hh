@@ -123,10 +123,21 @@ public:
     double c_h, c_v, l_c, lever_a, lever_b;
     double mass;  // whole robot, summed from the same model as the points
     // Rates by finite difference along (qd, w_body), and the swing hip-roll
-    // Jacobians d theta2 / d q_FR0, d theta3 / d q_RL0 measured the same way.
+    // Jacobians d theta2 / d q_sw2,0, d theta3 / d q_sw3,0 measured the same way.
     Eigen::Vector3d thetad;
     double ch_dot, lc_dot, j_c, j_d;
   };
+
+  /** An ordered support pair: the support line s runs from foot a to foot b,
+      and sw2, sw3 are the swing legs that carry theta2 and theta3. FL_RR is
+      the diagonal MdlAMB balances on. The other diagonal is its mirror image,
+      and a mirror flips the sign of every angle and momentum about the line;
+      running the line from RL to FR flips them back, so t_h = s x t_v, the
+      theta2/theta3 branches, L = s . H and e_t = s x e_r hold for RL_FR
+      unchanged (test_trot_amb checks this against the mirrored state). */
+  struct pair_t { int a, b, sw2, sw3; };
+  static constexpr pair_t FL_RR{0, 3, 1, 2};
+  static constexpr pair_t RL_FR{2, 1, 0, 3};
 
   MdlAMB();
   ~MdlAMB();
@@ -147,10 +158,20 @@ public:
       caller sits right away, as before. Repeated calls are harmless. */
   bool stopBalancing();
 
-  /** False on a kinematics failure or a swing Jacobian magnitude below 0.5
-      (a wrong abduction sign would otherwise invert the balance loop). */
+  /** Support frame, template angles and CoM offset at one configuration, all
+      relative to the base origin in world axes. False on a kinematics failure. */
+  static bool geometry(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
+                       const Eigen::Matrix3d& R, const pair_t& pair, proj_t& out);
+  /** Angular momentum [kg m^2/s] of the whole robot about the line (o, s), the
+      base velocity taken from the pair's two planted feet. */
+  static double robotMomentum(const QuadrupedLegDynamics& dyn, const Eigen::Vector3d q[4],
+                              const Eigen::Vector3d qd[4], const Eigen::Matrix3d& R,
+                              const Eigen::Vector3d& w, const Eigen::Vector3d& o,
+                              const Eigen::Vector3d& s, const pair_t& pair);
+  /** geometry() plus its rates and the swing hip-roll Jacobians j_c, j_d.
+      False on a kinematics failure. */
   static bool project(const params_t& p, const input_t& in, const QuadrupedLegDynamics& dyn,
-                      proj_t& out);
+                      proj_t& out, const pair_t& pair = FL_RR);
   static void templateKin(const params_t& p, const Eigen::Vector3d& x,
                           const Eigen::Vector3d& xd, kin_t& k);
   /** Template x1 whose CoM offset m_tot c_x equals the robot's M c_h, seeded

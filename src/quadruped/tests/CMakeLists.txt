@@ -55,6 +55,11 @@ add_executable(test_trot_wbc test_trot_wbc.cc)
 target_link_libraries(test_trot_wbc quadruped rtcore rtclient)
 add_test(NAME test_trot_wbc COMMAND test_trot_wbc)
 
+# TrotAMB and the pair-aware MdlAMB projection; MdlAMB.o carries the Module base.
+add_executable(test_trot_amb test_trot_amb.cc)
+target_link_libraries(test_trot_amb quadruped rtcore rtclient)
+add_test(NAME test_trot_amb COMMAND test_trot_amb)
+
 add_executable(test_config_layering test_config_layering.cc)
 target_link_libraries(test_config_layering rtcore rtclient)
 foreach(chain robotv1 sim go1)

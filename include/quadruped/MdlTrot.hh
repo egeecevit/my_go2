@@ -23,6 +23,7 @@ class MdlLegControl;
 class MdlOrientationEstimator;
 class MdlPosVelEstimator;
 class QuadrupedKinematics;
+class TrotAMB;
 
 /** Integer-clock schedule for MPC solve deadlines.
 
@@ -60,6 +61,16 @@ class SwingTrajectory {
   void sample(double time, double scale, double scale_dot, double scale_ddot,
               Eigen::Vector3d& position, Eigen::Vector3d& velocity,
               Eigen::Vector3d& acceleration) const;
+
+  /** sample() with a different clearance profile: the foot rises to the full
+      height over the first `lift` seconds (a quintic step), holds it, and
+      comes down over the last `lift` seconds, while the start-to-end motion
+      keeps its own clock. A long swing then leaves the ground as fast as a
+      short one instead of creeping up over its whole duration. lift <= 0, or
+      a segment no longer than 2 lift, is the plain sample(). */
+  void sampleLifted(double time, double lift, double scale, double scale_dot, double scale_ddot,
+                    Eigen::Vector3d& position, Eigen::Vector3d& velocity,
+                    Eigen::Vector3d& acceleration) const;
 
   bool isValid() const { return _valid; }
   double duration() const { return _duration; }
@@ -228,6 +239,14 @@ class MdlTrot : public rtcore::Module {
         and its first two derivatives taken in the body frame. Read for swing
         legs only. */
     Eigen::Vector3d foot_p[NUM_LEGS], foot_v[NUM_LEGS], foot_a[NUM_LEGS];
+    /** AMB pass-through (thesis 6.23, 6.26; TrotAMB mode PASSTHROUGH). For a
+        swing leg with amb_share > 0, that share of the leg-relative position
+        and velocity error is removed along the unit direction amb_dir (world
+        axes), in both stages, so neither the task nor the joint PD acts
+        against AMB there, and amb_acc (world axes [m/s^2]) is added to the
+        acceleration command. amb_dir and amb_acc are read only then. */
+    Eigen::Vector3d amb_dir[NUM_LEGS], amb_acc[NUM_LEGS];
+    double amb_share[NUM_LEGS] = {0.0, 0.0, 0.0, 0.0};
     wbc_gains_t gains;
   };
 
@@ -414,6 +433,8 @@ class MdlTrot : public rtcore::Module {
   double _wbcJointKp = 30.0;
   double _wbcJointKd = 3.0;
   double _wbcTouchdownDepth = 0.003;
+  // SwingTrajectory::sampleLifted's lift time [s]; 0 samples the swing uniformly.
+  double _swingLiftTime = 0.0;
   // Attitude integral: the share of a gait cycle's mean tilt moved into the
   // MPC's roll and pitch reference at the end of that cycle, the bound on that
   // reference [rad] and the largest mean tilt a cycle may contribute [rad].
@@ -448,7 +469,26 @@ class MdlTrot : public rtcore::Module {
   //   [45], [46]      the MPC's roll and pitch reference [rad] (attitude integral)
   double _logWbc[47] = {0};
 
+  // -- Angular-momentum balancing in the two-foot phases, [trot] amb ----------
+  //
+  // Null unless [trot] amb and the whole-body path are both on. Logged as
+  // MdlTrot_amb, layout at TrotAMB::_log.
+  TrotAMB* _amb = nullptr;
+  double _logAmb[24] = {0};
+  // Pass-through only, on the share of a swing leg AMB holds (thesis 6.28 and
+  // MdlAMB's whole-body mode): dry joint friction [N m] cancelled in the swing
+  // torque, with _jointDamping as the viscous part, and whether the joint PD
+  // stays on.
+  double _ambJointFriction = 0.2;
+  bool _ambSwingJointPd = false;
+  // CoM centring in the four-foot phases: time constant [s] (0: off), and the
+  // horizontal shift of the base position reference it has built up, world [m].
+  double _ambCentreTc = 0.0;
+  Eigen::Vector3d _ambCentre = Eigen::Vector3d::Zero();
+  double _ambCentreT = 0.0;
+
   void _readConfig();
+  void _readAmbConfig();
 
   /** \brief Nominal resting foot position for a leg, in the body frame. */
   Eigen::Vector3d _originFoot(int leg) const;
@@ -490,9 +530,10 @@ class MdlTrot : public rtcore::Module {
   void _sendTarget();
   bool _checkTrackingError() const;
 
-  /** \brief Commands all four legs through wbcSolve(). False, with nothing
-      commanded, when the WBC has no solution this tick. */
-  bool _wbcTick();
+  /** \brief Commands all four legs through wbcSolve(), elapsed being the time
+      since TROT entry. False, with nothing commanded, when the WBC has no
+      solution this tick. */
+  bool _wbcTick(double elapsed);
 
   void _hold();
   void _prepEntry();
