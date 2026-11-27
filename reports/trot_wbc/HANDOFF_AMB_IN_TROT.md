@@ -19,9 +19,11 @@ What exists now (all `[trot]` keys, defaults leave the trot unchanged):
   second diagonal is ordered **RL to FR** (mirror image, proven in `test_trot_amb`).
 - `swing_lift_time`: the swing rises in a fixed time, holds, comes down in the same time.
 - `amb_centre`: the base position task takes its horizontal error from the planted feet, not from the
-  position estimate. With four feet down it brings the CoM over the next support line; in a two-foot phase it
-  holds the base where it was against the stance line. **In place only** (a commanded velocity is not followed
-  in position). Ege, 2026-11-27: fine for now, to be fixed later.
+  position estimate. Across the support line it keeps the CoM the robot would have with its swing feet on
+  their planned references over the line; along the line it follows the commanded velocity's component along
+  it (also the MPC's velocity reference). The feet that lift get touchdown points whose line passes under the
+  CoM (`SwingTrajectory::shiftEnd`). A commanded velocity therefore gives a zig-zag along the two diagonals.
+  Ege, 2026-11-27: the centring is fine for now, to be fixed later.
 
 Measured, in place, ground truth unless stated:
 
@@ -45,9 +47,28 @@ Measured, in place, ground truth unless stated:
 - Limits: a 0.1 s lateral push mid-phase is survived up to 20 / 50 N (offset) and 10 / 20 N (pass-through);
   a stop key during a long two-foot phase can fall.
 
-For step 3 (forward speeds): the centring ignores the commanded position; placing the landing feet so their
-line passes under the CoM is the natural replacement. `amb_min_swing` (0.4 s) and the 0.2 s lift and descent
-leave AMB no window below about 0.75 s of two-foot phase.
+Step 3, first part (slow forward, done 2026-11-27): at 1.0 s two-foot and 0.5 s four-foot phases a
+commanded 0.02 to 0.15 m/s gives 0.016 to 0.099 m/s with every two-foot phase held (roll and pitch within 5 deg);
+0.20 m/s falls; both filters in the loop are tolerated at 0.10 m/s; lateral and yaw commands work. Without the
+law the same zig-zag tips onto a swing foot in almost every phase; with nothing it falls. The pass-through
+fails forward. Report Sec. 6.
+
+Step 3, second part (open): AMB at the normal 0.3 s gait. As built it never acts there (`amb_min_swing`, and
+the 0.15 s swing is shorter than lift, return and descent together): logs with `amb = true` equal `amb = false`.
+It needs a form of the law that acts on the deviation of L from the gait's own profile.
+Measured first (2026-11-27, law observing only, scratch runs, not in `results.json`), 0.3 s gait, ground truth:
+
+| | 0.35 m/s | 0.70 m/s |
+|---|---|---|
+| L about the stance line over a stance | -0.94 to -0.84 kg m^2/s | -1.89 to -1.68 |
+| CoM offset from the line over a stance | +15.7 to -12.6 mm | +30.0 to -26.7 mm |
+| cycle-to-cycle sd of L, steady | 0.0004 | 0.0008 |
+| roll / pitch rms, steady | 0.04 / 0.05 deg | 0.09 / 0.14 deg |
+| L deviation after an 80 N, 0.1 s lateral push | 1.4, then up to 2.8, gone after 3 to 4 stances | 1.3, up to 3.1 |
+
+In steady state there is no deviation to act on. After a push the deviation is 1.4 to 3 kg m^2/s, while the
+swing legs can change L by roughly 0.07 (3 mm of CoM for 0.15 s) plus a transient 0.3 or so from their own
+rotation (my estimate): a few to twenty percent of what one push leaves. Not built; Ege to decide.
 
 Running: simulations no longer exclude each other. `-c "logserver.server_port = N"` gives each its own port
 (two at once log the same values as either alone); the harness uses 5510 and up, six runs at a time, and

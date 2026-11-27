@@ -100,6 +100,16 @@ bool SwingTrajectory::reset(const Eigen::Vector3d& position0,
   return true;
 }
 
+void SwingTrajectory::shiftEnd(const Eigen::Vector3d& d) {
+  if (!_valid) return;
+  // reset()'s coefficients are linear in the end position.
+  const double T3 = _duration * _duration * _duration;
+  _position1 += d;
+  _coefficient[3] += 10.0 * d / T3;
+  _coefficient[4] -= 15.0 * d / (T3 * _duration);
+  _coefficient[5] += 6.0 * d / (T3 * _duration * _duration);
+}
+
 void SwingTrajectory::sample(double time, double scale, double scale_dot,
                              double scale_ddot, Eigen::Vector3d& position,
                              Eigen::Vector3d& velocity,
@@ -781,7 +791,9 @@ bool MdlTrot::_solveMPC(double elapsed) {
     // Hold the COM height captured at TROT entry.
     in.reference[k].com_position_world = Eigen::Vector3d(p.x(), p.y(), _desPos.z());
     in.reference[k].angular_velocity_world = Eigen::Vector3d(0.0, 0.0, yawRate);
-    in.reference[k].com_velocity_world = v;
+    // With the CoM centring on, the body follows the commanded velocity only
+    // along the current support line (see _wbcTick).
+    in.reference[k].com_velocity_world = _ambVelOn ? _ambVel : v;
   }
 
   // Use measured stance-foot positions for interval zero so applied forces use
@@ -908,6 +920,7 @@ void MdlTrot::_trotEntry() {
   if (_amb) _amb->reset();
   _ambCentre.setZero();
   _ambCentrePhase = -1;
+  _ambVelOn = false;
 
   // Start with zero command scale; ramp to the configured twist in TROT.
   _speedScale = 0.0;
@@ -1328,21 +1341,32 @@ bool MdlTrot::_wbcTick(double elapsed) {
     std::copy(_amb->log(), _amb->log() + TrotAMB::LOG_SIZE, _logAmb);
 
     // The swing legs move the CoM by about 3 mm at most, so a two-foot phase
-    // has to start with the CoM over its support line and the body must not
-    // wander off it (the role MdlDiagonalStance has before MdlAMB). The base
-    // position task therefore takes its horizontal error from the planted
-    // feet, not from the position estimate. Across the support line: with all
-    // four feet down, the CoM's offset from the line of the pair that stays
-    // down next, so the task itself brings the CoM over that line; in a
-    // two-foot phase, the base's displacement against the stance line since
-    // the phase began. Along the line: the base's displacement since the
-    // phase began. The estimate is off by 1 to 3 cm at a touchdown of a gait
-    // this slow: a shift integrated into its reference left the CoM 4 to 7 mm
-    // off the line (a fall after 17 s with the filter in the loop), and with
-    // no position error along the line the body slid 4 cm along it in 2 s
-    // (2026-11-27). _ambCentre is the reference shift that gives the task
-    // that error. It is meant for a trot in place: a commanded velocity is
-    // not followed in position while it is on.
+    // has to start with the CoM over its support line and stay there (the
+    // role MdlDiagonalStance has before MdlAMB). The base position task
+    // therefore takes its horizontal error from the planted feet, not from
+    // the position estimate, which is off by 1 to 3 cm at a touchdown of a
+    // gait this slow.
+    //
+    // Across the support line (the stance pair's, or with all four feet down
+    // that of the pair that stays down next): the offset from the line of the
+    // CoM the robot would have with its swing feet on their PLANNED
+    // references. With four feet down that is the CoM itself. In a two-foot
+    // phase it leaves out what AMB has done with the swing legs, so the task
+    // does not undo AMB's balancing, but it does follow the gait's own swing:
+    // a forward stride carries the two swing legs' mass across the line (8 mm
+    // of CoM at 0.05 m/s) and the body has to give way by as much.
+    //
+    // Along the line: a reference that advances with the commanded velocity's
+    // component along it. The component across the line is not followed: the
+    // body walks a zig-zag, along each diagonal in turn, and crosses to the
+    // next line while four feet are down. _ambVel is that along-line velocity,
+    // which the MPC and the position task take as their velocity reference.
+    //
+    // Earlier versions and what they did (2026-11-27): a shift integrated into
+    // the estimator-based reference left the CoM 4 to 7 mm off the line with
+    // the filter in the loop (a fall after 17 s); no position error along the
+    // line let the body slide 4 cm along it in 2 s.
+    _ambVelOn = false;
     if (_ambCentreOn) {
       const bool four = _stance[0] && _stance[1] && _stance[2] && _stance[3];
       int line = -1;
@@ -1353,17 +1377,51 @@ bool MdlTrot::_wbcTick(double elapsed) {
       else if (_stance[1] && _stance[2] && !_stance[0] && !_stance[3])
         line = 1;
       const int phase = line < 0 ? -1 : (four ? 10 + line : line);
+      MdlAMB::input_t planned = ai.body;
+      for (int i = 0; i < NUM_LEGS; i++) {
+        Eigen::Vector3d q;
+        if (!_stance[i] && _kinematics->inverseKinematics(i, _footpos[i], q)) planned.q[i] = q;
+      }
       double c_h, b_h, a_s;
       Eigen::Vector3d t_h, s_h;
-      if (line >= 0 && _amb->lineOffset(ai.body, line, c_h, b_h, a_s, t_h, s_h)) {
-        if (phase != _ambCentrePhase) {
-          _ambCentreB0 = b_h;
-          _ambCentreA0 = a_s;
+      // The two feet that have just lifted are the next stance pair, and
+      // where they land fixes the next support line. Their touchdown points
+      // are moved, both by the same step, until that line passes under the
+      // CoM the robot will have with all four feet down. The footstep law
+      // alone leads both feet straight ahead by half a stance of travel,
+      // which puts their line that far in front of the CoM (3 cm at
+      // 0.05 m/s): 0.5 s on four feet brought the body only halfway onto it
+      // and the robot fell after three phases (2026-11-27). What is left of
+      // the lead is its part along the new line.
+      if (!four && line >= 0 && phase != _ambCentrePhase) {
+        MdlAMB::input_t landed = ai.body;
+        bool ok2 = true;
+        for (int i = 0; i < NUM_LEGS; i++) {
+          Eigen::Vector3d q;
+          if (_stance[i]) continue;
+          ok2 = ok2 && _swingTrajectory[i].isValid() &&
+                _kinematics->inverseKinematics(i, _swingTrajectory[i].endPosition(), q);
+          landed.q[i] = q;
         }
-        const double across = four ? -c_h : _ambCentreB0 - b_h;
-        const Eigen::Vector3d nominal = _desPos - _rotZ(_desYaw) * comOffset;
-        const Eigen::Vector3d shift =
-            in.p_base + across * t_h + (_ambCentreA0 - a_s) * s_h - nominal;
+        if (ok2 && _amb->lineOffset(landed, 1 - line, c_h, b_h, a_s, t_h, s_h)) {
+          t_h.z() = 0.0;
+          Eigen::Vector3d step = _Rbw.transpose() * (c_h * t_h);
+          step.z() = 0.0;
+          if (step.norm() > 0.06) step *= 0.06 / step.norm();
+          for (int i = 0; i < NUM_LEGS; i++)
+            if (!_stance[i]) _swingTrajectory[i].shiftEnd(step);
+        }
+      }
+      if (line >= 0 && _amb->lineOffset(planned, line, c_h, b_h, a_s, t_h, s_h)) {
+        if (phase != _ambCentrePhase) _ambCentreA0 = a_s;
+        const Eigen::Matrix3d Rz = _rotZ(_desYaw);
+        const Eigen::Vector3d vc = _twistCommand();
+        const double along = s_h.dot(Rz * Eigen::Vector3d(vc.x(), vc.y(), 0.0));
+        _ambCentreA0 += along * CLOCK_TO_SEC(_mgr->getStepPeriod());
+        _ambVel = along * s_h;
+        _ambVelOn = true;
+        const Eigen::Vector3d nominal = _desPos - Rz * comOffset;
+        const Eigen::Vector3d shift = in.p_base - c_h * t_h + (_ambCentreA0 - a_s) * s_h - nominal;
         _ambCentre = Eigen::Vector3d(shift.x(), shift.y(), 0.0);
       }
       _ambCentrePhase = phase;
@@ -1377,7 +1435,7 @@ bool MdlTrot::_wbcTick(double elapsed) {
   // _ambCentre is zero unless [trot] amb_centre is set.
   in.p_des = _desPos - in.R_des * comOffset + _ambCentre;
   const Eigen::Vector3d vc = _twistCommand();
-  in.v_des = in.R_des * Eigen::Vector3d(vc.x(), vc.y(), 0.0);
+  in.v_des = _ambVelOn ? _ambVel : Eigen::Vector3d(in.R_des * Eigen::Vector3d(vc.x(), vc.y(), 0.0));
   in.gains = _wbcGains;
 
   wbc_output_t out;

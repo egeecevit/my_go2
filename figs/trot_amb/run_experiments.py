@@ -21,6 +21,9 @@ on the simulated Go2, in place: every run headless, scored and plotted.
   inplace       trot in place with two-foot phases of 0.75 to 2.0 s: nothing, centring alone, and AMB with
                 centring in both realizations; AMB without centring; the attitude integral off; the filters
                 in the loop; a lateral push
+  forward       the 1.0 s / 0.5 s gait commanded forward at 0.02 to 0.20 m/s: nothing, the zig-zag alone
+                (centring and foot placement without the law) and AMB with it; other phase lengths, the
+                pass-through, the filters, a lateral and a yaw command
 
 A gait is given by its two-foot time t_two (one diagonal carries the robot, the
 other swings) and its four-foot time t_four: period = 2 (t_two + t_four), duty =
@@ -94,7 +97,8 @@ for _p in PORTS:
 ORIGINS = [0.0, -0.005, -0.009, -0.013, -0.017, -0.021]   # footprint fore-aft origin [m]: moves the CoM across the diagonals
 HEAD = (1.0, 0.5)                                         # the gait of the push, integral and filter runs
 PUSH_STEP, PUSH_CAP = 10, 150                             # [N]
-EXPERIMENTS = ["tests", "depth", "baseline", "static", "inplace"]
+EXPERIMENTS = ["tests", "depth", "baseline", "static", "inplace", "forward"]
+SPEEDS = [0.02, 0.05, 0.10, 0.15, 0.20]                   # commanded forward speed of the slow trot [m/s]
 CONFIG_KEYS = ("amb_mode", "amb_gains", "amb_kp3", "amb_kd3", "amb_observer_tc", "amb_template_m",
                "amb_template_l", "amb_template_d", "amb_ramp", "amb_return", "amb_min_swing", "amb_alpha_max",
                "amb_foot_acc_max", "wbc_kp_ori", "wbc_kd_ori", "wbc_kp_foot", "wbc_kd_foot", "wbc_joint_kp",
@@ -172,6 +176,7 @@ def summary(R, trot_s):
     moving = np.nonzero(np.any(np.diff(R.B, axis=0) != 0, axis=1))[0]
     entry = R.t[moving[0] + 1]
     out = {"period": r(R.cmd["period"], 4), "duty": r(R.cmd["duty"], 5), "entry_t": r(entry, 3),
+           "v_cmd": [R.cmd["vx"], R.cmd["vy"], R.cmd["yaw"]],
            "fall_t": R.fall(R.trot_window(entry)), "error": R.errors[0] if R.errors else None,
            "stop_completed": R.stopped, "warnings": R.warnings[:4], "wbc_closing": R.closing}
     failed = out["fall_t"] is not None or out["error"] is not None
@@ -186,6 +191,8 @@ def summary(R, trot_s):
                    roll_rms=r(amb_wbc.rms(deg[w, 0]), 3), pitch_rms=r(amb_wbc.rms(deg[w, 1]), 3),
                    roll_mean=r(deg[w, 0].mean(), 3), pitch_mean=r(deg[w, 1].mean(), 3),
                    z_min=r(R.z[w].min(), 4))
+    if (R.t[w][-1] - R.t[w][0] if w.any() else 0.0) > 3.0:   # mean body-frame velocity and yaw rate achieved
+        out.update(vx=r(R.v_body[w, 0].mean(), 4), vy=r(R.v_body[w, 1].mean(), 4), yaw_rate=r(R.yaw_rate[w].mean(), 4))
     if two.any():
         out.update(L_rms=r(amb_wbc.rms(R.L[two]), 4), L_peak=r(np.abs(R.L[two]).max(), 4),
                    ch_rms_mm=r(1e3 * amb_wbc.rms(R.ch[two]), 3), ch_peak_mm=r(1e3 * np.abs(R.ch[two]).max(), 3))
@@ -244,16 +251,17 @@ class Experiments:
         return "figs/" + name
 
     def run(self, exp, name, t_two, t_four, mode=None, extra=(), trot_s=None, logvars=None, push=None,
-            keep=False):
+            keep=False, cmd=(0.0, 0.0, 0.0)):
         """One run -> its summary (and the loaded Run when keep). mode: None
         (AMB off), "offset" or "passthrough"."""
         trot_s = trot_s or trot_time(t_two, t_four)
         path = os.path.join(self.logs, exp, name)
         over = overrides(path, t_two, t_four, trot_s, amb_on(mode) + list(extra), logvars, push)
+        over += [f"trot.forward_velocity = {cmd[0]}", f"trot.lateral_velocity = {cmd[1]}", f"trot.yaw_rate = {cmd[2]}"]
         self.wall[f"{exp}/{name}"] = simulate(path, over, T_KEY + PREP + trot_s + STOP)
         period, duty = gait(t_two, t_four)
         with _analysis:
-            R = T.Run(path, "wbc", {"vx": 0.0, "vy": 0.0, "yaw": 0.0, "period": period, "duty": duty})
+            R = T.Run(path, "wbc", {"vx": cmd[0], "vy": cmd[1], "yaw": cmd[2], "period": period, "duty": duty})
             row = dict(name=name, t_two=t_two, t_four=t_four, mode=mode or "off", trot_s=trot_s,
                        **summary(R, trot_s))
         return (row, R) if keep else row
@@ -393,6 +401,32 @@ class Experiments:
         with concurrent.futures.ThreadPoolExecutor(len(specs)) as pool:
             for (case, _m, _e, sign), f in zip(specs, [pool.submit(sweep, *sp) for sp in specs]):
                 out["push"].setdefault(case, {})["plus_y" if sign > 0 else "minus_y"] = f.result()
+        return out
+
+    # -- forward -----------------------------------------------------------------
+    def forward(self, res):
+        """The slow trot commanded forward. With the centring on the body
+        follows the command along the current support line only and the
+        landing feet are placed so their line passes under the CoM: a zig-zag."""
+        PV = "posvelestimator.use_ground_truth = false"
+        cases = (("nothing", None, []), ("zig-zag only", None, CENTRE_ONLY), ("offset", "offset", [CENTRE]))
+        out = {"speeds": self.many([({"case": case}, self.slow,
+                                     ("forward", f"v{v:.2f}_{case.replace(' ', '_')}", *HEAD, mode, extra),
+                                     {"cmd": (v, 0.0, 0.0)}) for v in SPEEDS for case, mode, extra in cases])}
+        out["variants"] = self.many([
+            ({"case": name}, self.slow,
+             ("forward", "var_" + name.replace(",", "").replace(" ", "_").replace("/", "_"), t_two, t_four, mode,
+              extra), {"cmd": cmd})
+            for name, t_two, t_four, mode, extra, cmd in (
+                ("two-foot 0.75 s, four-foot 0.2 s, 0.10 m/s", 0.75, 0.2, "offset", [CENTRE], (0.10, 0.0, 0.0)),
+                ("four-foot 0.2 s, 0.10 m/s", HEAD[0], 0.2, "offset", [CENTRE], (0.10, 0.0, 0.0)),
+                ("two-foot 2.0 s, 0.05 m/s", 2.0, HEAD[1], "offset", [CENTRE], (0.05, 0.0, 0.0)),
+                ("pass-through, 0.10 m/s", *HEAD, "passthrough", [CENTRE], (0.10, 0.0, 0.0)),
+                ("position/velocity filter in the loop, 0.10 m/s", *HEAD, "offset", [CENTRE, PV], (0.10, 0.0, 0.0)),
+                ("both filters in the loop, 0.10 m/s", *HEAD, "offset",
+                 [CENTRE, PV, "orientationestimator.use_ground_truth = false"], (0.10, 0.0, 0.0)),
+                ("lateral 0.05 m/s", *HEAD, "offset", [CENTRE], (0.0, 0.05, 0.0)),
+                ("yaw 0.1 rad/s", *HEAD, "offset", [CENTRE], (0.0, 0.0, 0.1)))])
         return out
 
 

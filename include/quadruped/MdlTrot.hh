@@ -73,6 +73,9 @@ class SwingTrajectory {
                     Eigen::Vector3d& position, Eigen::Vector3d& velocity,
                     Eigen::Vector3d& acceleration) const;
 
+  /** Moves the end point by d, start state and end velocity unchanged. */
+  void shiftEnd(const Eigen::Vector3d& d);
+
   bool isValid() const { return _valid; }
   double duration() const { return _duration; }
   const Eigen::Vector3d& endPosition() const { return _position1; }
@@ -486,11 +489,16 @@ class MdlTrot : public rtcore::Module {
   // that makes its horizontal error the one measured from the planted feet
   // (world [m]); the contact phase it was last computed in (-1: none, 0/1:
   // two-foot on that diagonal, 10/11: four feet with that diagonal next); and
-  // the base's offsets across and along the line when that phase began.
+  // the reference of the base's offset along the line.
   bool _ambCentreOn = false;
   Eigen::Vector3d _ambCentre = Eigen::Vector3d::Zero();
   int _ambCentrePhase = -1;
-  double _ambCentreB0 = 0.0, _ambCentreA0 = 0.0;
+  double _ambCentreA0 = 0.0;
+  // The commanded velocity's component along the current support line, world
+  // [m/s], and whether the centring set it on the last whole-body tick: the
+  // velocity reference of the MPC and of the position task while it is on.
+  Eigen::Vector3d _ambVel = Eigen::Vector3d::Zero();
+  bool _ambVelOn = false;
 
   void _readConfig();
   void _readAmbConfig();
