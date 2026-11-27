@@ -33,8 +33,9 @@ class QuadrupedWBC {
 
   static constexpr int NUM_LEGS = QuadrupedDynamics::NUM_LEGS;
   static constexpr int NV = QuadrupedDynamics::NV;
-  /** Body orientation, body position and two swing feet (thesis Sec. 6.2.1). */
-  static constexpr int MAX_TASKS = 4;
+  /** Body orientation, body position and one task per swing foot (thesis
+      Sec. 6.2.1 has two; a flight phase swings all four). */
+  static constexpr int MAX_TASKS = 6;
 
   /** One three-dimensional operational-space task x = f(q). */
   struct task_t {
@@ -102,10 +103,12 @@ class QuadrupedWBC {
   static bool hierarchy(const input_t& in, QuadrupedDynamics::VectorV& vdot_h,
                         Eigen::Vector3d q_des[NUM_LEGS], Eigen::Vector3d qd_des[NUM_LEGS]);
 
-  /** False, with out not meaningful, on non-finite input, no contact foot, an
-      M that is not positive definite or a failed QP. A task direction that a
-      higher priority has taken is dropped, not reported: giving way is what
-      the priority order is for. */
+  /** False, with out not meaningful, on non-finite input, an M that is not
+      positive definite or a failed QP. A task direction that a higher priority
+      has taken is dropped, not reported: giving way is what the priority order
+      is for. With no contact foot (flight) the QP has only the floating-base
+      correction: the base falls freely whatever the body tasks ask, and the
+      joint accelerations stay the hierarchy's. */
   bool solve(const input_t& in, output_t& out);
 
  private:

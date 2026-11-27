@@ -20,6 +20,8 @@ gated and plotted.
                modes; plus the measurement-chain checks
   diagnosis    targeted runs and analyses of the core logs behind the WBC's pitch offset and early touchdown
                (needs core's logs)
+  duty         duty factor 0.30 ... 0.70 at the default period, in place and forward 0.35, both modes
+               (below 0.5: flight phases)
   cadence      in place, gait period 0.3 ... 0.8 s, each mode up to its first failure
   push         in place, 0.1 s lateral pulse at the base CoM, both signs, two gait phases, each mode, to the
                first failure
@@ -108,6 +110,9 @@ CORE = [("inplace", 0.0, 0.0, 0.0, []), ("fwd035", 0.35, 0.0, 0.0, []), ("fwd070
 GROUND_TRUTH = ["orientationestimator.use_ground_truth = true", "posvelestimator.use_ground_truth = true"]
 SUPPORT_RUNS = ("inplace", "fwd070")   # support-line analysis
 PERIODS = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+# Duty factor at the default period: above 0.5 the diagonals overlap on four feet for (duty - 0.5) P, below it
+# no foot is scheduled down for (0.5 - duty) P per half cycle (a flight phase).
+DUTIES, DUTY_SPEEDS = [0.70, 0.60, 0.50, 0.45, 0.40, 0.35, 0.30], [0.0, 0.35]
 PULSE, PUSH_AT, COARSE, FINE, PUSH_CAP = 0.1, 27, 20, 5, 400   # [s], gait cycles after TROT entry, [N]
 PHASES = {"touchdown": 0.0, "midstance": 0.5 * DUTY * 0.3}       # FL-RR stance start, and half a stance later
 # Diagnosis only: a 1 um clamp holds the horizontal body reference on the estimate (the key rejects 0), so the
@@ -120,7 +125,7 @@ CONFIG = {"trot": {k: v for k, v in tomllib.load(open(os.path.join(REPO, "config
           "mpc": {k: v for k, v in tomllib.load(open(os.path.join(REPO, "config", "default", "mpc.toml"), "rb"))
                   ["mpc"].items() if k in ("dt", "horizon", "state_weights", "com_offset_body")}}
 COM_OFFSET = np.array(CONFIG["mpc"]["com_offset_body"])   # CoM from the base origin, body axes [m]
-EXPERIMENTS = ["tests", "oldpath", "amb_ablation", "core", "diagnosis", "cadence", "push"]
+EXPERIMENTS = ["tests", "oldpath", "amb_ablation", "core", "diagnosis", "duty", "cadence", "push"]
 _M, _D, _FOOT = amb._M, amb._D, amb._FOOT
 
 
@@ -234,7 +239,7 @@ class Run:
             np.where(self.pair == 0, self.grf[:, [5, 8]].max(1), self.grf[:, [2, 11]].max(1))
         # Gait datum from the first FL stance -> swing switch the log shows.
         fl = np.nonzero((self.C[:-1, 0] == 1) & (self.C[1:, 0] == 0))[0]
-        self.datum = self.t[fl[0] + 1] - DUTY * cmd["period"] if len(fl) else None
+        self.datum = self.t[fl[0] + 1] - cmd.get("duty", DUTY) * cmd["period"] if len(fl) else None
         # MdlTrot writes bodyref on every TROT/STOPPING tick and never after:
         # its last change is the end of the stop ramp, or the tick of an ERROR.
         ch = np.nonzero(np.any(np.diff(self.B, axis=0) != 0, axis=1))[0] if self.B is not None else []
@@ -845,6 +850,23 @@ class Experiments:
         ax[0, 2].legend(loc="upper left", fontsize=6)
         return self.save(f, "diagnosis.png")
 
+    # -- duty --------------------------------------------------------------------
+    def duty(self):
+        res = {m: [] for m in MODES}
+        P = PERIODS[0]
+        for mode in MODES:
+            for vx in DUTY_SPEEDS:
+                for d in DUTIES:
+                    R = self.run("duty", f"v{vx:.2f}_d{d:.2f}", mode,
+                                 {"vx": vx, "vy": 0.0, "yaw": 0.0, "period": P, "duty": d}, [f"trot.duty = {d}"])
+                    row = dict(duty=d, vx_cmd=vx, period=P, flight_scheduled_ms=r(1e3 * max(0.5 - d, 0.0) * P, 2),
+                               **metrics(R))
+                    if "window_s" in row:   # no fall, no ERROR: time without any foot on the ground, per half cycle
+                        w = R.win(*row["window_s"])
+                        row["airborne_ms"] = r(1e3 * 0.5 * P * np.mean((R.grf[w, 2::3] < CONTACT).all(1)), 2)
+                    res[mode].append(row)
+        return res
+
     # -- cadence -----------------------------------------------------------------
     def cadence(self):
         res = {m: [] for m in MODES}
@@ -952,7 +974,7 @@ def gates(res):
                       "and get the static torques; (ii) diagonal stance holds the contact points, solved forces inside "
                       "the pyramid and normal bounds; (iii) with the body off its reference the swing joint references "
                       "and acceleration command are the body-frame ones; (iv) swing joints accelerate as the "
-                      "body-frame law asks", t["total"] and t["passed"] == t["total"] and t["returncode"] == 0
+                      "body-frame law asks, in a flight phase too, where the base falls freely", t["total"] and t["passed"] == t["total"] and t["returncode"] == 0
              and t["trot_wbc_passed"], f"{t['passed']}/{t['total']} passed, test_trot_wbc "
                                        f"{'passed' if t['trot_wbc_passed'] else 'NOT passed'}")
     if "oldpath" in res:
@@ -1019,6 +1041,19 @@ def gates(res):
                  f"nonzero QP status); {sum(c['saturated_ticks'] for c in cs)} saturated ticks; tick mean "
                  f"{min(c['tick_mean_us'] for c in cs):.1f}-{max(c['tick_mean_us'] for c in cs):.1f} us, max "
                  f"{max(c['tick_max_us'] for c in cs):.1f} us against the 1000 us period"))
+    if "duty" in res:
+        D = res["duty"]
+        bad = [f"{m} v{x['vx_cmd']} duty {x['duty']} (fall {x['fall_t']}, error {x['error']}, stop "
+               f"{x['stop_completed']})" for m in MODES for x in D[m] if x["fall_t"] is not None or x["error"] or
+               not x["stop_completed"]]
+        cs = [x["wbc_closing"] for x in D["wbc"]]
+        bad += [f"wbc v{x['vx_cmd']} duty {x['duty']}: {c}" for x, c in zip(D["wbc"], cs)
+                if not c or c["qp_failures"] or c["fallback_ticks"]]
+        gate("duty", f"duty {min(DUTIES)} to {max(DUTIES)} at the default period, in place and forward, both "
+                     "modes: no fall, no module ERROR, stop completes; WBC mode: 0 QP failures, 0 fallback ticks "
+                     "(below 0.5 the gait has a flight phase, which the whole-body path must solve)", not bad,
+             "; ".join(bad) or f"all {sum(len(D[m]) for m in MODES)} runs clean; 0 QP failures, 0 fallback ticks "
+                               f"over {sum(c['ticks'] for c in cs)} WBC ticks")
     return G
 
 

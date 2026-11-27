@@ -105,6 +105,7 @@ static Eigen::Vector3d nominalFoot(const QuadrupedKinematics& kin, int leg) {
 
 static const bool FEET_ALL[NL] = {true, true, true, true};
 static const bool FEET_DIAG[2][NL] = {{true, false, false, true}, {false, true, true, false}};
+static const bool FEET_NONE[NL] = {false, false, false, false};
 
 // A trot-like random state: tilted up to 0.2 rad with any heading, moving and
 // turning, stance feet near the footprint, swing feet lifted, joints moving
@@ -352,7 +353,10 @@ static void testSwingTask() {
 // (iv) Swing joints at rest, body tasks off their references so the body
 // accelerates and turns, foot gains unlike the body gains: the swing joints
 // accelerate as the body-frame law asks, J_leg qdd = a_B_des + kp e + kd e'
-// (at rest p_B'' = J_leg qdd), whatever the body tasks command.
+// (at rest p_B'' = J_leg qdd), whatever the body tasks command. Every third
+// draw is a flight phase (duty below 0.5): all four feet swing, no force acts,
+// so the floating-base rows of M vdot + h vanish (the base falls freely) while
+// the legs still follow the law.
 static void testSwingRidesBody() {
   g_case = "swing rides body";
   std::printf("(iv) body-frame swing law, body tasks commanding, %d random states\n", TRIALS);
@@ -361,10 +365,11 @@ static void testSwingRidesBody() {
   QuadrupedWBC wbc;
   wbc.setParams(kimParams());
 
-  double worst = 0.0, min_body = INFINITY;
+  double worst = 0.0, worst_fall = 0.0, min_body = INFINITY;
   for (int trial = 0; trial < TRIALS; trial++) {
     MdlTrot::wbc_input_t in;
-    randomState(kin, FEET_DIAG[trial % 2], true, in);
+    const bool flight = trial % 3 == 2;
+    randomState(kin, flight ? FEET_NONE : FEET_DIAG[trial % 2], true, in);
     QuadrupedDynamics::terms_t dyn;
     T_CHECK(model.compute(in.state, dyn));
     in.dyn = &dyn;
@@ -384,6 +389,12 @@ static void testSwingRidesBody() {
     T_CHECK(MdlTrot::wbcSolve(wbc, in, out));
     T_CHECK(out.result.qp_status == 0);
     const double scale = 1.0 + maxAbs(out.result.vdot);
+    if (flight) {
+      T_CHECK(out.problem.num_tasks == 6);
+      const VectorV gen = dyn.M * out.result.vdot + dyn.h;
+      worst_fall = std::max(worst_fall, maxAbs(gen.head<6>()) / (1.0 + maxAbs(dyn.h)));
+      T_CHECK(maxAbs(gen.tail<12>() - out.result.tau) < 1e-12);
+    }
     for (int leg = 0; leg < NL; leg++) {
       if (in.stance[leg]) continue;
       Eigen::Matrix3d J;
@@ -396,6 +407,7 @@ static void testSwingRidesBody() {
   }
   std::printf("  smallest body task command |a_base| + |alpha| over the draws: %.2f\n", min_body);
   report("J_leg qdd - (a_B_des + kp e + kd e') / (1 + |vdot|)", worst, TOL_REL);
+  report("flight: floating-base rows of M vdot + h (rel)", worst_fall, TOL_QP);
 }
 
 int main() {

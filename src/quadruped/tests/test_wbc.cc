@@ -716,11 +716,6 @@ static void testFailure() {
     expectFailure(wbc, bad, "NaN in a contact foot's F_des", true);
   }
   {
-    input_t bad = in;
-    for (int leg = 0; leg < NL; leg++) bad.contact[leg] = FEET_NONE[leg];
-    expectFailure(wbc, bad, "no contact foot");
-  }
-  {
     terms_t d = dyn;
     d.M = -MatrixV::Identity();
     input_t bad = in;
@@ -741,6 +736,19 @@ static void testFailure() {
     T_CHECK(wbc.solve(ok, o));
     T_CHECK(o.tau.allFinite() && o.vdot.allFinite());
     std::printf("  %-62s accepted\n", "NaN only in unread data (swing foot, unused task)");
+  }
+  // Flight is a valid input: no force acts, so the floating-base rows of
+  // M vdot + h vanish and the torque is the joint rows.
+  {
+    input_t ok;
+    makeInput(dyn, FEET_NONE, QuadrupedWBC::MAX_TASKS, ok);
+    output_t o;
+    T_CHECK(wbc.solve(ok, o));
+    const VectorV gen = dyn.M * o.vdot + dyn.h;
+    T_CHECK(gen.head<6>().cwiseAbs().maxCoeff() < 1e-8);
+    T_CHECK((gen.tail<12>() - o.tau).cwiseAbs().maxCoeff() < 1e-12);
+    for (int leg = 0; leg < NL; leg++) T_CHECK(o.f[leg].isZero(0.0));
+    std::printf("  %-62s accepted\n", "no contact foot (flight), six tasks");
   }
 }
 

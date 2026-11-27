@@ -1078,8 +1078,6 @@ bool MdlTrot::wbcSolve(QuadrupedWBC& wbc, const wbc_input_t& in, wbc_output_t& o
 
   for (int leg = 0; leg < NUM_LEGS; leg++) {
     if (in.stance[leg]) continue;
-    // A trot swings two feet; more would need task slots QuadrupedWBC lacks.
-    if (wi.num_tasks == QuadrupedWBC::MAX_TASKS) return false;
     const QuadrupedDynamics::point_t& foot = dyn.foot[leg];
     const Eigen::Vector3d& r = foot.p;  // R p_B, from the base origin
     // R v_B: the foot's velocity relative to the body frame, in world axes.

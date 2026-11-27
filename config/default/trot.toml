@@ -28,7 +28,7 @@ centrifugal_term = true
 # Duration of one gait cycle; each leg is planted for duty times this period.
 period = 0.3              # [s]
 
-# Stance fraction; values above 0.5 overlap diagonal support phases.
+# Stance fraction; values above 0.5 overlap diagonal support phases, values below 0.5 leave a flight phase of (0.5 - duty) * period with no foot scheduled down. Swing time is (1 - duty) * period, so a high duty at a short period asks for a fast swing: at 0.3 s and duty 0.8 it is 60 ms and the whole-body path's torque requests exceed the limits on 23-28 % of ticks (check runs, 2026-11-27).
 duty = 0.5
 
 # Peak foot clearance at mid-swing.

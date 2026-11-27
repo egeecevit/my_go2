@@ -248,9 +248,10 @@ class MdlTrot : public rtcore::Module {
     the joint references are q + J_leg^-1 e and J_leg^-1 v_B_des. Acceleration
     stage: the command is the absolute acceleration of the body-frame sample
     when the body moves as the two body tasks command, so the body-frame error
-    obeys e'' + kd e' + kp e = 0. False, with out not meaningful, when more
-    feet swing than QuadrupedWBC has task slots for, or when
-    QuadrupedWBC::solve fails. */
+    obeys e'' + kd e' + kp e = 0. In a flight phase (duty below 0.5) all four
+    feet are swing tasks: the QP lets the base fall freely and the legs keep
+    following their swing references in the body frame. False, with out not
+    meaningful, when QuadrupedWBC::solve fails. */
   static bool wbcSolve(QuadrupedWBC& wbc, const wbc_input_t& in, wbc_output_t& out);
 
  private:

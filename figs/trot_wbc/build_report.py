@@ -106,7 +106,7 @@ def content(R, written):
     ratio = {n: {k: W[n][k] / B[n][k] for k in ("roll_rms", "pitch_rms", "v_err")} for n in CORE}
     over = [n for n in CORE if ratio[n]["pitch_rms"] > 1.5]
     tn = {k: i for i, k in enumerate(("gates", "core", "pieces", "velocity", "attitude", "diagnosis", "forces",
-                                       "swing", "touchdown", "filters", "support", "cadence", "push"), 1)}
+                                       "swing", "touchdown", "filters", "duty", "support", "cadence", "push"), 1)}
     fn = {k: i for i, k in enumerate(("core", "diagnosis", "support", "cadence"), 1)}
     seen = []
 
@@ -210,7 +210,7 @@ def content(R, written):
               f"{tc['wbc_kp_foot']:g}/{tc['wbc_kd_foot']:g}); zero reference acceleration on the body tasks",
               "`MdlTrot::wbcSolve`"],
              ["Hierarchy, QP", f"Kim Eq. (16)–(21), (25); weights {tc['wbc_w_base']} / {tc['wbc_w_force']}; friction "
-              "and normal bounds copied from [mpc]", "`QuadrupedWBC` (unchanged, qpOASES)"],
+              "and normal bounds copied from [mpc]", "`QuadrupedWBC` (qpOASES; changed only to solve flight, Sec. 3.7)"],
              ["Joint command", f"τ + PD {tc['wbc_joint_kp']:g}/{tc['wbc_joint_kd']:g} on every leg; the request is "
               "clipped per joint to the Go2 limits; the closing line counts the clipped ticks",
               "`MdlTrot::_wbcTick` → `MdlLegControl::setJointCommand`"]],
@@ -219,8 +219,8 @@ def content(R, written):
                f"<b>Switch and keys.</b> `[trot] wbc` (default `{str(tc['wbc']).lower()}` in trot.toml and "
                "MdlTrot.hh): T trots as before until it is flipped. `wbc_kp_*` / `wbc_kd_*` (ori, pos, foot), "
                "`wbc_w_base`, `wbc_w_force`, `wbc_joint_kp` / `wbc_joint_kd`, `wbc_touchdown_depth`, all read in init().",
-               "<b>Failure handling.</b> A tick without a solution (QP failure, unusable joint state, more than two "
-               "swing feet) uses the per-leg commands; `command_failure_limit` "
+               "<b>Failure handling.</b> A tick without a solution (QP failure, unusable joint state) "
+               "uses the per-leg commands; `command_failure_limit` "
                f"({tc['command_failure_limit']}) such ticks in a row is a module ERROR. A torque request beyond the "
                "limits is capped and nothing else: the abort after 20 saturated ticks in a row (`torque_saturation_limit`) "
                "was removed from both paths, because under a push it ended a trot that was not falling and the sit "
@@ -486,6 +486,61 @@ def content(R, written):
                  f"{max(c['tick_max_us'] for c in cl):.0f} µs, against the 1 ms period; headless and not real time, so "
                  "this is CPU cost, not a real-time guarantee.")]
 
+    # 3.7 duty factor
+    dut, P0 = R["duty"], R["duty"]["wbc"][0]["period"]
+
+    def duty_row(d, vx):
+        out = [f"{d:.2f}", f"{vx:.2f}", "none" if d == 0.5 else f"{1e3 * (d - 0.5) * P0:.0f} four-foot" if d > 0.5 else
+               f"{1e3 * (0.5 - d) * P0:.0f} flight"]
+        b, w = (next(x for x in dut[m] if x["duty"] == d and x["vx_cmd"] == vx) for m in MODES)
+        if "window_s" not in b or "window_s" not in w:
+            return out + ["baseline: " + ("ok" if "window_s" in b else "fails") + ", WBC: " +
+                          ("ok" if "window_s" in w else "fails")] + ["–"] * 6
+        return out + [bw(b, w, lambda x: x["airborne_ms"], 0), bw(b, w, lambda x: round(x["vx"], 3) + 0.0, 3),
+                      bw(b, w, lambda x: x["roll_rms"]), bw(b, w, lambda x: x["pitch_mean"], sign="+"),
+                      bw(b, w, lambda x: x["pitch_rms"]), bw(b, w, lambda x: x["z_minus_target_mm"], 1, "+"),
+                      bw(b, w, lambda x: x["saturated_samples_pct"], 1)]
+    dc = [x["wbc_closing"] for x in dut["wbc"]]
+    fl = {m: [x for x in dut[m] if x["duty"] < 0.5 and "window_s" in x] for m in MODES}
+    lowest = {m: min(fl[m], key=lambda x: (x["duty"], -x["vx_cmd"])) for m in MODES}   # lowest duty, moving
+    mv = {m: [x for x in dut[m] if x["vx_cmd"] > 0 and "window_s" in x] for m in MODES}
+    Bl += [("h3", "3.7 Duty factor: overlap and flight"),
+           ("p", f"The gait clock takes any duty factor. At the default {P0} s period a duty above 0.5 overlaps the "
+                 "two diagonals on four feet; below 0.5 no foot is scheduled down for (0.5 − duty) · period per "
+                 "half cycle, a flight phase. Kim's controller covers flight inside the same hierarchy and so does "
+                 "this one: with no contact all four feet are swing tasks (`QuadrupedWBC::MAX_TASKS` is 6), the QP "
+                 "has only the floating-base correction, so the base falls freely whatever the body tasks ask, and "
+                 "the legs keep following their swing references in the body frame. As first built the solver "
+                 "refused a problem without a contact, and the trot ended in a module ERROR at the first flight "
+                 "phase (found by Ege, 2026-11-27; fixed the same day). "
+                 f"Table {tn['duty']}: every run completes, with {sum(c['qp_failures'] for c in dc)} QP failures and "
+                 f"{sum(c['fallback_ticks'] for c in dc)} fallback ticks over {sum(c['ticks'] for c in dc)} WBC "
+                 "ticks. The robot leaves the ground for less than the schedule asks, because the feet lift off "
+                 "late and land early, and the WBC comes closer to the schedule than the baseline: at duty "
+                 f"{lowest['wbc']['duty']:.2f} and {lowest['wbc']['vx_cmd']:.2f} m/s it is airborne "
+                 f"{bw(lowest['baseline'], lowest['wbc'], lambda x: x['airborne_ms'], 0)} ms per half cycle "
+                 f"(baseline / WBC) of the scheduled {lowest['wbc']['flight_scheduled_ms']:.0f} ms. The WBC holds "
+                 f"the commanded speed at every duty ({span([x['vx'] for x in mv['wbc']], 3, ' m/s')}; baseline "
+                 f"{span([x['vx'] for x in mv['baseline']], 3, ' m/s')}). With flight it carries a nose-down pitch "
+                 f"that grows as the duty factor falls, to {lowest['wbc']['pitch_mean']:+.2f} deg at duty "
+                 f"{lowest['wbc']['duty']:.2f}, and its base runs up to "
+                 f"{-min(x['z_minus_target_mm'] for x in fl['wbc']):.0f} mm below the commanded height; the "
+                 "baseline's pitch at speed stays within "
+                 f"{max(abs(x['pitch_mean']) for x in fl['baseline'] if x['vx_cmd'] > 0):.2f} deg. Check runs of "
+                 "2026-11-27 at duty 0.35 (outside this script): holding the base-position error at zero "
+                 "(Sec. 3.2's mechanism) takes the pitch at 0.35 m/s from −0.88 to −0.52 deg; a touchdown "
+                 "target 10 mm higher removes the early touchdown and doubles the pitch, so touchdown timing is not "
+                 "the cause. The rest is not explained."),
+           ("table", T("duty", f"Duty factor at the {P0} s period, baseline / WBC, ground-truth state. Scheduled phase: "
+                       "four-foot overlap or flight per half cycle. Airborne: mean time per half cycle with no "
+                       "foot in contact. Height: mean base height minus the commanded one. Saturated: share of "
+                       "samples with a torque request beyond the limit."),
+            ["Duty", "v<sub>x</sub> cmd [m/s]", "Scheduled [ms]", "Airborne [ms]", "Mean v<sub>x</sub> [m/s]",
+             "Roll rms [deg]", "Pitch mean [deg]", "Pitch rms [deg]", "Height [mm]", "Sat. [%]"],
+            [duty_row(d, vx) for vx in sorted({x["vx_cmd"] for x in dut["wbc"]})
+             for d in sorted({x["duty"] for x in dut["wbc"]}, reverse=True)],
+            [0.07, 0.08, 0.13, 0.10, 0.13, 0.10, 0.11, 0.10, 0.10, 0.08])]
+
     # 4 -----------------------------------------------------------------------------------------------------
     chk = {(m, n): sl[m][n]["check_dLdt_vs_Mgch"] for m in MODES for n in ("inplace", "fwd070")}
     s7 = {m: sl[m]["fwd070"] for m in MODES}
@@ -680,12 +735,17 @@ def content(R, written):
                "0.8 s period the WBC's roll / pitch rms is 0.30 / 0.32 deg with 3 mm and 0.07 / 0.10 deg with 8 mm; at "
                "1.0 s it is 1.40 / 1.24 deg against 0.22 / 0.19 deg (check runs on ground truth, 2026-11-26, outside "
                "this script). A slow-cadence study has to set this depth first, or the comparison measures it.",
+               "<b>Flight phases</b> (Sec. 3.7) run, but below duty 0.5 the WBC pitches nose-down (to "
+               f"{lowest['wbc']['pitch_mean']:+.2f} deg at duty {lowest['wbc']['duty']:.2f}) and rides up to "
+               f"{-min(x['z_minus_target_mm'] for x in fl['wbc']):.0f} mm low, and the robot is airborne for at most "
+               "about half the scheduled time. The base-position error explains part of the pitch; the rest, the height "
+               "loss and the late lift-off are not examined. The MPC is the same in both modes and is untuned for "
+               "flight.",
                "<b>Cadence boundary</b> not reached up to "
                f"{min(last[m]['period'] for m in MODES)} s; a longer sweep would find where prolonged diagonal support "
                "fails.",
-               "<b>What the tests do not cover:</b> no check of the body tasks' error signs; no case with more than "
-               "two swing feet (the path that returns no solution); the fallback and its ERROR never ran in "
-               "simulation (0 fallback ticks).",
+               "<b>What the tests do not cover:</b> no check of the body tasks' error signs; the fallback and its "
+               "ERROR never ran in simulation (0 fallback ticks).",
                "<b>Limits.</b> Simulation only (MuJoCo, rolling sphere feet, soft contact); the state feedback is "
                "ground truth, with two filter-in-the-loop runs per mode at 0.70 m/s only; tick "
                f"times are headless, not real time; logged ground reactions are good to about {grf_tol:g} N.",
@@ -710,7 +770,7 @@ def content(R, written):
             "/home/ege/legged/iros/.venv/bin/python figs/trot_wbc/run_experiments.py --out /tmp/x  # elsewhere\n"
             "/home/ege/legged/iros/.venv/bin/python figs/trot_wbc/build_report.py           # report only\n"
             "cd bin && ./sim.sh -c \"trot.wbc = true\"           # interactive: S stand, T trot, D stop"),
-           ("p", "Experiments: tests, oldpath, amb_ablation, core, diagnosis (needs core's logs), cadence, push. "
+           ("p", "Experiments: tests, oldpath, amb_ablation, core, diagnosis (needs core's logs), duty, cadence, push. "
                  "Logs go to `runs/trot_wbc/<experiment>/<mode>_<run>.mat` and `.log`; the old-path baseline is kept "
                  "gzipped in `reports/trot_wbc/oldpath_baseline/`, since runs/ is not tracked. The harness shares "
                  "figs/amb_wbc's lock, fall thresholds, foot radius, torque limits and MuJoCo model, with its own "

@@ -15,7 +15,9 @@ AMB keeps the robot balanced on a diagonal pair of feet. Two questions follow:
 means long two-foot phases. In `MdlTrot` the timing is
 
 - two-foot (diagonal) phase = `(1 − duty) · period` = the swing time of the other pair,
-- four-foot phase = `(duty − 0.5) · period`.
+- four-foot phase = `(duty − 0.5) · period`,
+- below duty 0.5 there is no four-foot phase but a flight phase of `(0.5 − duty) · period`, and the two-foot
+  phase is `duty · period`.
 
 At a fixed period a higher duty factor shortens the two-foot phase and adds four-foot overlap, so a longer
 two-foot phase needs a longer swing time, not only a higher duty factor. Parametrise the gait by the two
@@ -23,12 +25,13 @@ durations, not by period and duty: `period = 2 (t_two + t_four)`, `duty = 1 − 
 
 ## Where things are
 
-- Repo `/home/ege/legged/iros/project`, branch `amb`, HEAD `e540f38` plus an **uncommitted** diff:
-  `MdlTrot.{hh,cc}`, `config/default/{trot,supervisor}.toml`, `src/quadruped/tests/{CMakeLists.txt,test_trot_wbc.cc}`,
-  new `figs/trot_wbc/`, new `reports/trot_wbc/`. Ege commits; Claude never does.
+- Repo `/home/ege/legged/iros/project`, branch `amb`. The whole-body trot is commit `99655d6` ("wbic+mpc
+  implementation done", not pushed when this was written). On top of it, **uncommitted**: the flight-phase fix of
+  2026-11-27 (`QuadrupedWBC.{hh,cc}`, `MdlTrot.{hh,cc}`, `tests/test_wbc.cc`, `tests/test_trot_wbc.cc`,
+  `config/default/trot.toml`, `figs/trot_wbc/`, `reports/trot_wbc/`). Ege commits; Claude only when asked.
 - `[trot] wbc = true` selects the whole-body trot. Default is `false`: key T runs the old per-leg trot.
-- Results: `reports/trot_wbc/REPORT.pdf` (9 pages), rebuilt by
-  `/home/ege/legged/iros/.venv/bin/python figs/trot_wbc/run_experiments.py` (145 runs, 15 min; `--only`, `--out`).
+- Results: `reports/trot_wbc/REPORT.pdf` (10 pages), rebuilt by
+  `/home/ege/legged/iros/.venv/bin/python figs/trot_wbc/run_experiments.py` (173 runs, 18 min; `--only`, `--out`).
 - Tests: `cd build && ctest` gives 21/21.
 - Plan of this session: `/home/ege/.claude/plans/i-want-to-investigate-hazy-hammock.md`.
   Earlier handoff (still valid for the AMB side): `/home/ege/legged/iros/docs/HANDOFF_trot_wbc_amb.md`.
@@ -41,7 +44,7 @@ durations, not by period and duty: `period = 2 (t_two + t_four)`, `duty = 1 − 
 | Task assembly + solve | `MdlTrot::wbcSolve` (static, testable) | contacts > body orientation > base position > one task per swing foot; gains 100/10 |
 | Per-tick glue | `MdlTrot::_wbcTick` | state from the two estimator modules, MPC first-step forces as `f_des`, joint command τ + PD 30/3 on every leg |
 | Seam in the old code | `MdlTrot::_trotDuring`: `if (_wbc && _wbcTick()) return;` | gait clock, footstep law, swing quintic, body reference, MPC call are shared with the old path |
-| Solver, model | `QuadrupedWBC`, `QuadrupedDynamics` | unchanged; `MAX_TASKS = 4` is exactly used |
+| Solver, model | `QuadrupedWBC`, `QuadrupedDynamics` | `MAX_TASKS = 6`: two body tasks and up to four swing feet; a problem with no contact (flight) is solved, the base then falls freely |
 | Touchdown height | `_startSwing`: `wbc_touchdown_depth` below the foot's lift-off height | old path keeps the nominal footprint height |
 | Log | `MdlTrot_wbc` (45 doubles, layout at `_logWbc` in `MdlTrot.hh`) | desired and solved forces, QP status, task errors, swing errors, tick time |
 
@@ -51,6 +54,10 @@ Decisions Ege took on 2026-11-26:
   `torque_saturation_limit` no longer exists.
 - **Pitch offset at speed is documented, not fixed** (−0.08° at 0.70 m/s on ground truth; report Sec. 3.2).
 - **Touchdown fixed** for the whole-body path (feet land 1–5 ms early at ≤ 0.14 m/s instead of 21–26 ms early).
+- **Flight phases are handled by the whole-body path** (Ege, 2026-11-27). Before, any duty below 0.5 ended in a
+  module ERROR at the first flight phase. Report Sec. 3.7 has the duty sweep (harness experiment `duty`, 0.30 to
+  0.70 at the 0.3 s period): all runs complete; with flight the whole-body trot pitches nose-down (−1.2° at duty
+  0.30, 0.35 m/s), rides up to 12 mm low and is airborne at most about half the scheduled time. Unexplained so far.
 
 ## Rules for the next session
 
@@ -161,6 +168,6 @@ forces, and through the foothold.
 - Uncapped torque requests reach hundreds of times the limit in recovered pushes near the boundary (roll above
   27°); the cap makes it harmless, the cause is not examined.
 - After a module ERROR the Supervisor's sit can roll the robot over.
-- `test_trot_wbc` does not check the body tasks' error signs or the more-than-two-swing-feet path.
+- `test_trot_wbc` does not check the body tasks' error signs.
 - With both filters in the loop the whole-body trot loses most of its advantage over the old path
   (roll rms 0.49° against 0.50°); the attitude filter drifts 1.5° in yaw over 12 s.

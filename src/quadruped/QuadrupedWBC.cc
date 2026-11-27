@@ -101,16 +101,11 @@ bool QuadrupedWBC::hierarchy(const input_t& in, QuadrupedDynamics::VectorV& vdot
   const QuadrupedDynamics::terms_t& dyn = *in.dyn;
   if (!dyn.M.allFinite()) return false;
 
-  int nc = 0;
   for (int leg = 0; leg < NUM_LEGS; leg++) {
     if (!in.q[leg].allFinite()) return false;
     if (!in.contact[leg]) continue;
     if (!dyn.contact[leg].J.allFinite() || !dyn.contact[leg].Jdv.allFinite()) return false;
-    nc++;
   }
-  // (6.5) needs a contact to seed from. With none the robot is in flight and no
-  // torque can hold the body tasks.
-  if (nc == 0) return false;
   for (int i = 0; i < in.num_tasks; i++) {
     const task_t& t = in.task[i];
     if (!t.J.allFinite() || !t.Jdv.allFinite() || !t.acc_cmd.allFinite() ||
@@ -175,7 +170,7 @@ bool QuadrupedWBC::solve(const input_t& in, output_t& out) {
   if (!hierarchy(in, vdot_h, out.q_des, out.qd_des)) return false;
   const QuadrupedDynamics::terms_t& dyn = *in.dyn;
   if (!dyn.h.allFinite()) return false;
-  // hierarchy() has checked that there is at least one.
+  // None in flight: the six equality rows then fix the base correction alone.
   int legs[NUM_LEGS], nc = 0;
   for (int leg = 0; leg < NUM_LEGS; leg++) {
     if (!in.contact[leg]) continue;

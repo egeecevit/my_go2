@@ -8,7 +8,7 @@
    "",
    "100% tests passed, 0 tests failed out of 21",
    "",
-   "Total Test time (real) =  16.68 sec"
+   "Total Test time (real) =  16.62 sec"
   ]
  },
  "meta": {
@@ -83,26 +83,19 @@
    }
   },
   "experiments_run": [
-   "tests",
-   "oldpath",
-   "amb_ablation",
-   "core",
-   "diagnosis",
-   "cadence",
-   "push"
+   "duty"
   ],
   "experiment_wall_s": {
-   "tests": 16.7,
+   "tests": 16.6,
    "oldpath": 3.4,
    "amb_ablation": 52.0,
    "core": 117.9,
    "diagnosis": 151.1,
    "cadence": 70.5,
-   "push": 497.0
+   "push": 497.0,
+   "duty": 172.9
   },
   "run_wall_times_s": {
-   "oldpath/wbc_absent_trot_a": 3.4,
-   "amb_ablation": 52.0,
    "core/baseline_inplace": 5.0,
    "core/wbc_inplace": 5.7,
    "core/baseline_fwd035": 5.0,
@@ -245,13 +238,43 @@
    "push/wbc_minus_y_midstance_F180": 5.6,
    "push/wbc_minus_y_midstance_F200": 6.6,
    "push/wbc_minus_y_midstance_F185": 5.7,
-   "push/wbc_minus_y_midstance_F190": 5.9
+   "push/wbc_minus_y_midstance_F190": 5.9,
+   "oldpath/wbc_absent_trot_a": 3.4,
+   "amb_ablation": 51.9,
+   "duty/baseline_v0.00_d0.70": 5.8,
+   "duty/baseline_v0.00_d0.60": 5.3,
+   "duty/baseline_v0.00_d0.50": 5.0,
+   "duty/baseline_v0.00_d0.45": 5.0,
+   "duty/baseline_v0.00_d0.40": 4.8,
+   "duty/baseline_v0.00_d0.35": 4.8,
+   "duty/baseline_v0.00_d0.30": 4.7,
+   "duty/baseline_v0.35_d0.70": 6.0,
+   "duty/baseline_v0.35_d0.60": 5.4,
+   "duty/baseline_v0.35_d0.50": 5.0,
+   "duty/baseline_v0.35_d0.45": 5.0,
+   "duty/baseline_v0.35_d0.40": 4.8,
+   "duty/baseline_v0.35_d0.35": 4.8,
+   "duty/baseline_v0.35_d0.30": 4.7,
+   "duty/wbc_v0.00_d0.70": 6.8,
+   "duty/wbc_v0.00_d0.60": 6.0,
+   "duty/wbc_v0.00_d0.50": 5.6,
+   "duty/wbc_v0.00_d0.45": 5.7,
+   "duty/wbc_v0.00_d0.40": 5.6,
+   "duty/wbc_v0.00_d0.35": 5.6,
+   "duty/wbc_v0.00_d0.30": 5.5,
+   "duty/wbc_v0.35_d0.70": 7.0,
+   "duty/wbc_v0.35_d0.60": 6.1,
+   "duty/wbc_v0.35_d0.50": 5.7,
+   "duty/wbc_v0.35_d0.45": 5.9,
+   "duty/wbc_v0.35_d0.40": 5.6,
+   "duty/wbc_v0.35_d0.35": 5.6,
+   "duty/wbc_v0.35_d0.30": 5.5
   }
  },
  "gates": [
   {
    "gate": "tests",
-   "criterion": "all ctest tests pass, test_trot_wbc among them: (i) four feet at rest keep consistent forces and get the static torques; (ii) diagonal stance holds the contact points, solved forces inside the pyramid and normal bounds; (iii) with the body off its reference the swing joint references and acceleration command are the body-frame ones; (iv) swing joints accelerate as the body-frame law asks",
+   "criterion": "all ctest tests pass, test_trot_wbc among them: (i) four feet at rest keep consistent forces and get the static torques; (ii) diagonal stance holds the contact points, solved forces inside the pyramid and normal bounds; (iii) with the body off its reference the swing joint references and acceleration command are the body-frame ones; (iv) swing joints accelerate as the body-frame law asks, in a flight phase too, where the base falls freely",
    "pass": true,
    "result": "pass",
    "value": "21/21 passed, test_trot_wbc passed"
@@ -261,7 +284,7 @@
    "criterion": "wbc absent: the default trot run's log text-identical, sample for sample, to the pre-work baseline over the samples both hold (the new run logs every tick and is matched at the baseline's 10-tick stride from its first sample, because the log thread starts and stops on wall-clock-dependent ticks); AMB ablation (figs/amb_wbc, --only ablation) unchanged against the committed reports/amb_wbc/results.json",
    "pass": true,
    "result": "pass",
-   "value": "1345 of the baseline's 1346 samples identical; AMB ablation: 114 per-run values, 19 differ, gate pass before and pass now"
+   "value": "1345 of the baseline's 1346 samples identical; AMB ablation: 114 per-run values, 17 differ, gate pass before and pass now"
   },
   {
    "gate": "trots",
@@ -283,6 +306,13 @@
    "pass": true,
    "result": "pass",
    "value": "0 QP failures, 0 fallback ticks over 143982 ticks (logged: 0 fallback, 0 nonzero QP status); 0 saturated ticks; tick mean 59.4-60.9 us, max 137.4 us against the 1000 us period"
+  },
+  {
+   "gate": "duty",
+   "criterion": "duty 0.3 to 0.7 at the default period, in place and forward, both modes: no fall, no module ERROR, stop completes; WBC mode: 0 QP failures, 0 fallback ticks (below 0.5 the gait has a flight phase, which the whole-body path must solve)",
+   "pass": true,
+   "result": "pass",
+   "value": "all 28 runs clean; 0 QP failures, 0 fallback ticks over 223972 WBC ticks"
   }
  ],
  "oldpath": {
@@ -299,7 +329,7 @@
   "baseline_first_sample_tick_after_new_log_start": 59,
   "samples_common": 1345,
   "samples_baseline": 1346,
-  "samples_new_ticks": 13506,
+  "samples_new_ticks": 13508,
   "identical": true,
   "first_differing_sample": null,
   "files": [
@@ -311,7 +341,7 @@
   "gate_new": {
    "gate": "ablation: AMB on no fall >= 10 s, AMB off falls",
    "result": "pass",
-   "numbers": "on: no fall over 12 s, min z 0.298 m, peak |L| 0.0080, peak |c_x| 0.65 mm, abduction margin at the end 51.78 deg (0.197 deg/s); off: falls 1.436 s after activation (thesis 1.299), MdlAMB error at 1.169 s; joint path on/off falls False/True; thesis gains balance"
+   "numbers": "on: no fall over 12 s, min z 0.298 m, peak |L| 0.0079, peak |c_x| 0.65 mm, abduction margin at the end 51.78 deg (0.197 deg/s); off: falls 1.436 s after activation (thesis 1.299), MdlAMB error at 1.168 s; joint path on/off falls False/True; thesis gains balance"
   },
   "gate_ref": {
    "gate": "ablation: AMB on no fall >= 10 s, AMB off falls",
@@ -366,47 +396,33 @@
     20.212836,
     20.248283
    ],
-   "runs/wbc_off.amb_error": [
-    {
-     "t": 1.168,
-     "message": "Tick failed: theta1=45.1 deg l_c=0.231 m j_c=0.98 j_d=-1.12"
-    },
-    {
-     "t": 1.169,
-     "message": "Tick failed: theta1=45.1 deg l_c=0.231 m j_c=0.98 j_d=-1.12"
-    }
+   "runs/wbc_on.handoff_s": [
+    7.104,
+    7.105
    ],
-   "runs/wbc_off.handoff_s": [
-    7.105,
-    7.104
+   "runs/wbc_on.max_abs_x2_deg": [
+    24.975784,
+    24.975851
    ],
-   "runs/wbc_off.max_abs_x2_deg": [
-    88.311322,
-    88.307058
+   "runs/wbc_on.peak_L": [
+    0.008033,
+    0.007897
    ],
-   "runs/wbc_off.min_z": [
-    0.064057,
-    0.064056
+   "runs/wbc_on.peak_cx": [
+    0.000648,
+    0.000646
    ],
-   "runs/wbc_off.peak_L": [
-    4.607056,
-    4.619515
+   "runs/wbc_on.peak_pitch": [
+    0.391819,
+    0.391817
    ],
-   "runs/wbc_off.peak_pitch": [
-    9.091473,
-    9.089705
+   "runs/wbc_on.peak_roll": [
+    0.116349,
+    0.11635
    ],
-   "runs/wbc_off.peak_roll": [
-    179.797246,
-    179.884656
-   ],
-   "runs/wbc_off.peak_w": [
-    7.700041,
-    7.657414
-   ],
-   "runs/wbc_off.x2_drift_last_2s_deg_per_s": [
-    -77.003655,
-    -76.81114
+   "runs/wbc_on.x2_drift_last_2s_deg_per_s": [
+    -0.377584,
+    -0.377415
    ]
   },
   "differing_runs_log_start": {
@@ -414,9 +430,9 @@
     "log_start_us_ref": 2503000,
     "log_start_us_new": 2502000
    },
-   "runs/wbc_off": {
-    "log_start_us_ref": 2503000,
-    "log_start_us_new": 2502000
+   "runs/wbc_on": {
+    "log_start_us_ref": 2502000,
+    "log_start_us_new": 2503000
    }
   },
   "differences_only_in_other_tick_parity": true,
@@ -7134,5 +7150,2657 @@
     ]
    }
   }
+ },
+ "duty": {
+  "baseline": [
+   {
+    "duty": 0.7,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.5283,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.005553,
+    "vy": 1e-05,
+    "yaw_rate": -8e-05,
+    "v_err": 0.005553,
+    "yaw_err": 8e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.000613,
+    "roll_sd": 0.152118,
+    "roll_rms": 0.15212,
+    "pitch_mean": 0.755752,
+    "pitch_sd": 0.191239,
+    "pitch_rms": 0.779573,
+    "z_mean": 0.29486,
+    "z_sd": 0.000609,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 4.51,
+    "lateral_drift_m": 0.0002,
+    "lateral_drift_heading_m": 0.0,
+    "yaw_change_deg": -0.051,
+    "grf": {
+     "rms_des_sim_N": [
+      6.533,
+      3.46,
+      20.647
+     ],
+     "sum_des_mean_N": [
+      9.879,
+      0.002,
+      126.232
+     ],
+     "sum_sim_mean_N": [
+      0.046,
+      0.0,
+      149.845
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 22.082,
+     "max": 32.294,
+     "rms_xyz": [
+      8.867,
+      5.178,
+      19.549
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 2.227,
+     "stance_unloaded_pct": 2.305,
+     "first_contact_before_scheduled_ms": {
+      "mean": 0.0,
+      "max": 0.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.6,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.4535,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.005723,
+    "vy": -1e-06,
+    "yaw_rate": -6.7e-05,
+    "v_err": 0.005723,
+    "yaw_err": 6.7e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.000316,
+    "roll_sd": 0.083928,
+    "roll_rms": 0.083928,
+    "pitch_mean": 0.551419,
+    "pitch_sd": 0.15426,
+    "pitch_rms": 0.57259,
+    "z_mean": 0.294114,
+    "z_sd": 0.000559,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 3.76,
+    "lateral_drift_m": -0.0,
+    "lateral_drift_heading_m": 0.0,
+    "yaw_change_deg": -0.044,
+    "grf": {
+     "rms_des_sim_N": [
+      5.793,
+      3.001,
+      14.914
+     ],
+     "sum_des_mean_N": [
+      8.206,
+      0.006,
+      130.958
+     ],
+     "sum_sim_mean_N": [
+      0.053,
+      0.002,
+      149.25
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 18.654,
+     "max": 27.394,
+     "rms_xyz": [
+      7.893,
+      5.015,
+      16.141
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 2.652,
+     "stance_unloaded_pct": 0.833,
+     "first_contact_before_scheduled_ms": {
+      "mean": 1.49,
+      "max": 3.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.5,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.4914,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.006339,
+    "vy": 0.0,
+    "yaw_rate": -0.000104,
+    "v_err": 0.006339,
+    "yaw_err": 0.000104,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.00036,
+    "roll_sd": 0.052345,
+    "roll_rms": 0.052346,
+    "pitch_mean": 0.403185,
+    "pitch_sd": 0.123609,
+    "pitch_rms": 0.421708,
+    "z_mean": 0.293889,
+    "z_sd": 0.000511,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 3.54,
+    "lateral_drift_m": -0.0,
+    "lateral_drift_heading_m": -0.0,
+    "yaw_change_deg": -0.069,
+    "grf": {
+     "rms_des_sim_N": [
+      4.473,
+      2.422,
+      10.764
+     ],
+     "sum_des_mean_N": [
+      7.002,
+      0.009,
+      133.075
+     ],
+     "sum_sim_mean_N": [
+      0.051,
+      0.001,
+      148.924
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 16.185,
+     "max": 24.158,
+     "rms_xyz": [
+      6.902,
+      4.804,
+      13.829
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 3.651,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 5.5,
+      "max": 8.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.45,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 15.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.7391,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.007255,
+    "vy": 1e-06,
+    "yaw_rate": -0.000113,
+    "v_err": 0.007255,
+    "yaw_err": 0.000113,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.000626,
+    "roll_sd": 0.042859,
+    "roll_rms": 0.042864,
+    "pitch_mean": 0.407137,
+    "pitch_sd": 0.107319,
+    "pitch_rms": 0.421044,
+    "z_mean": 0.291736,
+    "z_sd": 0.00085,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 1.38,
+    "lateral_drift_m": -0.0,
+    "lateral_drift_heading_m": -0.0,
+    "yaw_change_deg": -0.073,
+    "grf": {
+     "rms_des_sim_N": [
+      3.572,
+      2.575,
+      8.822
+     ],
+     "sum_des_mean_N": [
+      6.974,
+      0.013,
+      133.007
+     ],
+     "sum_sim_mean_N": [
+      0.014,
+      -0.001,
+      149.085
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 14.837,
+     "max": 22.178,
+     "rms_xyz": [
+      6.272,
+      4.607,
+      12.632
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 11.29,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 9.79,
+      "max": 12.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.4,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 30.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.9001,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.00842,
+    "vy": 4.5e-05,
+    "yaw_rate": -5.8e-05,
+    "v_err": 0.008421,
+    "yaw_err": 5.8e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.002879,
+    "roll_sd": 0.078747,
+    "roll_rms": 0.0788,
+    "pitch_mean": 0.379046,
+    "pitch_sd": 0.116819,
+    "pitch_rms": 0.396639,
+    "z_mean": 0.290965,
+    "z_sd": 0.001926,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 0.61,
+    "lateral_drift_m": 0.0004,
+    "lateral_drift_heading_m": -0.0001,
+    "yaw_change_deg": -0.035,
+    "grf": {
+     "rms_des_sim_N": [
+      3.04,
+      3.178,
+      7.686
+     ],
+     "sum_des_mean_N": [
+      6.386,
+      0.016,
+      133.561
+     ],
+     "sum_sim_mean_N": [
+      -0.032,
+      0.002,
+      149.211
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 13.7,
+     "max": 21.211,
+     "rms_xyz": [
+      5.74,
+      4.46,
+      11.612
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 12.663,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 11.97,
+      "max": 16.0
+     }
+    },
+    "airborne_ms": 0.11
+   },
+   {
+    "duty": 0.35,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 45.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 4.453,
+    "peak_tau_over_limit": 1.1038,
+    "saturated_samples_pct": 0.1143,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.009485,
+    "vy": 9e-06,
+    "yaw_rate": -0.000133,
+    "v_err": 0.009485,
+    "yaw_err": 0.000133,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.001157,
+    "roll_sd": 0.074348,
+    "roll_rms": 0.074357,
+    "pitch_mean": 0.552476,
+    "pitch_sd": 0.091896,
+    "pitch_rms": 0.560066,
+    "z_mean": 0.286468,
+    "z_sd": 0.002111,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -3.89,
+    "lateral_drift_m": -0.0,
+    "lateral_drift_heading_m": -0.0002,
+    "yaw_change_deg": -0.082,
+    "grf": {
+     "rms_des_sim_N": [
+      2.361,
+      3.74,
+      5.654
+     ],
+     "sum_des_mean_N": [
+      6.762,
+      0.011,
+      129.495
+     ],
+     "sum_sim_mean_N": [
+      -0.058,
+      0.001,
+      149.273
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 12.868,
+     "max": 19.83,
+     "rms_xyz": [
+      5.304,
+      4.37,
+      10.879
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 14.838,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 18.44,
+      "max": 21.0
+     }
+    },
+    "airborne_ms": 7.08
+   },
+   {
+    "duty": 0.3,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 60.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 4.453,
+    "peak_tau_over_limit": 1.0976,
+    "saturated_samples_pct": 4.9546,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.007297,
+    "vy": 8.3e-05,
+    "yaw_rate": -6.4e-05,
+    "v_err": 0.007298,
+    "yaw_err": 6.4e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.002552,
+    "roll_sd": 0.146193,
+    "roll_rms": 0.146215,
+    "pitch_mean": 0.60423,
+    "pitch_sd": 0.19731,
+    "pitch_rms": 0.63563,
+    "z_mean": 0.288369,
+    "z_sd": 0.004797,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -1.98,
+    "lateral_drift_m": 0.0007,
+    "lateral_drift_heading_m": -0.0003,
+    "yaw_change_deg": -0.036,
+    "grf": {
+     "rms_des_sim_N": [
+      2.573,
+      4.985,
+      6.769
+     ],
+     "sum_des_mean_N": [
+      5.864,
+      0.021,
+      131.758
+     ],
+     "sum_sim_mean_N": [
+      -0.089,
+      -0.003,
+      149.267
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 11.907,
+     "max": 21.264,
+     "rms_xyz": [
+      4.856,
+      4.287,
+      9.99
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 11.051,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 17.86,
+      "max": 28.0
+     }
+    },
+    "airborne_ms": 22.82
+   },
+   {
+    "duty": 0.7,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.5283,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.329562,
+    "vy": -0.000215,
+    "yaw_rate": -7.9e-05,
+    "v_err": 0.020439,
+    "yaw_err": 7.9e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.00148,
+    "roll_sd": 0.050811,
+    "roll_rms": 0.050832,
+    "pitch_mean": 0.479357,
+    "pitch_sd": 0.090195,
+    "pitch_rms": 0.487769,
+    "z_mean": 0.296082,
+    "z_sd": 0.000664,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 5.73,
+    "lateral_drift_m": -0.0065,
+    "lateral_drift_heading_m": -0.0039,
+    "yaw_change_deg": -0.052,
+    "grf": {
+     "rms_des_sim_N": [
+      11.409,
+      3.132,
+      25.648
+     ],
+     "sum_des_mean_N": [
+      19.331,
+      -0.009,
+      121.195
+     ],
+     "sum_sim_mean_N": [
+      0.101,
+      0.0,
+      149.875
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 24.196,
+     "max": 39.359,
+     "rms_xyz": [
+      10.297,
+      5.514,
+      21.189
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 1.113,
+     "stance_unloaded_pct": 2.82,
+     "first_contact_before_scheduled_ms": {
+      "mean": 0.0,
+      "max": 0.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.6,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.4534,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.331893,
+    "vy": -0.000178,
+    "yaw_rate": -5.4e-05,
+    "v_err": 0.018108,
+    "yaw_err": 5.4e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.000324,
+    "roll_sd": 0.108345,
+    "roll_rms": 0.108345,
+    "pitch_mean": 0.223472,
+    "pitch_sd": 0.096666,
+    "pitch_rms": 0.243483,
+    "z_mean": 0.294963,
+    "z_sd": 0.000607,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 4.61,
+    "lateral_drift_m": -0.0038,
+    "lateral_drift_heading_m": -0.0017,
+    "yaw_change_deg": -0.036,
+    "grf": {
+     "rms_des_sim_N": [
+      9.48,
+      2.868,
+      17.237
+     ],
+     "sum_des_mean_N": [
+      15.597,
+      -0.012,
+      126.616
+     ],
+     "sum_sim_mean_N": [
+      0.102,
+      0.004,
+      149.81
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 19.181,
+     "max": 30.634,
+     "rms_xyz": [
+      7.505,
+      5.293,
+      16.84
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 0.802,
+     "stance_unloaded_pct": 0.514,
+     "first_contact_before_scheduled_ms": {
+      "mean": 0.0,
+      "max": 0.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.5,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.4925,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.334584,
+    "vy": -0.000292,
+    "yaw_rate": -9.5e-05,
+    "v_err": 0.015419,
+    "yaw_err": 9.5e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.002097,
+    "roll_sd": 0.14722,
+    "roll_rms": 0.147235,
+    "pitch_mean": 0.255301,
+    "pitch_sd": 0.051762,
+    "pitch_rms": 0.260496,
+    "z_mean": 0.294563,
+    "z_sd": 0.000554,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 4.21,
+    "lateral_drift_m": -0.0039,
+    "lateral_drift_heading_m": -0.0004,
+    "yaw_change_deg": -0.061,
+    "grf": {
+     "rms_des_sim_N": [
+      6.768,
+      2.389,
+      12.047
+     ],
+     "sum_des_mean_N": [
+      12.654,
+      -0.019,
+      129.606
+     ],
+     "sum_sim_mean_N": [
+      0.272,
+      0.002,
+      148.852
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 16.21,
+     "max": 25.111,
+     "rms_xyz": [
+      6.143,
+      5.061,
+      14.122
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 4.722,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 5.5,
+      "max": 6.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.45,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 15.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.7392,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.331534,
+    "vy": -0.000267,
+    "yaw_rate": -9.1e-05,
+    "v_err": 0.018468,
+    "yaw_err": 9.1e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.002542,
+    "roll_sd": 0.193027,
+    "roll_rms": 0.193044,
+    "pitch_mean": 0.022743,
+    "pitch_sd": 0.038045,
+    "pitch_rms": 0.044325,
+    "z_mean": 0.29226,
+    "z_sd": 0.000907,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 1.91,
+    "lateral_drift_m": -0.0018,
+    "lateral_drift_heading_m": 0.0014,
+    "yaw_change_deg": -0.056,
+    "grf": {
+     "rms_des_sim_N": [
+      5.797,
+      2.348,
+      9.951
+     ],
+     "sum_des_mean_N": [
+      12.525,
+      -0.013,
+      129.642
+     ],
+     "sum_sim_mean_N": [
+      0.208,
+      -0.001,
+      149.016
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 14.709,
+     "max": 22.813,
+     "rms_xyz": [
+      5.552,
+      4.82,
+      12.74
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 12.068,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 9.34,
+      "max": 10.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.4,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 30.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.9378,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.331954,
+    "vy": 0.000413,
+    "yaw_rate": 1.2e-05,
+    "v_err": 0.018051,
+    "yaw_err": 1.2e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.001231,
+    "roll_sd": 0.253697,
+    "roll_rms": 0.2537,
+    "pitch_mean": 0.061496,
+    "pitch_sd": 0.161771,
+    "pitch_rms": 0.173066,
+    "z_mean": 0.291459,
+    "z_sd": 0.001975,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 1.11,
+    "lateral_drift_m": 0.0095,
+    "lateral_drift_heading_m": 0.0045,
+    "yaw_change_deg": 0.011,
+    "grf": {
+     "rms_des_sim_N": [
+      5.092,
+      2.814,
+      8.519
+     ],
+     "sum_des_mean_N": [
+      11.617,
+      0.015,
+      130.104
+     ],
+     "sum_sim_mean_N": [
+      0.174,
+      0.001,
+      149.153
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 13.3,
+     "max": 20.777,
+     "rms_xyz": [
+      4.87,
+      4.637,
+      11.474
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 15.178,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 11.97,
+      "max": 16.0
+     }
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.35,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 45.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 4.453,
+    "peak_tau_over_limit": 1.1052,
+    "saturated_samples_pct": 5.7146,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.327922,
+    "vy": -2.9e-05,
+    "yaw_rate": -0.000388,
+    "v_err": 0.022078,
+    "yaw_err": 0.000388,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.001538,
+    "roll_sd": 0.195311,
+    "roll_rms": 0.195317,
+    "pitch_mean": -0.035637,
+    "pitch_sd": 0.052399,
+    "pitch_rms": 0.063369,
+    "z_mean": 0.286593,
+    "z_sd": 0.002175,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -3.76,
+    "lateral_drift_m": 0.0005,
+    "lateral_drift_heading_m": 0.0008,
+    "yaw_change_deg": -0.264,
+    "grf": {
+     "rms_des_sim_N": [
+      4.386,
+      3.492,
+      5.512
+     ],
+     "sum_des_mean_N": [
+      11.784,
+      -0.043,
+      126.839
+     ],
+     "sum_sim_mean_N": [
+      0.128,
+      0.002,
+      149.231
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 12.334,
+     "max": 18.331,
+     "rms_xyz": [
+      4.383,
+      4.498,
+      10.615
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 17.785,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 18.69,
+      "max": 20.0
+     }
+    },
+    "airborne_ms": 2.56
+   },
+   {
+    "duty": 0.3,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 60.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 4.453,
+    "peak_tau_over_limit": 1.0991,
+    "saturated_samples_pct": 5.8861,
+    "wbc_closing": null,
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.32986,
+    "vy": -0.001041,
+    "yaw_rate": -3.8e-05,
+    "v_err": 0.020167,
+    "yaw_err": 3.8e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.010096,
+    "roll_sd": 0.161883,
+    "roll_rms": 0.162197,
+    "pitch_mean": 0.052046,
+    "pitch_sd": 0.084689,
+    "pitch_rms": 0.099404,
+    "z_mean": 0.288446,
+    "z_sd": 0.004812,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -1.91,
+    "lateral_drift_m": 0.0009,
+    "lateral_drift_heading_m": 0.0134,
+    "yaw_change_deg": -0.015,
+    "grf": {
+     "rms_des_sim_N": [
+      4.145,
+      4.768,
+      6.341
+     ],
+     "sum_des_mean_N": [
+      10.048,
+      -0.027,
+      129.472
+     ],
+     "sum_sim_mean_N": [
+      0.066,
+      0.0,
+      149.227
+     ],
+     "weight_N": 149.175
+    },
+    "swing_err_mm": {
+     "rms": 11.222,
+     "max": 16.801,
+     "rms_xyz": [
+      3.788,
+      4.427,
+      9.59
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 16.089,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 18.61,
+      "max": 25.0
+     }
+    },
+    "airborne_ms": 17.18
+   }
+  ],
+  "wbc": [
+   {
+    "duty": 0.7,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.6666,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 63.1,
+     "tick_max_us": 136.8,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 9e-06,
+    "vy": -1e-06,
+    "yaw_rate": -1e-05,
+    "v_err": 9e-06,
+    "yaw_err": 1e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.000163,
+    "roll_sd": 0.085399,
+    "roll_rms": 0.085399,
+    "pitch_mean": 0.115754,
+    "pitch_sd": 0.118589,
+    "pitch_rms": 0.165717,
+    "z_mean": 0.291023,
+    "z_sd": 0.000801,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 0.67,
+    "lateral_drift_m": -0.0,
+    "lateral_drift_heading_m": -0.0,
+    "yaw_change_deg": -0.009,
+    "grf": {
+     "rms_des_sim_N": [
+      4.394,
+      2.001,
+      8.996
+     ],
+     "sum_des_mean_N": [
+      0.112,
+      0.001,
+      146.222
+     ],
+     "sum_sim_mean_N": [
+      0.143,
+      0.001,
+      148.869
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.74,
+      0.266,
+      0.488
+     ],
+     "rms_sol_sim_N": [
+      3.768,
+      1.924,
+      8.858
+     ],
+     "sum_sol_mean_N": [
+      0.128,
+      0.001,
+      146.222
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.247,
+     "max": 5.804,
+     "rms_xyz": [
+      0.186,
+      0.203,
+      3.235
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 0.0,
+     "stance_unloaded_pct": 2.121,
+     "first_contact_before_scheduled_ms": {
+      "mean": 0.0,
+      "max": 0.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.6,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.4878,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 60.9,
+     "tick_max_us": 162.9,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 6e-06,
+    "vy": 3e-06,
+    "yaw_rate": -1e-05,
+    "v_err": 7e-06,
+    "yaw_err": 1e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -6.4e-05,
+    "roll_sd": 0.023804,
+    "roll_rms": 0.023804,
+    "pitch_mean": -0.021442,
+    "pitch_sd": 0.06396,
+    "pitch_rms": 0.067459,
+    "z_mean": 0.290706,
+    "z_sd": 0.000656,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 0.35,
+    "lateral_drift_m": 0.0,
+    "lateral_drift_heading_m": 0.0,
+    "yaw_change_deg": -0.008,
+    "grf": {
+     "rms_des_sim_N": [
+      3.637,
+      1.769,
+      8.036
+     ],
+     "sum_des_mean_N": [
+      -0.614,
+      0.001,
+      147.541
+     ],
+     "sum_sim_mean_N": [
+      0.081,
+      0.001,
+      148.949
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.46,
+      0.082,
+      0.32
+     ],
+     "rms_sol_sim_N": [
+      3.216,
+      1.732,
+      7.952
+     ],
+     "sum_sol_mean_N": [
+      -0.57,
+      0.002,
+      147.538
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.096,
+     "max": 5.585,
+     "rms_xyz": [
+      0.192,
+      0.254,
+      3.079
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 0.0,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 0.01,
+      "max": 1.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.5,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.4669,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 59.4,
+     "tick_max_us": 138.1,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 3e-05,
+    "vy": -3e-06,
+    "yaw_rate": 1.2e-05,
+    "v_err": 3e-05,
+    "yaw_err": 1.2e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.000104,
+    "roll_sd": 0.023399,
+    "roll_rms": 0.023399,
+    "pitch_mean": 0.007697,
+    "pitch_sd": 0.05535,
+    "pitch_rms": 0.055883,
+    "z_mean": 0.290682,
+    "z_sd": 0.000565,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 0.33,
+    "lateral_drift_m": -0.0,
+    "lateral_drift_heading_m": 0.0,
+    "yaw_change_deg": 0.008,
+    "grf": {
+     "rms_des_sim_N": [
+      3.122,
+      1.583,
+      7.333
+     ],
+     "sum_des_mean_N": [
+      -0.42,
+      0.002,
+      148.022
+     ],
+     "sum_sim_mean_N": [
+      0.015,
+      0.0,
+      149.156
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.341,
+      0.107,
+      0.239
+     ],
+     "rms_sol_sim_N": [
+      2.794,
+      1.534,
+      7.285
+     ],
+     "sum_sol_mean_N": [
+      -0.407,
+      0.002,
+      148.023
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.098,
+     "max": 5.503,
+     "rms_xyz": [
+      0.268,
+      0.358,
+      3.066
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 0.0,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 1.0,
+      "max": 1.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.45,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 15.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.7703,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 58.8,
+     "tick_max_us": 136.0,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 2.1e-05,
+    "vy": -8e-06,
+    "yaw_rate": 1.4e-05,
+    "v_err": 2.3e-05,
+    "yaw_err": 1.4e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.000109,
+    "roll_sd": 0.03815,
+    "roll_rms": 0.038151,
+    "pitch_mean": -0.025745,
+    "pitch_sd": 0.058611,
+    "pitch_rms": 0.064016,
+    "z_mean": 0.28881,
+    "z_sd": 0.001014,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -1.54,
+    "lateral_drift_m": -0.0001,
+    "lateral_drift_heading_m": -0.0,
+    "yaw_change_deg": 0.011,
+    "grf": {
+     "rms_des_sim_N": [
+      3.03,
+      2.224,
+      9.104
+     ],
+     "sum_des_mean_N": [
+      -0.052,
+      0.006,
+      144.608
+     ],
+     "sum_sim_mean_N": [
+      -0.1,
+      -0.0,
+      149.614
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.263,
+      0.127,
+      0.183
+     ],
+     "rms_sol_sim_N": [
+      2.815,
+      2.153,
+      9.088
+     ],
+     "sum_sol_mean_N": [
+      0.03,
+      0.006,
+      144.597
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.142,
+     "max": 5.668,
+     "rms_xyz": [
+      0.399,
+      0.516,
+      3.074
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 9.125,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 12.77,
+      "max": 13.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.4,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 30.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.9526,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 58.7,
+     "tick_max_us": 143.4,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.000335,
+    "vy": -1e-06,
+    "yaw_rate": 6.3e-05,
+    "v_err": 0.000335,
+    "yaw_err": 6.3e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.001155,
+    "roll_sd": 0.078732,
+    "roll_rms": 0.07874,
+    "pitch_mean": -0.220125,
+    "pitch_sd": 0.116607,
+    "pitch_rms": 0.249103,
+    "z_mean": 0.287072,
+    "z_sd": 0.002028,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -3.28,
+    "lateral_drift_m": -0.0,
+    "lateral_drift_heading_m": -0.0,
+    "yaw_change_deg": 0.049,
+    "grf": {
+     "rms_des_sim_N": [
+      3.041,
+      3.285,
+      11.807
+     ],
+     "sum_des_mean_N": [
+      0.612,
+      -0.013,
+      141.484
+     ],
+     "sum_sim_mean_N": [
+      -0.078,
+      -0.002,
+      149.574
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.201,
+      0.249,
+      0.145
+     ],
+     "rms_sol_sim_N": [
+      2.986,
+      3.167,
+      11.825
+     ],
+     "sum_sol_mean_N": [
+      0.709,
+      -0.009,
+      141.45
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.218,
+     "max": 6.185,
+     "rms_xyz": [
+      0.618,
+      0.682,
+      3.084
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 9.542,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 13.69,
+      "max": 19.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 8.2
+   },
+   {
+    "duty": 0.35,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 45.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 4.453,
+    "peak_tau_over_limit": 1.0554,
+    "saturated_samples_pct": 0.1143,
+    "wbc_closing": {
+     "tick_mean_us": 57.7,
+     "tick_max_us": 145.0,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 20,
+     "saturated_pct": 0.125
+    },
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.000288,
+    "vy": -4e-06,
+    "yaw_rate": 3e-05,
+    "v_err": 0.000288,
+    "yaw_err": 3e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.000188,
+    "roll_sd": 0.137276,
+    "roll_rms": 0.137276,
+    "pitch_mean": -0.370649,
+    "pitch_sd": 0.126546,
+    "pitch_rms": 0.391657,
+    "z_mean": 0.280798,
+    "z_sd": 0.002812,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -9.56,
+    "lateral_drift_m": -0.0,
+    "lateral_drift_heading_m": -0.0,
+    "yaw_change_deg": 0.031,
+    "grf": {
+     "rms_des_sim_N": [
+      4.05,
+      5.259,
+      16.941
+     ],
+     "sum_des_mean_N": [
+      1.579,
+      0.001,
+      131.451
+     ],
+     "sum_sim_mean_N": [
+      -0.113,
+      -0.001,
+      149.602
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.222,
+      0.38,
+      0.19
+     ],
+     "rms_sol_sim_N": [
+      3.985,
+      5.047,
+      17.003
+     ],
+     "sum_sol_mean_N": [
+      1.598,
+      0.001,
+      131.399
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.448,
+     "max": 6.375,
+     "rms_xyz": [
+      0.801,
+      1.048,
+      3.186
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 10.468,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 16.92,
+      "max": 20.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 19.05
+   },
+   {
+    "duty": 0.3,
+    "vx_cmd": 0.0,
+    "period": 0.3,
+    "flight_scheduled_ms": 60.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 4.453,
+    "peak_tau_over_limit": 1.1088,
+    "saturated_samples_pct": 4.2002,
+    "wbc_closing": {
+     "tick_mean_us": 57.3,
+     "tick_max_us": 136.4,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 735,
+     "saturated_pct": 4.5943
+    },
+    "mdltrot_echo": [
+     0.0,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": -0.001077,
+    "vy": -4.3e-05,
+    "yaw_rate": 5e-06,
+    "v_err": 0.001078,
+    "yaw_err": 5e-06,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.000789,
+    "roll_sd": 0.244773,
+    "roll_rms": 0.244774,
+    "pitch_mean": -0.717132,
+    "pitch_sd": 0.248062,
+    "pitch_rms": 0.758824,
+    "z_mean": 0.280176,
+    "z_sd": 0.004786,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -10.18,
+    "lateral_drift_m": -0.0005,
+    "lateral_drift_heading_m": -0.0,
+    "yaw_change_deg": 0.014,
+    "grf": {
+     "rms_des_sim_N": [
+      5.504,
+      7.199,
+      22.389
+     ],
+     "sum_des_mean_N": [
+      2.102,
+      0.015,
+      131.384
+     ],
+     "sum_sim_mean_N": [
+      -0.091,
+      -0.001,
+      149.365
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.32,
+      0.665,
+      0.324
+     ],
+     "rms_sol_sim_N": [
+      5.454,
+      6.916,
+      22.471
+     ],
+     "sum_sol_mean_N": [
+      2.013,
+      0.012,
+      131.294
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.393,
+     "max": 11.085,
+     "rms_xyz": [
+      0.856,
+      1.035,
+      3.115
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 8.516,
+     "stance_unloaded_pct": 0.056,
+     "first_contact_before_scheduled_ms": {
+      "mean": 15.59,
+      "max": 28.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 33.62
+   },
+   {
+    "duty": 0.7,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 5.753,
+    "peak_tau_over_limit": 1.1066,
+    "saturated_samples_pct": 4.1317,
+    "wbc_closing": {
+     "tick_mean_us": 62.7,
+     "tick_max_us": 141.5,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 723,
+     "saturated_pct": 4.5193
+    },
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.349961,
+    "vy": -2e-06,
+    "yaw_rate": -1e-06,
+    "v_err": 3.9e-05,
+    "yaw_err": 1e-06,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.000508,
+    "roll_sd": 0.054748,
+    "roll_rms": 0.05475,
+    "pitch_mean": 0.061176,
+    "pitch_sd": 0.106108,
+    "pitch_rms": 0.12248,
+    "z_mean": 0.290793,
+    "z_sd": 0.000921,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 0.44,
+    "lateral_drift_m": -0.0006,
+    "lateral_drift_heading_m": -0.0006,
+    "yaw_change_deg": -0.004,
+    "grf": {
+     "rms_des_sim_N": [
+      5.204,
+      2.14,
+      10.048
+     ],
+     "sum_des_mean_N": [
+      -2.593,
+      -0.005,
+      147.966
+     ],
+     "sum_sim_mean_N": [
+      0.073,
+      0.001,
+      149.189
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.932,
+      0.32,
+      0.585
+     ],
+     "rms_sol_sim_N": [
+      4.409,
+      2.017,
+      9.901
+     ],
+     "sum_sol_mean_N": [
+      -2.339,
+      -0.003,
+      147.993
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 4.031,
+     "max": 6.232,
+     "rms_xyz": [
+      2.386,
+      0.18,
+      3.245
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 0.0,
+     "stance_unloaded_pct": 5.161,
+     "first_contact_before_scheduled_ms": {
+      "mean": 0.0,
+      "max": 0.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 4.0
+   },
+   {
+    "duty": 0.6,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.5424,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 61.4,
+     "tick_max_us": 143.3,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.349994,
+    "vy": 2.5e-05,
+    "yaw_rate": -9e-06,
+    "v_err": 2.5e-05,
+    "yaw_err": 9e-06,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.00091,
+    "roll_sd": 0.088425,
+    "roll_rms": 0.088429,
+    "pitch_mean": -0.122754,
+    "pitch_sd": 0.085848,
+    "pitch_rms": 0.149794,
+    "z_mean": 0.290443,
+    "z_sd": 0.000713,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 0.09,
+    "lateral_drift_m": -0.0002,
+    "lateral_drift_heading_m": -0.0005,
+    "yaw_change_deg": -0.007,
+    "grf": {
+     "rms_des_sim_N": [
+      3.42,
+      2.289,
+      8.244
+     ],
+     "sum_des_mean_N": [
+      -2.274,
+      0.004,
+      148.602
+     ],
+     "sum_sim_mean_N": [
+      -0.05,
+      0.002,
+      149.166
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.516,
+      0.311,
+      0.385
+     ],
+     "rms_sol_sim_N": [
+      3.012,
+      2.099,
+      8.166
+     ],
+     "sum_sol_mean_N": [
+      -2.164,
+      0.005,
+      148.604
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.568,
+     "max": 5.688,
+     "rms_xyz": [
+      1.795,
+      0.206,
+      3.077
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 0.0,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 0.46,
+      "max": 1.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.5,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 0.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.4672,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 59.7,
+     "tick_max_us": 150.2,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.350077,
+    "vy": 0.0,
+    "yaw_rate": 1e-05,
+    "v_err": 7.7e-05,
+    "yaw_err": 1e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.000283,
+    "roll_sd": 0.042189,
+    "roll_rms": 0.04219,
+    "pitch_mean": -0.063354,
+    "pitch_sd": 0.047824,
+    "pitch_rms": 0.079378,
+    "z_mean": 0.290446,
+    "z_sd": 0.000613,
+    "z_target": 0.290353,
+    "z_minus_target_mm": 0.09,
+    "lateral_drift_m": 0.0003,
+    "lateral_drift_heading_m": 0.0003,
+    "yaw_change_deg": 0.006,
+    "grf": {
+     "rms_des_sim_N": [
+      2.54,
+      1.579,
+      7.117
+     ],
+     "sum_des_mean_N": [
+      -1.626,
+      0.005,
+      148.925
+     ],
+     "sum_sim_mean_N": [
+      -0.049,
+      -0.001,
+      149.194
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.325,
+      0.234,
+      0.308
+     ],
+     "rms_sol_sim_N": [
+      2.29,
+      1.503,
+      7.045
+     ],
+     "sum_sol_mean_N": [
+      -1.62,
+      0.005,
+      148.92
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.463,
+     "max": 5.591,
+     "rms_xyz": [
+      1.579,
+      0.308,
+      3.067
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 0.0,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 1.05,
+      "max": 2.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.45,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 15.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.7724,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 60.9,
+     "tick_max_us": 150.2,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.350026,
+    "vy": -1.5e-05,
+    "yaw_rate": 8e-06,
+    "v_err": 3e-05,
+    "yaw_err": 8e-06,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.000451,
+    "roll_sd": 0.089599,
+    "roll_rms": 0.0896,
+    "pitch_mean": -0.291539,
+    "pitch_sd": 0.06274,
+    "pitch_rms": 0.298214,
+    "z_mean": 0.288335,
+    "z_sd": 0.001045,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -2.02,
+    "lateral_drift_m": -0.0009,
+    "lateral_drift_heading_m": -0.0007,
+    "yaw_change_deg": 0.007,
+    "grf": {
+     "rms_des_sim_N": [
+      2.85,
+      2.388,
+      8.209
+     ],
+     "sum_des_mean_N": [
+      -1.586,
+      0.012,
+      146.242
+     ],
+     "sum_sim_mean_N": [
+      -0.214,
+      0.0,
+      149.747
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.197,
+      0.389,
+      0.301
+     ],
+     "rms_sol_sim_N": [
+      2.715,
+      2.157,
+      8.207
+     ],
+     "sum_sol_mean_N": [
+      -1.56,
+      0.01,
+      146.232
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.43,
+     "max": 5.646,
+     "rms_xyz": [
+      1.457,
+      0.473,
+      3.069
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 8.139,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 12.41,
+      "max": 15.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 0.0
+   },
+   {
+    "duty": 0.4,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 30.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": null,
+    "peak_tau_over_limit": 0.9529,
+    "saturated_samples_pct": 0.0,
+    "wbc_closing": {
+     "tick_mean_us": 58.8,
+     "tick_max_us": 138.8,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 0,
+     "saturated_pct": 0.0
+    },
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.349571,
+    "vy": 9.3e-05,
+    "yaw_rate": 8.9e-05,
+    "v_err": 0.000439,
+    "yaw_err": 8.9e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.001775,
+    "roll_sd": 0.146397,
+    "roll_rms": 0.146408,
+    "pitch_mean": -0.479016,
+    "pitch_sd": 0.131215,
+    "pitch_rms": 0.496662,
+    "z_mean": 0.286598,
+    "z_sd": 0.002055,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -3.76,
+    "lateral_drift_m": 0.003,
+    "lateral_drift_heading_m": 0.0019,
+    "yaw_change_deg": 0.064,
+    "grf": {
+     "rms_des_sim_N": [
+      3.2,
+      3.564,
+      11.088
+     ],
+     "sum_des_mean_N": [
+      0.127,
+      -0.063,
+      142.568
+     ],
+     "sum_sim_mean_N": [
+      -0.243,
+      -0.01,
+      149.792
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.195,
+      0.696,
+      0.399
+     ],
+     "rms_sol_sim_N": [
+      3.088,
+      3.245,
+      11.155
+     ],
+     "sum_sol_mean_N": [
+      0.129,
+      -0.05,
+      142.495
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.408,
+     "max": 6.158,
+     "rms_xyz": [
+      1.249,
+      0.706,
+      3.091
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 9.859,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 13.27,
+      "max": 21.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 5.3
+   },
+   {
+    "duty": 0.35,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 45.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 4.453,
+    "peak_tau_over_limit": 1.0598,
+    "saturated_samples_pct": 0.1143,
+    "wbc_closing": {
+     "tick_mean_us": 58.1,
+     "tick_max_us": 141.2,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 20,
+     "saturated_pct": 0.125
+    },
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.349724,
+    "vy": -2e-06,
+    "yaw_rate": 2.6e-05,
+    "v_err": 0.000276,
+    "yaw_err": 2.6e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": -0.000373,
+    "roll_sd": 0.207864,
+    "roll_rms": 0.207864,
+    "pitch_mean": -0.88327,
+    "pitch_sd": 0.125563,
+    "pitch_rms": 0.89215,
+    "z_mean": 0.279756,
+    "z_sd": 0.002857,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -10.6,
+    "lateral_drift_m": 0.0002,
+    "lateral_drift_heading_m": 0.0002,
+    "yaw_change_deg": 0.028,
+    "grf": {
+     "rms_des_sim_N": [
+      4.551,
+      5.798,
+      15.884
+     ],
+     "sum_des_mean_N": [
+      0.59,
+      0.001,
+      133.412
+     ],
+     "sum_sim_mean_N": [
+      -0.23,
+      -0.001,
+      149.692
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.246,
+      1.129,
+      0.589
+     ],
+     "rms_sol_sim_N": [
+      4.44,
+      5.227,
+      16.078
+     ],
+     "sum_sol_mean_N": [
+      0.498,
+      0.001,
+      133.287
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.53,
+     "max": 6.271,
+     "rms_xyz": [
+      1.087,
+      1.052,
+      3.189
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 10.244,
+     "stance_unloaded_pct": 0.0,
+     "first_contact_before_scheduled_ms": {
+      "mean": 15.49,
+      "max": 21.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 16.03
+   },
+   {
+    "duty": 0.3,
+    "vx_cmd": 0.35,
+    "period": 0.3,
+    "flight_scheduled_ms": 60.0,
+    "fall_t": null,
+    "error": null,
+    "error_t": null,
+    "warnings": [],
+    "stop_completed": true,
+    "first_saturated_t": 4.453,
+    "peak_tau_over_limit": 1.1337,
+    "saturated_samples_pct": 3.7774,
+    "wbc_closing": {
+     "tick_mean_us": 57.7,
+     "tick_max_us": 143.3,
+     "ticks": 15998,
+     "qp_failures": 0,
+     "fallback_ticks": 0,
+     "saturated_ticks": 661,
+     "saturated_pct": 4.1318
+    },
+    "mdltrot_echo": [
+     0.35,
+     0.0,
+     0.0,
+     0.3
+    ],
+    "window_s": [
+     7.303,
+     19.3
+    ],
+    "vx": 0.34891,
+    "vy": -6e-06,
+    "yaw_rate": 1.5e-05,
+    "v_err": 0.00109,
+    "yaw_err": 1.5e-05,
+    "v_tol": 0.05,
+    "yaw_tol": 0.05,
+    "roll_mean": 0.000607,
+    "roll_sd": 0.268928,
+    "roll_rms": 0.268928,
+    "pitch_mean": -1.214368,
+    "pitch_sd": 0.21433,
+    "pitch_rms": 1.233137,
+    "z_mean": 0.278494,
+    "z_sd": 0.004889,
+    "z_target": 0.290353,
+    "z_minus_target_mm": -11.86,
+    "lateral_drift_m": 0.0058,
+    "lateral_drift_heading_m": 0.0059,
+    "yaw_change_deg": 0.021,
+    "grf": {
+     "rms_des_sim_N": [
+      6.004,
+      7.445,
+      21.265
+     ],
+     "sum_des_mean_N": [
+      1.295,
+      0.009,
+      132.926
+     ],
+     "sum_sim_mean_N": [
+      -0.203,
+      -0.0,
+      149.487
+     ],
+     "weight_N": 149.175,
+     "rms_des_sol_N": [
+      0.368,
+      1.31,
+      0.648
+     ],
+     "rms_sol_sim_N": [
+      5.847,
+      6.879,
+      21.425
+     ],
+     "sum_sol_mean_N": [
+      1.142,
+      0.008,
+      132.755
+     ]
+    },
+    "swing_err_mm": {
+     "rms": 3.444,
+     "max": 11.625,
+     "rms_xyz": [
+      0.976,
+      1.053,
+      3.13
+     ]
+    },
+    "touchdown": {
+     "swing_loaded_pct": 9.055,
+     "stance_unloaded_pct": 0.056,
+     "first_contact_before_scheduled_ms": {
+      "mean": 14.76,
+      "max": 29.0
+     }
+    },
+    "wbc_logged": {
+     "fallback_samples": 0,
+     "qp_status_nonzero_samples": 0
+    },
+    "airborne_ms": 29.87
+   }
+  ]
  }
 }
