@@ -24,7 +24,8 @@
   support line. Two realizations of that thdd, selected by params_t::mode:
 
   OFFSET       thdd is integrated into an angle alpha per swing leg and the
-               planned foot reference is rotated about the hip by alpha. The
+               planned foot reference is rotated about the hip by alpha, but
+               never below its planned height. The
                swing task then tracks the rotated position, velocity and
                acceleration: the same feedforward as PASSTHROUGH, plus feedback
                on the motion the law asked for. Before touchdown alpha returns

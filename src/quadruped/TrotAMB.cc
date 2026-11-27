@@ -198,10 +198,30 @@ void TrotAMB::tick(const input_t& in, output_t& out) {
         }
       }
       // A leg that carries no offset keeps the planned reference bit for bit.
-      if (_alpha[k] != 0.0 || _alpha_d[k] != 0.0 || alpha_dd != 0.0)
-        rotateReference(_n_body, prm.leg[sw[k]].joint[0].parent_translation, _alpha[k],
-                        _alpha_d[k], alpha_dd, in.foot_p[sw[k]], in.foot_v[sw[k]],
-                        in.foot_a[sw[k]], out.foot_p[sw[k]], out.foot_v[sw[k]], out.foot_a[sw[k]]);
+      if (_alpha[k] != 0.0 || _alpha_d[k] != 0.0 || alpha_dd != 0.0) {
+        const int leg = sw[k];
+        rotateReference(_n_body, prm.leg[leg].joint[0].parent_translation, _alpha[k], _alpha_d[k],
+                        alpha_dd, in.foot_p[leg], in.foot_v[leg], in.foot_a[leg], out.foot_p[leg],
+                        out.foot_v[leg], out.foot_a[leg]);
+        // The foot does not go below its planned height. On the arc the two
+        // swing feet go opposite ways (their hips lie on opposite sides of
+        // the support line): the one swinging outward rises, the one swinging
+        // in under its hip comes down, 3 cm below its planned height at 35
+        // deg and on its way to the ground (2026-11-27). Where the arc is
+        // lower, the planned height is kept and only the horizontal part of
+        // the rotation is taken, which there differs from the arc's angle by
+        // less than a degree. The rising foot is left on its arc: held level,
+        // it reached half the angle asked for and the law's opening-angle
+        // channel wound the other leg to its bound. The world vertical is
+        // taken as constant in the body frame, as the support line is.
+        const Eigen::Vector3d up = R.transpose() * Eigen::Vector3d::UnitZ();
+        const double below = up.dot(in.foot_p[leg] - out.foot_p[leg]);
+        if (below > 0.0) {
+          out.foot_p[leg] += up * below;
+          out.foot_v[leg] += up * up.dot(in.foot_v[leg] - out.foot_v[leg]);
+          out.foot_a[leg] += up * up.dot(in.foot_a[leg] - out.foot_a[leg]);
+        }
+      }
       _log[16 + k] = _alpha[k];
       _log[18 + k] = _alpha_d[k];
     }

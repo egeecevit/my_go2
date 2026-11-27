@@ -193,7 +193,7 @@ def summary(R, trot_s):
     # its descent and the body stayed within 10 deg: without that the body has tipped onto a swing foot and
     # stands on three. Phases cut short by the stop, or begun before the lift scale reached 1, are not counted.
     starts = np.nonzero((R.pair[1:] >= 0) & (R.pair[:-1] != R.pair[1:]))[0] + 1
-    held, phases, ch0 = 0, 0, []
+    held, phases, ch0, zmin, zmax = 0, 0, [], [], []
     for i0 in starts:
         j = i0
         while j < len(R.t) and R.pair[j] == R.pair[i0]:
@@ -207,7 +207,12 @@ def summary(R, trot_s):
         mid = np.arange(i0, j)[(R.t[i0:j] > R.t[i0] + 0.25) & (R.t[i0:j] < R.t[j - 1] - 0.25)]
         held += int(len(mid) > 0 and R.cp[mid][:, sw, 2].min() > 0.005
                     and np.degrees(np.abs(R.rpy[i0:j, :2]).max()) < 10.0)
-    out.update(phases=phases, phases_held=held, ch_at_liftoff_mm=[r(x, 2) for x in ch0])
+        if len(mid):
+            zmin.append(1e3 * R.cp[mid][:, sw, 2].min())
+            zmax.append(1e3 * R.cp[mid][:, sw, 2].max())
+    out.update(phases=phases, phases_held=held, ch_at_liftoff_mm=[r(x, 2) for x in ch0],
+               # lowest and highest a swing foot was between its lift and its descent, over the counted phases
+               swing_height_mm=[r(min(zmin), 1), r(max(zmax), 1)] if zmin else None)
     A = R.D.get("MdlTrot_amb")
     if A is not None and w.any() and np.any(A[w, 1] > 0):
         act = w & (A[:, 1] == 1)

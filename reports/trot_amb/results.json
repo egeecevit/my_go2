@@ -4,7 +4,7 @@
   "summary": [
    "22/22 Test #22: test_config_layering_go1 .........   Passed    0.00 sec",
    "100% tests passed, 0 tests failed out of 22",
-   "Total Test time (real) =  16.41 sec"
+   "Total Test time (real) =  16.61 sec"
   ]
  },
  "meta": {
@@ -51,11 +51,11 @@
   },
   "logs": "runs/trot_amb",
   "experiment_wall_s": {
-   "tests": 16.4,
-   "depth": 8.3,
-   "baseline": 46.2,
-   "static": 57.5,
-   "inplace": 204.4
+   "tests": 16.6,
+   "depth": 8.4,
+   "baseline": 46.5,
+   "static": 58.0,
+   "inplace": 181.4
   },
   "parallel_runs": 6
  },
@@ -76,8 +76,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 71.3,
-     "tick_max_us": 138.1,
+     "tick_mean_us": 69.9,
+     "tick_max_us": 150.7,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -86,40 +86,44 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 1.41,
-    "pitch_peak": 1.347,
-    "roll_rms": 0.375,
-    "pitch_rms": 0.364,
-    "roll_mean": 0.016,
-    "pitch_mean": 0.198,
+    "roll_peak": 1.474,
+    "pitch_peak": 1.381,
+    "roll_rms": 0.391,
+    "pitch_rms": 0.378,
+    "roll_mean": 0.018,
+    "pitch_mean": 0.202,
     "z_min": 0.2898,
-    "L_rms": 0.0574,
-    "L_peak": 0.2497,
-    "ch_rms_mm": 3.302,
-    "ch_peak_mm": 11.829,
+    "L_rms": 0.0598,
+    "L_peak": 0.2593,
+    "ch_rms_mm": 3.394,
+    "ch_peak_mm": 12.269,
     "phases": 10,
     "phases_held": 10,
     "ch_at_liftoff_mm": [
      4.75,
-     -0.48,
-     -0.5,
-     1.36,
-     -2.44,
-     2.71,
-     -2.86,
-     2.63,
-     -2.61,
+     -0.57,
+     -0.64,
+     1.6,
+     -2.55,
+     2.73,
+     -2.98,
+     2.69,
+     -2.7,
      2.41
+    ],
+    "swing_height_mm": [
+     96.0,
+     185.2
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.08,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 36.2,
-     "leg_travel_peak_deg": 35.954,
-     "thdd_rms": 20.768,
-     "ff_acc_rms": 5.5221,
-     "pd_acc_rms": 0.2142,
-     "tau_hat_peak": 0.1156
+     "alpha_peak_deg": 37.567,
+     "leg_travel_peak_deg": 38.359,
+     "thdd_rms": 22.353,
+     "ff_acc_rms": 5.9367,
+     "pd_acc_rms": 0.2563,
+     "tau_hat_peak": 0.1158
     }
    },
    {
@@ -137,8 +141,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 69.0,
-     "tick_max_us": 351.6,
+     "tick_mean_us": 68.9,
+     "tick_max_us": 119.9,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -147,40 +151,44 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.296,
-    "pitch_peak": 0.306,
-    "roll_rms": 0.084,
-    "pitch_rms": 0.101,
+    "roll_peak": 0.316,
+    "pitch_peak": 0.329,
+    "roll_rms": 0.087,
+    "pitch_rms": 0.108,
     "roll_mean": 0.021,
-    "pitch_mean": 0.083,
+    "pitch_mean": 0.087,
     "z_min": 0.2901,
-    "L_rms": 0.0102,
-    "L_peak": 0.0607,
-    "ch_rms_mm": 0.465,
-    "ch_peak_mm": 2.222,
+    "L_rms": 0.0105,
+    "L_peak": 0.0581,
+    "ch_rms_mm": 0.506,
+    "ch_peak_mm": 2.43,
     "phases": 10,
     "phases_held": 10,
     "ch_at_liftoff_mm": [
      4.75,
-     -0.57,
-     -0.18,
-     0.2,
-     -0.36,
-     0.09,
-     -0.29,
-     0.01,
-     -0.22,
-     -0.04
+     -0.65,
+     -0.21,
+     0.15,
+     -0.42,
+     0.17,
+     -0.31,
+     0.11,
+     -0.19,
+     0.03
+    ],
+    "swing_height_mm": [
+     96.4,
+     185.2
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.08,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 11.908,
-     "leg_travel_peak_deg": 11.716,
-     "thdd_rms": 9.889,
-     "ff_acc_rms": 2.2309,
-     "pd_acc_rms": 0.1219,
-     "tau_hat_peak": 0.1155
+     "alpha_peak_deg": 14.217,
+     "leg_travel_peak_deg": 12.485,
+     "thdd_rms": 10.91,
+     "ff_acc_rms": 2.4272,
+     "pd_acc_rms": 0.2022,
+     "tau_hat_peak": 0.1157
     }
    },
    {
@@ -198,8 +206,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 70.5,
-     "tick_max_us": 131.2,
+     "tick_mean_us": 69.4,
+     "tick_max_us": 118.3,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -208,40 +216,44 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.248,
-    "pitch_peak": 0.245,
-    "roll_rms": 0.079,
-    "pitch_rms": 0.093,
-    "roll_mean": 0.02,
-    "pitch_mean": 0.072,
-    "z_min": 0.2902,
-    "L_rms": 0.0105,
-    "L_peak": 0.0624,
-    "ch_rms_mm": 0.414,
-    "ch_peak_mm": 1.859,
+    "roll_peak": 0.27,
+    "pitch_peak": 0.276,
+    "roll_rms": 0.082,
+    "pitch_rms": 0.1,
+    "roll_mean": 0.021,
+    "pitch_mean": 0.075,
+    "z_min": 0.2901,
+    "L_rms": 0.0104,
+    "L_peak": 0.0593,
+    "ch_rms_mm": 0.445,
+    "ch_peak_mm": 1.989,
     "phases": 10,
     "phases_held": 10,
     "ch_at_liftoff_mm": [
      4.75,
-     -0.76,
-     0.01,
-     0.19,
-     -0.27,
-     -0.02,
-     -0.28,
-     -0.09,
-     -0.18,
-     -0.12
+     -0.8,
+     -0.01,
+     0.05,
+     -0.35,
+     0.07,
+     -0.29,
+     0.02,
+     -0.15,
+     -0.04
+    ],
+    "swing_height_mm": [
+     96.2,
+     185.2
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.08,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 12.992,
-     "leg_travel_peak_deg": 12.716,
-     "thdd_rms": 10.41,
-     "ff_acc_rms": 2.4054,
-     "pd_acc_rms": 0.1134,
-     "tau_hat_peak": 0.1155
+     "alpha_peak_deg": 15.143,
+     "leg_travel_peak_deg": 13.395,
+     "thdd_rms": 11.362,
+     "ff_acc_rms": 2.5821,
+     "pd_acc_rms": 0.1962,
+     "tau_hat_peak": 0.1157
     }
    }
   ],
@@ -263,8 +275,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 79.8,
-     "tick_max_us": 261.5,
+     "tick_mean_us": 82.5,
+     "tick_max_us": 120.0,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -317,7 +329,8 @@
      0.02,
      0.02,
      0.01
-    ]
+    ],
+    "swing_height_mm": null
    },
    {
     "name": "default_two0.75_four0.0",
@@ -336,8 +349,8 @@
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 89.7,
-     "tick_max_us": 152.8,
+     "tick_mean_us": 90.1,
+     "tick_max_us": 144.9,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -357,6 +370,10 @@
      -22.98,
      -21.78,
      -57.3
+    ],
+    "swing_height_mm": [
+     -4.9,
+     145.9
     ]
    },
    {
@@ -376,8 +393,8 @@
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 89.5,
-     "tick_max_us": 138.4,
+     "tick_mean_us": 86.8,
+     "tick_max_us": 276.5,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -406,6 +423,10 @@
      -28.04,
      -23.25,
      27.79
+    ],
+    "swing_height_mm": [
+     -4.5,
+     298.7
     ]
    },
    {
@@ -425,8 +446,8 @@
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 87.0,
-     "tick_max_us": 139.4,
+     "tick_mean_us": 87.7,
+     "tick_max_us": 153.6,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -435,9 +456,9 @@
     },
     "failed": true,
     "survived_s": 9.816,
-    "L_rms": 0.6768,
+    "L_rms": 0.6764,
     "L_peak": 2.0064,
-    "ch_rms_mm": 88.097,
+    "ch_rms_mm": 88.091,
     "ch_peak_mm": 183.899,
     "phases": 7,
     "phases_held": 0,
@@ -449,6 +470,10 @@
      6.43,
      6.3,
      -10.86
+    ],
+    "swing_height_mm": [
+     -1.7,
+     486.9
     ]
    },
    {
@@ -465,8 +490,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 82.9,
-     "tick_max_us": 267.8,
+     "tick_mean_us": 89.9,
+     "tick_max_us": 142.9,
      "ticks": 16998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -497,6 +522,10 @@
      10.39,
      -3.49,
      3.84
+    ],
+    "swing_height_mm": [
+     -0.3,
+     139.3
     ]
    },
    {
@@ -513,8 +542,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 87.9,
-     "tick_max_us": 143.8,
+     "tick_mean_us": 85.7,
+     "tick_max_us": 131.5,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -559,7 +588,8 @@
      0.73,
      -0.16,
      -0.22
-    ]
+    ],
+    "swing_height_mm": null
    },
    {
     "name": "default_two0.75_four0.2",
@@ -578,8 +608,8 @@
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 86.1,
-     "tick_max_us": 496.9,
+     "tick_mean_us": 85.2,
+     "tick_max_us": 230.8,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -603,6 +633,10 @@
      -34.53,
      44.99,
      -17.1
+    ],
+    "swing_height_mm": [
+     -3.0,
+     154.7
     ]
    },
    {
@@ -622,8 +656,8 @@
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 83.6,
-     "tick_max_us": 246.7,
+     "tick_mean_us": 86.9,
+     "tick_max_us": 256.4,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -651,6 +685,10 @@
      -32.93,
      26.84,
      -12.15
+    ],
+    "swing_height_mm": [
+     -3.5,
+     270.0
     ]
    },
    {
@@ -667,8 +705,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 81.5,
-     "tick_max_us": 177.0,
+     "tick_mean_us": 82.0,
+     "tick_max_us": 177.4,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -700,6 +738,10 @@
      40.2,
      -42.36,
      38.17
+    ],
+    "swing_height_mm": [
+     -0.9,
+     149.5
     ]
    },
    {
@@ -716,8 +758,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 89.0,
-     "tick_max_us": 171.0,
+     "tick_mean_us": 86.4,
+     "tick_max_us": 183.1,
      "ticks": 18598,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -748,6 +790,10 @@
      -48.38,
      41.86,
      -47.15
+    ],
+    "swing_height_mm": [
+     -0.3,
+     138.9
     ]
    },
    {
@@ -764,8 +810,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 86.5,
-     "tick_max_us": 173.1,
+     "tick_mean_us": 84.5,
+     "tick_max_us": 185.9,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -803,7 +849,8 @@
      1.29,
      -0.09,
      -0.84
-    ]
+    ],
+    "swing_height_mm": null
    },
    {
     "name": "default_two0.75_four0.5",
@@ -822,8 +869,8 @@
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 93.9,
-     "tick_max_us": 275.7,
+     "tick_mean_us": 90.4,
+     "tick_max_us": 223.6,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -844,6 +891,10 @@
      36.36,
      -26.23,
      31.58
+    ],
+    "swing_height_mm": [
+     -3.0,
+     149.5
     ]
    },
    {
@@ -860,8 +911,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 74.0,
-     "tick_max_us": 165.7,
+     "tick_mean_us": 73.3,
+     "tick_max_us": 141.8,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -894,6 +945,10 @@
      -30.09,
      26.91,
      -25.45
+    ],
+    "swing_height_mm": [
+     -3.7,
+     151.8
     ]
    },
    {
@@ -910,8 +965,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 67.4,
-     "tick_max_us": 138.5,
+     "tick_mean_us": 72.8,
+     "tick_max_us": 142.1,
      "ticks": 16998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -942,6 +997,10 @@
      -41.1,
      34.57,
      -40.4
+    ],
+    "swing_height_mm": [
+     -1.0,
+     147.1
     ]
    },
    {
@@ -958,8 +1017,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 68.2,
-     "tick_max_us": 133.0,
+     "tick_mean_us": 66.8,
+     "tick_max_us": 299.0,
      "ticks": 20998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -990,6 +1049,10 @@
      -43.36,
      38.17,
      -42.66
+    ],
+    "swing_height_mm": [
+     -0.3,
+     135.9
     ]
    }
   ],
@@ -1003,37 +1066,40 @@
     "period": 2.5,
     "duty": 0.7,
     "entry_t": 4.304,
-    "fall_t": 12.873,
+    "fall_t": 10.762,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
+     "[WW] MdlSit: Leg 3 command failed at t=20.302",
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 79.6,
-     "tick_max_us": 177.4,
+     "tick_mean_us": 74.2,
+     "tick_max_us": 218.5,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 6191,
-     "saturated_pct": 38.6986
+     "saturated_ticks": 8318,
+     "saturated_pct": 51.994
     },
     "failed": true,
-    "survived_s": 8.569,
-    "L_rms": 1.0833,
-    "L_peak": 2.4496,
-    "ch_rms_mm": 84.016,
-    "ch_peak_mm": 138.686,
-    "phases": 7,
+    "survived_s": 6.458,
+    "L_rms": 1.1062,
+    "L_peak": 2.5102,
+    "ch_rms_mm": 90.447,
+    "ch_peak_mm": 129.888,
+    "phases": 5,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.16,
-     -26.06,
-     30.91,
-     -20.06,
-     25.29,
-     -26.01,
-     35.87
+     -26.97,
+     30.13,
+     -27.39,
+     33.3
+    ],
+    "swing_height_mm": [
+     -3.7,
+     165.6
     ]
    },
    {
@@ -1050,8 +1116,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 66.9,
-     "tick_max_us": 133.6,
+     "tick_mean_us": 72.9,
+     "tick_max_us": 227.2,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1060,30 +1126,34 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 16.36,
-    "pitch_peak": 15.62,
-    "roll_rms": 9.371,
-    "pitch_rms": 8.906,
-    "roll_mean": 0.608,
-    "pitch_mean": -7.363,
-    "z_min": 0.2374,
-    "L_rms": 0.7748,
-    "L_peak": 2.2578,
-    "ch_rms_mm": 76.563,
-    "ch_peak_mm": 97.617,
+    "roll_peak": 16.757,
+    "pitch_peak": 15.81,
+    "roll_rms": 9.432,
+    "pitch_rms": 9.28,
+    "roll_mean": 0.623,
+    "pitch_mean": -7.639,
+    "z_min": 0.236,
+    "L_rms": 0.7917,
+    "L_peak": 2.3576,
+    "ch_rms_mm": 77.367,
+    "ch_peak_mm": 98.28,
     "phases": 10,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.18,
-     -21.35,
-     32.07,
-     -33.62,
-     31.71,
-     -31.77,
-     30.75,
-     -31.61,
-     31.39,
-     -32.01
+     -21.96,
+     32.91,
+     -33.81,
+     31.82,
+     -31.96,
+     31.47,
+     -32.39,
+     31.91,
+     -32.04
+    ],
+    "swing_height_mm": [
+     -3.5,
+     162.7
     ]
    },
    {
@@ -1100,8 +1170,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 67.2,
-     "tick_max_us": 153.1,
+     "tick_mean_us": 70.8,
+     "tick_max_us": 140.4,
      "ticks": 16998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1110,28 +1180,32 @@
     },
     "failed": false,
     "survived_s": 15.996,
-    "roll_peak": 14.541,
-    "pitch_peak": 15.66,
-    "roll_rms": 8.504,
-    "pitch_rms": 10.611,
-    "roll_mean": 0.787,
-    "pitch_mean": -9.191,
-    "z_min": 0.237,
-    "L_rms": 0.6172,
-    "L_peak": 2.2446,
-    "ch_rms_mm": 77.449,
-    "ch_peak_mm": 95.785,
+    "roll_peak": 15.153,
+    "pitch_peak": 16.305,
+    "roll_rms": 8.711,
+    "pitch_rms": 11.202,
+    "roll_mean": 0.821,
+    "pitch_mean": -9.647,
+    "z_min": 0.2357,
+    "L_rms": 0.6376,
+    "L_peak": 2.3674,
+    "ch_rms_mm": 77.011,
+    "ch_peak_mm": 95.126,
     "phases": 8,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.16,
-     -22.75,
-     32.51,
-     -35.82,
-     33.99,
-     -33.94,
-     32.11,
-     -33.02
+     -21.92,
+     32.34,
+     -34.09,
+     32.73,
+     -32.98,
+     31.63,
+     -32.2
+    ],
+    "swing_height_mm": [
+     -3.7,
+     161.1
     ]
    },
    {
@@ -1148,8 +1222,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 69.3,
-     "tick_max_us": 197.3,
+     "tick_mean_us": 67.1,
+     "tick_max_us": 129.6,
      "ticks": 20998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1158,28 +1232,32 @@
     },
     "failed": false,
     "survived_s": 19.996,
-    "roll_peak": 14.37,
-    "pitch_peak": 16.854,
-    "roll_rms": 8.732,
-    "pitch_rms": 11.371,
-    "roll_mean": 0.574,
-    "pitch_mean": -10.182,
-    "z_min": 0.2337,
-    "L_rms": 0.5222,
-    "L_peak": 2.2271,
-    "ch_rms_mm": 78.212,
-    "ch_peak_mm": 95.475,
+    "roll_peak": 15.04,
+    "pitch_peak": 17.303,
+    "roll_rms": 9.032,
+    "pitch_rms": 12.063,
+    "roll_mean": 0.607,
+    "pitch_mean": -10.755,
+    "z_min": 0.2331,
+    "L_rms": 0.5391,
+    "L_peak": 2.35,
+    "ch_rms_mm": 77.119,
+    "ch_peak_mm": 94.945,
     "phases": 8,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.16,
-     -22.97,
-     33.48,
-     -37.04,
-     35.39,
-     -35.35,
-     32.44,
-     -33.71
+     -21.32,
+     33.1,
+     -35.01,
+     33.46,
+     -33.8,
+     31.66,
+     -32.04
+    ],
+    "swing_height_mm": [
+     -3.5,
+     160.1
     ]
    }
   ]
@@ -1196,42 +1274,46 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 8.937,
+    "fall_t": null,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Tracking error exceeded at t=14.052",
-     "[WW] MdlTrot: Tracking error exceeded at t=14.051"
+     "[WW] MdlSit: Tracking error exceeded at t=14.053",
+     "[WW] MdlTrot: Tracking error exceeded at t=14.052"
     ],
     "wbc_closing": {
-     "tick_mean_us": 102.9,
-     "tick_max_us": 256.4,
+     "tick_mean_us": 94.9,
+     "tick_max_us": 181.9,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 4234,
-     "saturated_pct": 43.4346
+     "saturated_ticks": 255,
+     "saturated_pct": 2.6159
     },
     "failed": true,
-    "survived_s": 4.633,
-    "L_rms": 0.9197,
-    "L_peak": 4.9902,
-    "ch_rms_mm": 146.915,
-    "ch_peak_mm": 270.895,
+    "survived_s": 8.746,
+    "L_rms": 0.3188,
+    "L_peak": 2.5799,
+    "ch_rms_mm": 120.623,
+    "ch_peak_mm": 194.75,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.16
     ],
+    "swing_height_mm": [
+     59.7,
+     318.4
+    ],
     "amb": {
-     "acting_pct_of_two_foot": 100.0,
+     "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
      "alpha_peak_deg": 51.566,
-     "leg_travel_peak_deg": 74.942,
-     "thdd_rms": 9935.674,
-     "ff_acc_rms": 2085.8426,
-     "pd_acc_rms": 2.7819,
-     "tau_hat_peak": 52.3752
+     "leg_travel_peak_deg": 63.322,
+     "thdd_rms": 351.973,
+     "ff_acc_rms": 61.8193,
+     "pd_acc_rms": 2.4884,
+     "tau_hat_peak": 22.6
     }
    },
    {
@@ -1244,42 +1326,46 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 9.976,
+    "fall_t": 11.821,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Tracking error exceeded at t=14.442",
+     "[WW] MdlSit: Leg 2 command failed at t=14.574",
      "[WW] MdlTrot: Tracking error exceeded at t=14.051"
     ],
     "wbc_closing": {
-     "tick_mean_us": 99.8,
-     "tick_max_us": 149.1,
+     "tick_mean_us": 95.1,
+     "tick_max_us": 209.0,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 3576,
-     "saturated_pct": 36.6844
+     "saturated_ticks": 2035,
+     "saturated_pct": 20.8761
     },
     "failed": true,
-    "survived_s": 5.672,
-    "L_rms": 0.9605,
-    "L_peak": 4.7448,
-    "ch_rms_mm": 118.629,
-    "ch_peak_mm": 236.717,
+    "survived_s": 7.517,
+    "L_rms": 0.5955,
+    "L_peak": 3.1914,
+    "ch_rms_mm": 107.996,
+    "ch_peak_mm": 264.346,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      5.55
     ],
+    "swing_height_mm": [
+     -2.7,
+     398.2
+    ],
     "amb": {
      "acting_pct_of_two_foot": 100.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 51.566,
-     "leg_travel_peak_deg": 121.182,
-     "thdd_rms": 10865.002,
-     "ff_acc_rms": 2142.8393,
-     "pd_acc_rms": 5.6524,
-     "tau_hat_peak": 128.6982
+     "leg_travel_peak_deg": 65.708,
+     "thdd_rms": 5559.334,
+     "ff_acc_rms": 946.5251,
+     "pd_acc_rms": 2.8843,
+     "tau_hat_peak": 96.7707
     }
    },
    {
@@ -1297,8 +1383,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 88.5,
-     "tick_max_us": 143.6,
+     "tick_mean_us": 91.5,
+     "tick_max_us": 304.6,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1307,31 +1393,35 @@
     },
     "failed": false,
     "survived_s": 8.746,
-    "roll_peak": 0.67,
-    "pitch_peak": 1.641,
-    "roll_rms": 0.187,
-    "pitch_rms": 0.351,
-    "roll_mean": -0.171,
-    "pitch_mean": -0.283,
-    "z_min": 0.291,
-    "L_rms": 0.0296,
-    "L_peak": 0.2794,
-    "ch_rms_mm": 1.947,
-    "ch_peak_mm": 12.506,
+    "roll_peak": 0.669,
+    "pitch_peak": 1.658,
+    "roll_rms": 0.177,
+    "pitch_rms": 0.338,
+    "roll_mean": -0.157,
+    "pitch_mean": -0.257,
+    "z_min": 0.2909,
+    "L_rms": 0.0302,
+    "L_peak": 0.284,
+    "ch_rms_mm": 1.929,
+    "ch_peak_mm": 12.475,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      2.67
     ],
+    "swing_height_mm": [
+     95.5,
+     183.3
+    ],
     "amb": {
      "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 37.795,
-     "leg_travel_peak_deg": 37.626,
-     "thdd_rms": 0.032,
-     "ff_acc_rms": 0.0069,
-     "pd_acc_rms": 0.084,
-     "tau_hat_peak": 0.1221
+     "alpha_peak_deg": 37.803,
+     "leg_travel_peak_deg": 37.893,
+     "thdd_rms": 0.027,
+     "ff_acc_rms": 0.0049,
+     "pd_acc_rms": 0.1747,
+     "tau_hat_peak": 0.1225
     }
    },
    {
@@ -1349,8 +1439,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 90.2,
-     "tick_max_us": 127.4,
+     "tick_mean_us": 89.0,
+     "tick_max_us": 120.5,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1359,31 +1449,35 @@
     },
     "failed": false,
     "survived_s": 8.746,
-    "roll_peak": 0.381,
-    "pitch_peak": 0.477,
-    "roll_rms": 0.262,
-    "pitch_rms": 0.251,
-    "roll_mean": -0.261,
-    "pitch_mean": -0.248,
+    "roll_peak": 0.373,
+    "pitch_peak": 0.466,
+    "roll_rms": 0.256,
+    "pitch_rms": 0.24,
+    "roll_mean": -0.255,
+    "pitch_mean": -0.237,
     "z_min": 0.2917,
-    "L_rms": 0.0067,
-    "L_peak": 0.0555,
-    "ch_rms_mm": 0.346,
-    "ch_peak_mm": 1.9,
+    "L_rms": 0.0065,
+    "L_peak": 0.0554,
+    "ch_rms_mm": 0.335,
+    "ch_peak_mm": 1.79,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      -0.21
     ],
+    "swing_height_mm": [
+     96.6,
+     116.0
+    ],
     "amb": {
      "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 11.302,
-     "leg_travel_peak_deg": 11.182,
-     "thdd_rms": 0.031,
-     "ff_acc_rms": 0.0066,
-     "pd_acc_rms": 0.0845,
-     "tau_hat_peak": 0.1255
+     "alpha_peak_deg": 11.695,
+     "leg_travel_peak_deg": 10.05,
+     "thdd_rms": 0.033,
+     "ff_acc_rms": 0.0062,
+     "pd_acc_rms": 0.3998,
+     "tau_hat_peak": 0.1256
     }
    },
    {
@@ -1396,13 +1490,13 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 14.395,
+    "fall_t": 14.342,
     "error": null,
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 89.6,
-     "tick_max_us": 124.7,
+     "tick_mean_us": 92.7,
+     "tick_max_us": 170.2,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1411,24 +1505,28 @@
     },
     "failed": true,
     "survived_s": 8.746,
-    "L_rms": 0.0169,
-    "L_peak": 0.1668,
-    "ch_rms_mm": 1.168,
-    "ch_peak_mm": 8.211,
+    "L_rms": 0.0173,
+    "L_peak": 0.1697,
+    "ch_rms_mm": 1.165,
+    "ch_peak_mm": 8.352,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      -3.1
     ],
+    "swing_height_mm": [
+     100.0,
+     148.9
+    ],
     "amb": {
      "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 22.024,
-     "leg_travel_peak_deg": 21.751,
-     "thdd_rms": 0.033,
-     "ff_acc_rms": 0.0072,
-     "pd_acc_rms": 0.0798,
-     "tau_hat_peak": 0.1278
+     "alpha_peak_deg": 22.875,
+     "leg_travel_peak_deg": 22.817,
+     "thdd_rms": 0.03,
+     "ff_acc_rms": 0.0057,
+     "pd_acc_rms": 0.0764,
+     "tau_hat_peak": 0.1276
     }
    },
    {
@@ -1441,42 +1539,46 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 6.689,
+    "fall_t": 6.471,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Leg 3 command failed at t=14.052",
+     "[WW] MdlSit: Leg 2 command failed at t=15.276",
      "[WW] MdlTrot: Tracking error exceeded at t=14.051"
     ],
     "wbc_closing": {
-     "tick_mean_us": 96.5,
-     "tick_max_us": 159.3,
+     "tick_mean_us": 99.8,
+     "tick_max_us": 150.8,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 6756,
-     "saturated_pct": 69.3065
+     "saturated_ticks": 7207,
+     "saturated_pct": 73.9331
     },
     "failed": true,
-    "survived_s": 2.385,
-    "L_rms": 1.7996,
-    "L_peak": 3.1978,
-    "ch_rms_mm": 82.109,
-    "ch_peak_mm": 141.252,
+    "survived_s": 2.167,
+    "L_rms": 2.1628,
+    "L_peak": 3.2651,
+    "ch_rms_mm": 109.288,
+    "ch_peak_mm": 141.697,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      -5.98
     ],
+    "swing_height_mm": [
+     -12.3,
+     465.5
+    ],
     "amb": {
      "acting_pct_of_two_foot": 100.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 51.566,
-     "leg_travel_peak_deg": 53.918,
-     "thdd_rms": 6540.435,
-     "ff_acc_rms": 1399.8758,
-     "pd_acc_rms": 0.369,
-     "tau_hat_peak": 21.1199
+     "leg_travel_peak_deg": 54.116,
+     "thdd_rms": 8459.881,
+     "ff_acc_rms": 1619.2622,
+     "pd_acc_rms": 0.5241,
+     "tau_hat_peak": 19.0875
     }
    },
    {
@@ -1489,29 +1591,47 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 6.037,
+    "fall_t": 7.66,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Tracking error exceeded at t=14.052",
+     "[WW] MdlSit: Leg 3 command failed at t=14.052",
      "[WW] MdlTrot: Tracking error exceeded at t=14.051"
     ],
     "wbc_closing": {
      "tick_mean_us": 92.2,
-     "tick_max_us": 204.2,
+     "tick_max_us": 208.9,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 6903,
-     "saturated_pct": 70.8145
+     "saturated_ticks": 4019,
+     "saturated_pct": 41.229
     },
     "failed": true,
-    "survived_s": 1.733,
+    "survived_s": 3.356,
+    "L_rms": 0.7278,
+    "L_peak": 3.5076,
+    "ch_rms_mm": 112.299,
+    "ch_peak_mm": 204.564,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.16
-    ]
+    ],
+    "swing_height_mm": [
+     -30.1,
+     589.7
+    ],
+    "amb": {
+     "acting_pct_of_two_foot": 100.0,
+     "invalid_ticks": 0,
+     "alpha_peak_deg": 0.0,
+     "leg_travel_peak_deg": 92.78,
+     "thdd_rms": 13090.604,
+     "ff_acc_rms": 2392.3621,
+     "pd_acc_rms": 12.8523,
+     "tau_hat_peak": 101.4903
+    }
    },
    {
     "origin_x": -0.005,
@@ -1523,42 +1643,46 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 10.256,
+    "fall_t": 6.751,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Leg 1 command failed at t=14.724",
+     "[WW] MdlSit: Leg 0 command failed at t=14.596",
      "[WW] MdlTrot: Tracking error exceeded at t=14.051"
     ],
     "wbc_closing": {
-     "tick_mean_us": 88.7,
-     "tick_max_us": 212.2,
+     "tick_mean_us": 102.2,
+     "tick_max_us": 235.2,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 3982,
-     "saturated_pct": 40.8494
+     "saturated_ticks": 6110,
+     "saturated_pct": 62.6795
     },
     "failed": true,
-    "survived_s": 5.952,
-    "L_rms": 1.0224,
-    "L_peak": 5.9276,
-    "ch_rms_mm": 62.351,
-    "ch_peak_mm": 229.793,
+    "survived_s": 2.447,
+    "L_rms": 1.3505,
+    "L_peak": 2.5893,
+    "ch_rms_mm": 119.068,
+    "ch_peak_mm": 217.484,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      5.55
     ],
+    "swing_height_mm": [
+     -40.4,
+     554.3
+    ],
     "amb": {
      "acting_pct_of_two_foot": 100.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 179.954,
-     "thdd_rms": 18523.721,
-     "ff_acc_rms": 3317.6271,
-     "pd_acc_rms": 27.7093,
-     "tau_hat_peak": 166.1321
+     "leg_travel_peak_deg": 178.505,
+     "thdd_rms": 20520.072,
+     "ff_acc_rms": 3655.4056,
+     "pd_acc_rms": 26.3539,
+     "tau_hat_peak": 119.863
     }
    },
    {
@@ -1576,8 +1700,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 89.4,
-     "tick_max_us": 137.9,
+     "tick_mean_us": 90.2,
+     "tick_max_us": 173.7,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1586,31 +1710,35 @@
     },
     "failed": false,
     "survived_s": 8.746,
-    "roll_peak": 0.708,
-    "pitch_peak": 1.05,
-    "roll_rms": 0.155,
-    "pitch_rms": 0.237,
-    "roll_mean": -0.138,
-    "pitch_mean": -0.203,
-    "z_min": 0.2912,
-    "L_rms": 0.0154,
-    "L_peak": 0.1675,
-    "ch_rms_mm": 1.121,
-    "ch_peak_mm": 7.844,
+    "roll_peak": 0.648,
+    "pitch_peak": 0.967,
+    "roll_rms": 0.135,
+    "pitch_rms": 0.196,
+    "roll_mean": -0.117,
+    "pitch_mean": -0.156,
+    "z_min": 0.2913,
+    "L_rms": 0.0147,
+    "L_peak": 0.1626,
+    "ch_rms_mm": 1.028,
+    "ch_peak_mm": 7.169,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      2.67
     ],
+    "swing_height_mm": [
+     77.9,
+     189.9
+    ],
     "amb": {
      "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 35.725,
-     "thdd_rms": 0.167,
-     "ff_acc_rms": 0.0345,
-     "pd_acc_rms": 12.392,
-     "tau_hat_peak": 0.1228
+     "leg_travel_peak_deg": 34.545,
+     "thdd_rms": 0.245,
+     "ff_acc_rms": 0.0462,
+     "pd_acc_rms": 10.7055,
+     "tau_hat_peak": 0.1234
     }
    },
    {
@@ -1628,8 +1756,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 95.4,
-     "tick_max_us": 136.5,
+     "tick_mean_us": 95.0,
+     "tick_max_us": 137.7,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1638,31 +1766,35 @@
     },
     "failed": false,
     "survived_s": 8.746,
-    "roll_peak": 0.255,
-    "pitch_peak": 0.226,
-    "roll_rms": 0.239,
-    "pitch_rms": 0.204,
-    "roll_mean": -0.236,
-    "pitch_mean": -0.197,
+    "roll_peak": 0.228,
+    "pitch_peak": 0.272,
+    "roll_rms": 0.206,
+    "pitch_rms": 0.158,
+    "roll_mean": -0.203,
+    "pitch_mean": -0.141,
     "z_min": 0.2918,
-    "L_rms": 0.0026,
-    "L_peak": 0.0361,
-    "ch_rms_mm": 0.095,
-    "ch_peak_mm": 0.905,
+    "L_rms": 0.0089,
+    "L_peak": 0.1078,
+    "ch_rms_mm": 0.414,
+    "ch_peak_mm": 3.314,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      -0.21
     ],
+    "swing_height_mm": [
+     83.1,
+     117.2
+    ],
     "amb": {
      "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 8.263,
-     "thdd_rms": 0.702,
-     "ff_acc_rms": 0.1414,
-     "pd_acc_rms": 2.155,
-     "tau_hat_peak": 0.1262
+     "leg_travel_peak_deg": 10.081,
+     "thdd_rms": 1.965,
+     "ff_acc_rms": 0.3721,
+     "pd_acc_rms": 1.604,
+     "tau_hat_peak": 0.127
     }
    },
    {
@@ -1680,8 +1812,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 91.1,
-     "tick_max_us": 151.2,
+     "tick_mean_us": 98.0,
+     "tick_max_us": 137.8,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1690,31 +1822,35 @@
     },
     "failed": false,
     "survived_s": 8.746,
-    "roll_peak": 0.402,
-    "pitch_peak": 0.501,
-    "roll_rms": 0.383,
-    "pitch_rms": 0.346,
-    "roll_mean": -0.377,
-    "pitch_mean": -0.313,
+    "roll_peak": 0.406,
+    "pitch_peak": 0.449,
+    "roll_rms": 0.39,
+    "pitch_rms": 0.362,
+    "roll_mean": -0.384,
+    "pitch_mean": -0.333,
     "z_min": 0.2921,
-    "L_rms": 0.0122,
-    "L_peak": 0.1577,
-    "ch_rms_mm": 0.888,
-    "ch_peak_mm": 6.822,
+    "L_rms": 0.0114,
+    "L_peak": 0.1457,
+    "ch_rms_mm": 0.823,
+    "ch_peak_mm": 6.375,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      -3.1
     ],
+    "swing_height_mm": [
+     89.4,
+     158.7
+    ],
     "amb": {
      "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 25.864,
-     "thdd_rms": 0.312,
-     "ff_acc_rms": 0.0648,
-     "pd_acc_rms": 7.9766,
-     "tau_hat_peak": 0.1278
+     "leg_travel_peak_deg": 24.061,
+     "thdd_rms": 0.248,
+     "ff_acc_rms": 0.0455,
+     "pd_acc_rms": 7.3459,
+     "tau_hat_peak": 0.1276
     }
    },
    {
@@ -1727,43 +1863,33 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 7.005,
+    "fall_t": 6.061,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Leg 3 command failed at t=14.119",
-     "[WW] MdlTrot: Tracking error exceeded at t=14.051"
+     "[WW] MdlSit: Tracking error exceeded at t=14.053",
+     "[WW] MdlTrot: Tracking error exceeded at t=14.052"
     ],
     "wbc_closing": {
-     "tick_mean_us": 97.9,
-     "tick_max_us": 256.0,
+     "tick_mean_us": 93.8,
+     "tick_max_us": 165.5,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 3067,
-     "saturated_pct": 31.4629
+     "saturated_ticks": 6153,
+     "saturated_pct": 63.1206
     },
     "failed": true,
-    "survived_s": 2.701,
-    "L_rms": 1.3635,
-    "L_peak": 2.8593,
-    "ch_rms_mm": 259.38,
-    "ch_peak_mm": 322.75,
+    "survived_s": 1.757,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      -5.98
     ],
-    "amb": {
-     "acting_pct_of_two_foot": 100.0,
-     "invalid_ticks": 0,
-     "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 179.997,
-     "thdd_rms": 152809.494,
-     "ff_acc_rms": 31599.1393,
-     "pd_acc_rms": 30.2654,
-     "tau_hat_peak": 156.2178
-    }
+    "swing_height_mm": [
+     -49.0,
+     668.5
+    ]
    }
   ],
   "aids": [
@@ -1782,8 +1908,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 75.1,
-     "tick_max_us": 416.4,
+     "tick_mean_us": 75.4,
+     "tick_max_us": 148.8,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1792,21 +1918,25 @@
     },
     "failed": false,
     "survived_s": 8.746,
-    "roll_peak": 17.055,
-    "pitch_peak": 18.958,
-    "roll_rms": 12.51,
-    "pitch_rms": 18.419,
-    "roll_mean": -12.361,
-    "pitch_mean": -18.182,
-    "z_min": 0.2324,
-    "L_rms": 0.1276,
-    "L_peak": 1.0488,
-    "ch_rms_mm": 73.928,
-    "ch_peak_mm": 89.956,
+    "roll_peak": 18.258,
+    "pitch_peak": 19.741,
+    "roll_rms": 13.397,
+    "pitch_rms": 19.077,
+    "roll_mean": -13.23,
+    "pitch_mean": -18.822,
+    "z_min": 0.2303,
+    "L_rms": 0.134,
+    "L_peak": 1.1087,
+    "ch_rms_mm": 75.463,
+    "ch_peak_mm": 93.207,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      -0.21
+    ],
+    "swing_height_mm": [
+     -2.2,
+     199.0
     ]
    },
    {
@@ -1819,42 +1949,46 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 10.672,
+    "fall_t": 8.869,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Tracking error exceeded at t=14.391",
-     "[WW] MdlTrot: Leg 0 command rejected 3 cycles running, target=[0.2029 0.1812 -0.3871]"
+     "[WW] MdlSit: Tracking error exceeded at t=14.053",
+     "[WW] MdlTrot: Tracking error exceeded at t=14.052"
     ],
     "wbc_closing": {
-     "tick_mean_us": 74.0,
-     "tick_max_us": 189.3,
+     "tick_mean_us": 76.9,
+     "tick_max_us": 149.2,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 3403,
-     "saturated_pct": 34.9097
+     "saturated_ticks": 4314,
+     "saturated_pct": 44.2552
     },
     "failed": true,
-    "survived_s": 6.368,
-    "L_rms": 0.5961,
-    "L_peak": 2.855,
-    "ch_rms_mm": 75.912,
-    "ch_peak_mm": 212.628,
+    "survived_s": 4.565,
+    "L_rms": 0.9239,
+    "L_peak": 5.3888,
+    "ch_rms_mm": 74.14,
+    "ch_peak_mm": 271.182,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      -0.21
     ],
+    "swing_height_mm": [
+     -36.9,
+     601.1
+    ],
     "amb": {
      "acting_pct_of_two_foot": 100.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 178.692,
-     "thdd_rms": 12258.833,
-     "ff_acc_rms": 2394.8255,
-     "pd_acc_rms": 17.6711,
-     "tau_hat_peak": 147.5509
+     "leg_travel_peak_deg": 179.703,
+     "thdd_rms": 800205.331,
+     "ff_acc_rms": 145322.6813,
+     "pd_acc_rms": 19.8176,
+     "tau_hat_peak": 148.9605
     }
    },
    {
@@ -1872,8 +2006,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 73.6,
-     "tick_max_us": 146.8,
+     "tick_mean_us": 74.2,
+     "tick_max_us": 144.2,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1882,31 +2016,35 @@
     },
     "failed": false,
     "survived_s": 8.746,
-    "roll_peak": 0.298,
-    "pitch_peak": 0.27,
-    "roll_rms": 0.248,
-    "pitch_rms": 0.22,
-    "roll_mean": -0.246,
-    "pitch_mean": -0.214,
-    "z_min": 0.2917,
-    "L_rms": 0.0058,
-    "L_peak": 0.0774,
-    "ch_rms_mm": 0.078,
-    "ch_peak_mm": 0.568,
+    "roll_peak": 0.29,
+    "pitch_peak": 0.258,
+    "roll_rms": 0.239,
+    "pitch_rms": 0.2,
+    "roll_mean": -0.237,
+    "pitch_mean": -0.195,
+    "z_min": 0.2918,
+    "L_rms": 0.0051,
+    "L_peak": 0.0698,
+    "ch_rms_mm": 0.062,
+    "ch_peak_mm": 0.477,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      -0.21
     ],
+    "swing_height_mm": [
+     85.7,
+     111.9
+    ],
     "amb": {
      "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 8.837,
-     "thdd_rms": 0.184,
-     "ff_acc_rms": 0.0384,
-     "pd_acc_rms": 2.5543,
-     "tau_hat_peak": 0.1259
+     "leg_travel_peak_deg": 7.839,
+     "thdd_rms": 0.337,
+     "ff_acc_rms": 0.0648,
+     "pd_acc_rms": 1.8306,
+     "tau_hat_peak": 0.126
     }
    },
    {
@@ -1924,8 +2062,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 71.9,
-     "tick_max_us": 127.6,
+     "tick_mean_us": 75.9,
+     "tick_max_us": 148.3,
      "ticks": 9748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1934,31 +2072,35 @@
     },
     "failed": false,
     "survived_s": 8.746,
-    "roll_peak": 0.255,
-    "pitch_peak": 0.226,
-    "roll_rms": 0.239,
-    "pitch_rms": 0.204,
-    "roll_mean": -0.236,
-    "pitch_mean": -0.197,
+    "roll_peak": 0.228,
+    "pitch_peak": 0.272,
+    "roll_rms": 0.206,
+    "pitch_rms": 0.158,
+    "roll_mean": -0.203,
+    "pitch_mean": -0.141,
     "z_min": 0.2918,
-    "L_rms": 0.0026,
-    "L_peak": 0.0361,
-    "ch_rms_mm": 0.095,
-    "ch_peak_mm": 0.905,
+    "L_rms": 0.0089,
+    "L_peak": 0.1078,
+    "ch_rms_mm": 0.414,
+    "ch_peak_mm": 3.314,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      -0.21
     ],
+    "swing_height_mm": [
+     83.1,
+     117.2
+    ],
     "amb": {
      "acting_pct_of_two_foot": 94.63,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 8.263,
-     "thdd_rms": 0.702,
-     "ff_acc_rms": 0.1414,
-     "pd_acc_rms": 2.155,
-     "tau_hat_peak": 0.1262
+     "leg_travel_peak_deg": 10.081,
+     "thdd_rms": 1.965,
+     "ff_acc_rms": 0.3721,
+     "pd_acc_rms": 1.604,
+     "tau_hat_peak": 0.127
     }
    }
   ],
@@ -1979,8 +2121,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 98.5,
-     "tick_max_us": 403.0,
+     "tick_mean_us": 97.8,
+     "tick_max_us": 187.8,
      "ticks": 18748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -1989,28 +2131,32 @@
     },
     "failed": false,
     "survived_s": 17.746,
-    "roll_peak": 12.173,
-    "pitch_peak": 16.753,
-    "roll_rms": 8.374,
-    "pitch_rms": 14.237,
-    "roll_mean": -0.728,
-    "pitch_mean": -13.538,
-    "z_min": 0.2359,
-    "L_rms": 0.2022,
-    "L_peak": 1.4451,
-    "ch_rms_mm": 77.377,
-    "ch_peak_mm": 87.623,
+    "roll_peak": 14.407,
+    "pitch_peak": 17.827,
+    "roll_rms": 9.836,
+    "pitch_rms": 15.862,
+    "roll_mean": -0.441,
+    "pitch_mean": -15.069,
+    "z_min": 0.2317,
+    "L_rms": 0.2225,
+    "L_peak": 2.0823,
+    "ch_rms_mm": 78.778,
+    "ch_peak_mm": 98.53,
     "phases": 2,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      4.64,
-     -7.91
+     -7.98
+    ],
+    "swing_height_mm": [
+     -2.4,
+     202.0
     ],
     "amb": {
      "acting_pct_of_two_foot": 0.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 6.039
+     "leg_travel_peak_deg": 8.555
     }
    },
    {
@@ -2029,8 +2175,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 92.9,
-     "tick_max_us": 517.1,
+     "tick_mean_us": 97.2,
+     "tick_max_us": 189.1,
      "ticks": 18748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -2039,32 +2185,36 @@
     },
     "failed": false,
     "survived_s": 17.746,
-    "roll_peak": 0.688,
-    "pitch_peak": 0.781,
-    "roll_rms": 0.17,
-    "pitch_rms": 0.134,
-    "roll_mean": -0.037,
-    "pitch_mean": 0.004,
+    "roll_peak": 0.7,
+    "pitch_peak": 0.826,
+    "roll_rms": 0.175,
+    "pitch_rms": 0.139,
+    "roll_mean": -0.036,
+    "pitch_mean": 0.001,
     "z_min": 0.2904,
-    "L_rms": 0.0161,
-    "L_peak": 0.1636,
-    "ch_rms_mm": 1.009,
-    "ch_peak_mm": 7.27,
+    "L_rms": 0.0164,
+    "L_peak": 0.1708,
+    "ch_rms_mm": 1.007,
+    "ch_peak_mm": 7.427,
     "phases": 2,
     "phases_held": 2,
     "ch_at_liftoff_mm": [
      4.64,
-     1.51
+     1.48
+    ],
+    "swing_height_mm": [
+     97.1,
+     154.4
     ],
     "amb": {
      "acting_pct_of_two_foot": 95.27,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 24.486,
-     "leg_travel_peak_deg": 25.135,
-     "thdd_rms": 3.582,
-     "ff_acc_rms": 0.8844,
-     "pd_acc_rms": 0.1145,
-     "tau_hat_peak": 0.123
+     "alpha_peak_deg": 28.126,
+     "leg_travel_peak_deg": 28.004,
+     "thdd_rms": 3.977,
+     "ff_acc_rms": 0.968,
+     "pd_acc_rms": 0.2354,
+     "tau_hat_peak": 0.1229
     }
    },
    {
@@ -2078,43 +2228,47 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 14.93,
+    "fall_t": 14.645,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Leg 3 command failed at t=23.052",
-     "[WW] MdlTrot: Tracking error exceeded at t=23.051"
+     "[WW] MdlSit: Tracking error exceeded at t=23.053",
+     "[WW] MdlTrot: Tracking error exceeded at t=23.052"
     ],
     "wbc_closing": {
-     "tick_mean_us": 100.4,
-     "tick_max_us": 168.6,
+     "tick_mean_us": 100.3,
+     "tick_max_us": 223.1,
      "ticks": 18748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 6859,
-     "saturated_pct": 36.5852
+     "saturated_ticks": 7104,
+     "saturated_pct": 37.892
     },
     "failed": true,
-    "survived_s": 10.626,
-    "L_rms": 0.4196,
-    "L_peak": 3.6273,
-    "ch_rms_mm": 16.313,
-    "ch_peak_mm": 145.614,
+    "survived_s": 10.341,
+    "L_rms": 0.4176,
+    "L_peak": 3.9804,
+    "ch_rms_mm": 29.67,
+    "ch_peak_mm": 165.962,
     "phases": 2,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      4.64,
-     5.8
+     6.05
+    ],
+    "swing_height_mm": [
+     -36.9,
+     484.7
     ],
     "amb": {
-     "acting_pct_of_two_foot": 95.71,
+     "acting_pct_of_two_foot": 95.55,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 179.948,
-     "thdd_rms": 2871.679,
-     "ff_acc_rms": 592.9435,
-     "pd_acc_rms": 11.3842,
-     "tau_hat_peak": 54.9296
+     "leg_travel_peak_deg": 179.862,
+     "thdd_rms": 3105.526,
+     "ff_acc_rms": 586.579,
+     "pd_acc_rms": 13.023,
+     "tau_hat_peak": 159.6969
     }
    },
    {
@@ -2133,8 +2287,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 96.3,
-     "tick_max_us": 171.8,
+     "tick_mean_us": 98.6,
+     "tick_max_us": 203.5,
      "ticks": 18748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -2143,28 +2297,32 @@
     },
     "failed": false,
     "survived_s": 17.746,
-    "roll_peak": 12.171,
-    "pitch_peak": 16.75,
-    "roll_rms": 8.374,
-    "pitch_rms": 14.237,
-    "roll_mean": 0.727,
-    "pitch_mean": -13.537,
-    "z_min": 0.2359,
-    "L_rms": 0.2021,
-    "L_peak": 1.4449,
-    "ch_rms_mm": 77.376,
-    "ch_peak_mm": 87.579,
+    "roll_peak": 14.433,
+    "pitch_peak": 17.825,
+    "roll_rms": 9.883,
+    "pitch_rms": 15.838,
+    "roll_mean": 0.388,
+    "pitch_mean": -15.043,
+    "z_min": 0.2317,
+    "L_rms": 0.2224,
+    "L_peak": 2.0792,
+    "ch_rms_mm": 78.631,
+    "ch_peak_mm": 98.168,
     "phases": 2,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      -4.64,
-     7.92
+     7.75
+    ],
+    "swing_height_mm": [
+     -2.4,
+     201.9
     ],
     "amb": {
      "acting_pct_of_two_foot": 0.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 6.042
+     "leg_travel_peak_deg": 8.551
     }
    },
    {
@@ -2183,8 +2341,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 96.5,
-     "tick_max_us": 173.7,
+     "tick_mean_us": 93.1,
+     "tick_max_us": 186.3,
      "ticks": 18748,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -2193,32 +2351,36 @@
     },
     "failed": false,
     "survived_s": 17.746,
-    "roll_peak": 0.688,
-    "pitch_peak": 0.781,
-    "roll_rms": 0.17,
-    "pitch_rms": 0.134,
-    "roll_mean": 0.037,
-    "pitch_mean": 0.004,
+    "roll_peak": 0.7,
+    "pitch_peak": 0.826,
+    "roll_rms": 0.175,
+    "pitch_rms": 0.139,
+    "roll_mean": 0.036,
+    "pitch_mean": 0.001,
     "z_min": 0.2904,
-    "L_rms": 0.0161,
-    "L_peak": 0.1636,
-    "ch_rms_mm": 1.009,
-    "ch_peak_mm": 7.27,
+    "L_rms": 0.0164,
+    "L_peak": 0.1708,
+    "ch_rms_mm": 1.007,
+    "ch_peak_mm": 7.427,
     "phases": 2,
     "phases_held": 2,
     "ch_at_liftoff_mm": [
      -4.64,
-     -1.51
+     -1.48
+    ],
+    "swing_height_mm": [
+     97.1,
+     154.4
     ],
     "amb": {
      "acting_pct_of_two_foot": 95.27,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 24.483,
-     "leg_travel_peak_deg": 25.133,
-     "thdd_rms": 3.582,
-     "ff_acc_rms": 0.8841,
-     "pd_acc_rms": 0.1145,
-     "tau_hat_peak": 0.123
+     "alpha_peak_deg": 28.123,
+     "leg_travel_peak_deg": 28.001,
+     "thdd_rms": 3.976,
+     "ff_acc_rms": 0.9676,
+     "pd_acc_rms": 0.2355,
+     "tau_hat_peak": 0.1229
     }
    },
    {
@@ -2232,43 +2394,47 @@
     "period": 17.0,
     "duty": 0.52941,
     "entry_t": 4.304,
-    "fall_t": 15.364,
+    "fall_t": 15.486,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Leg 2 command failed at t=23.053",
-     "[WW] MdlTrot: Tracking error exceeded at t=23.052"
+     "[WW] MdlSit: Tracking error exceeded at t=23.052",
+     "[WW] MdlTrot: Tracking error exceeded at t=23.051"
     ],
     "wbc_closing": {
-     "tick_mean_us": 100.4,
-     "tick_max_us": 165.6,
+     "tick_mean_us": 99.2,
+     "tick_max_us": 203.7,
      "ticks": 18748,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 7700,
-     "saturated_pct": 41.071
+     "saturated_ticks": 7810,
+     "saturated_pct": 41.6578
     },
     "failed": true,
-    "survived_s": 11.06,
-    "L_rms": 0.4651,
-    "L_peak": 3.8913,
-    "ch_rms_mm": 38.976,
-    "ch_peak_mm": 181.118,
+    "survived_s": 11.182,
+    "L_rms": 0.454,
+    "L_peak": 3.5798,
+    "ch_rms_mm": 38.085,
+    "ch_peak_mm": 172.581,
     "phases": 2,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      -4.64,
-     -5.8
+     -6.05
+    ],
+    "swing_height_mm": [
+     -81.4,
+     578.3
     ],
     "amb": {
-     "acting_pct_of_two_foot": 95.92,
+     "acting_pct_of_two_foot": 95.98,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 179.294,
-     "thdd_rms": 5239.127,
-     "ff_acc_rms": 1067.0861,
-     "pd_acc_rms": 12.6265,
-     "tau_hat_peak": 88.845
+     "leg_travel_peak_deg": 179.993,
+     "thdd_rms": 5354.61,
+     "ff_acc_rms": 952.9614,
+     "pd_acc_rms": 14.7646,
+     "tau_hat_peak": 131.1195
     }
    }
   ],
@@ -2283,32 +2449,36 @@
     "period": 64.0,
     "duty": 0.53125,
     "entry_t": 4.304,
-    "fall_t": 6.991,
+    "fall_t": 6.992,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Leg 0 command failed at t=38.848",
+     "[WW] MdlSit: Tracking error exceeded at t=38.634",
      "[WW] MdlTrot: Tracking error exceeded at t=38.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 79.8,
-     "tick_max_us": 174.2,
+     "tick_mean_us": 85.7,
+     "tick_max_us": 402.9,
      "ticks": 33998,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 30545,
-     "saturated_pct": 89.8435
+     "saturated_ticks": 30670,
+     "saturated_pct": 90.2112
     },
     "failed": true,
-    "survived_s": 2.687,
-    "L_rms": 1.5429,
-    "L_peak": 3.9888,
-    "ch_rms_mm": 50.902,
-    "ch_peak_mm": 126.099,
+    "survived_s": 2.688,
+    "L_rms": 1.5509,
+    "L_peak": 4.0135,
+    "ch_rms_mm": 51.204,
+    "ch_peak_mm": 127.038,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.27
+    ],
+    "swing_height_mm": [
+     -8.9,
+     421.5
     ]
    },
    {
@@ -2326,8 +2496,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 86.2,
-     "tick_max_us": 157.2,
+     "tick_mean_us": 87.3,
+     "tick_max_us": 176.3,
      "ticks": 33998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -2336,31 +2506,35 @@
     },
     "failed": false,
     "survived_s": 32.996,
-    "roll_peak": 0.728,
-    "pitch_peak": 0.458,
-    "roll_rms": 0.149,
-    "pitch_rms": 0.137,
-    "roll_mean": 0.118,
-    "pitch_mean": 0.129,
+    "roll_peak": 0.624,
+    "pitch_peak": 0.465,
+    "roll_rms": 0.14,
+    "pitch_rms": 0.101,
+    "roll_mean": 0.111,
+    "pitch_mean": 0.093,
     "z_min": 0.2903,
-    "L_rms": 0.0102,
-    "L_peak": 0.2229,
-    "ch_rms_mm": 0.483,
-    "ch_peak_mm": 8.182,
+    "L_rms": 0.0096,
+    "L_peak": 0.2048,
+    "ch_rms_mm": 0.452,
+    "ch_peak_mm": 7.69,
     "phases": 1,
     "phases_held": 1,
     "ch_at_liftoff_mm": [
      0.61
     ],
+    "swing_height_mm": [
+     95.3,
+     122.2
+    ],
     "amb": {
      "acting_pct_of_two_foot": 98.84,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 16.152,
-     "leg_travel_peak_deg": 16.152,
-     "thdd_rms": 1.473,
-     "ff_acc_rms": 0.3222,
-     "pd_acc_rms": 0.1442,
-     "tau_hat_peak": 0.1277
+     "alpha_peak_deg": 16.257,
+     "leg_travel_peak_deg": 14.742,
+     "thdd_rms": 1.782,
+     "ff_acc_rms": 0.388,
+     "pd_acc_rms": 0.2416,
+     "tau_hat_peak": 0.1266
     }
    },
    {
@@ -2373,42 +2547,46 @@
     "period": 64.0,
     "duty": 0.53125,
     "entry_t": 4.304,
-    "fall_t": 16.982,
+    "fall_t": 23.896,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Tracking error exceeded at t=38.303",
-     "[WW] MdlTrot: Tracking error exceeded at t=38.302"
+     "[WW] MdlSit: Leg 2 command failed at t=38.302",
+     "[WW] MdlTrot: Tracking error exceeded at t=38.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 84.7,
-     "tick_max_us": 166.0,
+     "tick_mean_us": 85.6,
+     "tick_max_us": 696.0,
      "ticks": 33998,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 19099,
-     "saturated_pct": 56.1768
+     "saturated_ticks": 14047,
+     "saturated_pct": 41.3171
     },
     "failed": true,
-    "survived_s": 12.678,
-    "L_rms": 0.3934,
-    "L_peak": 4.4627,
-    "ch_rms_mm": 13.755,
-    "ch_peak_mm": 184.165,
+    "survived_s": 19.592,
+    "L_rms": 0.5473,
+    "L_peak": 6.9127,
+    "ch_rms_mm": 25.021,
+    "ch_peak_mm": 235.055,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      0.61
     ],
+    "swing_height_mm": [
+     -46.7,
+     500.5
+    ],
     "amb": {
      "acting_pct_of_two_foot": 100.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 179.85,
-     "thdd_rms": 4312.262,
-     "ff_acc_rms": 1176.8386,
-     "pd_acc_rms": 19.6173,
-     "tau_hat_peak": 83.0147
+     "leg_travel_peak_deg": 179.736,
+     "thdd_rms": 3302.219,
+     "ff_acc_rms": 602.1662,
+     "pd_acc_rms": 12.7048,
+     "tau_hat_peak": 159.7615
     }
    },
    {
@@ -2421,42 +2599,46 @@
     "period": 64.0,
     "duty": 0.53125,
     "entry_t": 4.304,
-    "fall_t": 7.164,
+    "fall_t": 7.197,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Leg 0 command failed at t=38.852",
+     "[WW] MdlSit: Leg 0 command failed at t=38.628",
      "[WW] MdlTrot: Tracking error exceeded at t=38.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 90.9,
-     "tick_max_us": 187.8,
+     "tick_mean_us": 90.3,
+     "tick_max_us": 733.6,
      "ticks": 33998,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 29857,
-     "saturated_pct": 87.8199
+     "saturated_ticks": 29024,
+     "saturated_pct": 85.3697
     },
     "failed": true,
-    "survived_s": 2.86,
-    "L_rms": 1.3224,
-    "L_peak": 3.8175,
-    "ch_rms_mm": 43.39,
-    "ch_peak_mm": 123.313,
+    "survived_s": 2.893,
+    "L_rms": 1.309,
+    "L_peak": 3.8595,
+    "ch_rms_mm": 43.169,
+    "ch_peak_mm": 125.837,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      3.67
     ],
+    "swing_height_mm": [
+     -21.9,
+     578.7
+    ],
     "amb": {
      "acting_pct_of_two_foot": 100.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 51.566,
-     "leg_travel_peak_deg": 61.323,
-     "thdd_rms": 4685.205,
-     "ff_acc_rms": 903.2845,
-     "pd_acc_rms": 0.9969,
-     "tau_hat_peak": 4.408
+     "leg_travel_peak_deg": 59.843,
+     "thdd_rms": 4875.614,
+     "ff_acc_rms": 892.1731,
+     "pd_acc_rms": 0.8218,
+     "tau_hat_peak": 5.6189
     }
    },
    {
@@ -2469,32 +2651,36 @@
     "period": 64.0,
     "duty": 0.53125,
     "entry_t": 4.304,
-    "fall_t": 7.271,
+    "fall_t": 7.273,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Tracking error exceeded at t=38.820",
+     "[WW] MdlSit: Leg 2 command failed at t=39.024",
      "[WW] MdlTrot: Tracking error exceeded at t=38.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 87.4,
-     "tick_max_us": 197.0,
+     "tick_mean_us": 91.2,
+     "tick_max_us": 438.9,
      "ticks": 33998,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 30251,
-     "saturated_pct": 88.9788
+     "saturated_ticks": 30343,
+     "saturated_pct": 89.2494
     },
     "failed": true,
-    "survived_s": 2.967,
-    "L_rms": 1.0265,
-    "L_peak": 2.4788,
-    "ch_rms_mm": 49.585,
-    "ch_peak_mm": 123.996,
+    "survived_s": 2.969,
+    "L_rms": 1.0242,
+    "L_peak": 2.4657,
+    "ch_rms_mm": 49.549,
+    "ch_peak_mm": 124.038,
     "phases": 1,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      3.58
+    ],
+    "swing_height_mm": [
+     -1.0,
+     437.5
     ]
    }
   ]
@@ -2573,12 +2759,12 @@
        "failed": true,
        "phases": 6,
        "phases_held": 0,
-       "survived_s": 8.462
+       "survived_s": 8.459
       }
      ]
     },
     "minus_y": {
-     "largest_survived_N": 150,
+     "largest_survived_N": 110,
      "rows": [
       {
        "F": -10,
@@ -2659,38 +2845,17 @@
       },
       {
        "F": -120,
-       "failed": false,
-       "phases": 10,
+       "failed": true,
+       "phases": 6,
        "phases_held": 0,
-       "survived_s": 14.996
-      },
-      {
-       "F": -130,
-       "failed": false,
-       "phases": 10,
-       "phases_held": 0,
-       "survived_s": 14.996
-      },
-      {
-       "F": -140,
-       "failed": false,
-       "phases": 10,
-       "phases_held": 0,
-       "survived_s": 14.996
-      },
-      {
-       "F": -150,
-       "failed": false,
-       "phases": 10,
-       "phases_held": 0,
-       "survived_s": 14.996
+       "survived_s": 9.452
       }
      ]
     }
    },
    "offset": {
     "plus_y": {
-     "largest_survived_N": 20,
+     "largest_survived_N": 30,
      "rows": [
       {
        "F": 10,
@@ -2703,15 +2868,22 @@
        "F": 20,
        "failed": false,
        "phases": 10,
-       "phases_held": 4,
+       "phases_held": 9,
        "survived_s": 14.996
       },
       {
        "F": 30,
+       "failed": false,
+       "phases": 10,
+       "phases_held": 8,
+       "survived_s": 14.996
+      },
+      {
+       "F": 40,
        "failed": true,
        "phases": 8,
        "phases_held": 4,
-       "survived_s": 11.44
+       "survived_s": 11.706
       }
      ]
     },
@@ -2743,22 +2915,22 @@
        "F": -40,
        "failed": false,
        "phases": 10,
-       "phases_held": 9,
+       "phases_held": 8,
        "survived_s": 14.996
       },
       {
        "F": -50,
        "failed": false,
        "phases": 10,
-       "phases_held": 9,
+       "phases_held": 7,
        "survived_s": 14.996
       },
       {
        "F": -60,
        "failed": true,
-       "phases": 8,
-       "phases_held": 4,
-       "survived_s": 11.292
+       "phases": 9,
+       "phases_held": 5,
+       "survived_s": 13.63
       }
      ]
     }
@@ -2777,14 +2949,14 @@
       {
        "F": 20,
        "failed": true,
-       "phases": 7,
+       "phases": 6,
        "phases_held": 4,
-       "survived_s": 10.156
+       "survived_s": 8.762
       }
      ]
     },
     "minus_y": {
-     "largest_survived_N": 20,
+     "largest_survived_N": 10,
      "rows": [
       {
        "F": -10,
@@ -2795,17 +2967,10 @@
       },
       {
        "F": -20,
-       "failed": false,
-       "phases": 10,
-       "phases_held": 10,
-       "survived_s": 14.996
-      },
-      {
-       "F": -30,
        "failed": true,
-       "phases": 7,
-       "phases_held": 4,
-       "survived_s": 10.111
+       "phases": 9,
+       "phases_held": 6,
+       "survived_s": 12.902
       }
      ]
     }
@@ -2822,37 +2987,40 @@
     "period": 2.5,
     "duty": 0.7,
     "entry_t": 4.304,
-    "fall_t": 12.873,
+    "fall_t": 10.762,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
+     "[WW] MdlSit: Leg 3 command failed at t=20.302",
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 96.2,
-     "tick_max_us": 227.4,
+     "tick_mean_us": 95.1,
+     "tick_max_us": 228.1,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 6191,
-     "saturated_pct": 38.6986
+     "saturated_ticks": 8318,
+     "saturated_pct": 51.994
     },
     "failed": true,
-    "survived_s": 8.569,
-    "L_rms": 1.0832,
-    "L_peak": 2.4496,
-    "ch_rms_mm": 84.031,
-    "ch_peak_mm": 138.686,
-    "phases": 7,
+    "survived_s": 6.458,
+    "L_rms": 1.1062,
+    "L_peak": 2.5102,
+    "ch_rms_mm": 90.447,
+    "ch_peak_mm": 129.888,
+    "phases": 5,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.16,
-     -26.06,
-     30.91,
-     -20.06,
-     25.29,
-     -26.01,
-     35.87
+     -26.97,
+     30.13,
+     -27.39,
+     33.3
+    ],
+    "swing_height_mm": [
+     -3.7,
+     165.6
     ]
    },
    {
@@ -2870,48 +3038,52 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 98.4,
-     "tick_max_us": 178.1,
+     "tick_mean_us": 96.6,
+     "tick_max_us": 227.5,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 0,
-     "saturated_pct": 0.0
+     "saturated_ticks": 2,
+     "saturated_pct": 0.0125
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 13.388,
-    "pitch_peak": 16.251,
-    "roll_rms": 3.844,
-    "pitch_rms": 5.628,
-    "roll_mean": 0.268,
-    "pitch_mean": -3.653,
-    "z_min": 0.2533,
-    "L_rms": 0.6763,
-    "L_peak": 1.9722,
-    "ch_rms_mm": 36.556,
-    "ch_peak_mm": 86.683,
+    "roll_peak": 14.944,
+    "pitch_peak": 15.905,
+    "roll_rms": 3.969,
+    "pitch_rms": 5.217,
+    "roll_mean": 0.213,
+    "pitch_mean": -2.396,
+    "z_min": 0.2495,
+    "L_rms": 0.66,
+    "L_peak": 2.1512,
+    "ch_rms_mm": 34.596,
+    "ch_peak_mm": 97.796,
     "phases": 12,
     "phases_held": 4,
     "ch_at_liftoff_mm": [
      4.74,
-     -7.05,
-     12.9,
-     -8.06,
-     11.43,
-     -5.18,
-     7.53,
-     -10.15,
-     4.12,
-     -6.44,
-     3.47,
-     -2.59
+     -7.21,
+     13.46,
+     -4.57,
+     7.46,
+     -9.35,
+     5.94,
+     -9.99,
+     1.02,
+     -0.07,
+     -2.58,
+     4.48
+    ],
+    "swing_height_mm": [
+     27.3,
+     146.5
     ],
     "amb": {
      "acting_pct_of_two_foot": 0.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 5.692
+     "leg_travel_peak_deg": 5.295
     }
    },
    {
@@ -2929,8 +3101,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 97.9,
-     "tick_max_us": 175.2,
+     "tick_mean_us": 93.3,
+     "tick_max_us": 150.7,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -2939,42 +3111,46 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.353,
-    "pitch_peak": 0.362,
-    "roll_rms": 0.091,
-    "pitch_rms": 0.108,
+    "roll_peak": 0.375,
+    "pitch_peak": 0.385,
+    "roll_rms": 0.096,
+    "pitch_rms": 0.115,
     "roll_mean": 0.025,
-    "pitch_mean": 0.081,
+    "pitch_mean": 0.086,
     "z_min": 0.2905,
-    "L_rms": 0.0176,
-    "L_peak": 0.0812,
-    "ch_rms_mm": 0.642,
-    "ch_peak_mm": 2.553,
+    "L_rms": 0.0178,
+    "L_peak": 0.077,
+    "ch_rms_mm": 0.681,
+    "ch_peak_mm": 2.76,
     "phases": 12,
     "phases_held": 12,
     "ch_at_liftoff_mm": [
      4.74,
-     -1.01,
+     -0.99,
      -0.07,
-     0.31,
-     -0.4,
-     0.07,
-     -0.31,
-     -0.06,
+     0.25,
+     -0.45,
+     0.16,
+     -0.33,
+     0.06,
      -0.19,
-     -0.1,
-     -0.11,
-     -0.02
+     -0.0,
+     -0.07,
+     -0.0
+    ],
+    "swing_height_mm": [
+     96.1,
+     161.7
     ],
     "amb": {
      "acting_pct_of_two_foot": 51.88,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 11.242,
-     "leg_travel_peak_deg": 11.327,
-     "thdd_rms": 11.496,
-     "ff_acc_rms": 2.531,
-     "pd_acc_rms": 0.0932,
-     "tau_hat_peak": 0.1153
+     "alpha_peak_deg": 13.122,
+     "leg_travel_peak_deg": 11.839,
+     "thdd_rms": 12.539,
+     "ff_acc_rms": 2.663,
+     "pd_acc_rms": 0.226,
+     "tau_hat_peak": 0.1158
     }
    },
    {
@@ -2992,8 +3168,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 99.4,
-     "tick_max_us": 170.4,
+     "tick_mean_us": 97.6,
+     "tick_max_us": 204.9,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3002,41 +3178,45 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.682,
-    "pitch_peak": 0.454,
-    "roll_rms": 0.122,
+    "roll_peak": 0.67,
+    "pitch_peak": 0.457,
+    "roll_rms": 0.124,
     "pitch_rms": 0.098,
-    "roll_mean": -0.02,
+    "roll_mean": -0.012,
     "pitch_mean": 0.064,
     "z_min": 0.2904,
-    "L_rms": 0.0269,
-    "L_peak": 0.2179,
-    "ch_rms_mm": 0.914,
-    "ch_peak_mm": 4.331,
+    "L_rms": 0.0249,
+    "L_peak": 0.2091,
+    "ch_rms_mm": 0.882,
+    "ch_peak_mm": 4.226,
     "phases": 12,
     "phases_held": 12,
     "ch_at_liftoff_mm": [
      4.74,
-     1.32,
-     1.16,
-     1.06,
-     0.69,
-     0.72,
-     0.51,
-     0.46,
-     0.45,
-     0.25,
-     0.4,
-     0.09
+     1.28,
+     1.11,
+     1.05,
+     0.65,
+     0.73,
+     0.48,
+     0.29,
+     0.33,
+     -0.11,
+     -0.23,
+     -0.85
+    ],
+    "swing_height_mm": [
+     80.0,
+     175.8
     ],
     "amb": {
      "acting_pct_of_two_foot": 51.88,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 18.571,
-     "thdd_rms": 13.771,
-     "ff_acc_rms": 3.3958,
-     "pd_acc_rms": 2.2691,
+     "leg_travel_peak_deg": 19.077,
+     "thdd_rms": 13.579,
+     "ff_acc_rms": 3.3104,
+     "pd_acc_rms": 2.32,
      "tau_hat_peak": 0.1148
     }
    },
@@ -3055,8 +3235,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 90.0,
-     "tick_max_us": 197.9,
+     "tick_mean_us": 89.6,
+     "tick_max_us": 184.8,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3065,30 +3245,34 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 16.36,
-    "pitch_peak": 15.62,
-    "roll_rms": 9.371,
-    "pitch_rms": 8.906,
-    "roll_mean": 0.608,
-    "pitch_mean": -7.363,
-    "z_min": 0.2374,
-    "L_rms": 0.7748,
-    "L_peak": 2.2578,
-    "ch_rms_mm": 76.563,
-    "ch_peak_mm": 97.617,
+    "roll_peak": 16.757,
+    "pitch_peak": 15.81,
+    "roll_rms": 9.432,
+    "pitch_rms": 9.28,
+    "roll_mean": 0.623,
+    "pitch_mean": -7.639,
+    "z_min": 0.236,
+    "L_rms": 0.7917,
+    "L_peak": 2.3576,
+    "ch_rms_mm": 77.367,
+    "ch_peak_mm": 98.28,
     "phases": 10,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.18,
-     -21.35,
-     32.07,
-     -33.62,
-     31.71,
-     -31.77,
-     30.75,
-     -31.61,
-     31.39,
-     -32.01
+     -21.96,
+     32.91,
+     -33.81,
+     31.82,
+     -31.96,
+     31.47,
+     -32.39,
+     31.91,
+     -32.04
+    ],
+    "swing_height_mm": [
+     -3.5,
+     162.7
     ]
    },
    {
@@ -3106,8 +3290,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 95.4,
-     "tick_max_us": 153.7,
+     "tick_mean_us": 94.7,
+     "tick_max_us": 205.8,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3116,36 +3300,40 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 13.128,
-    "pitch_peak": 17.381,
-    "roll_rms": 5.209,
-    "pitch_rms": 8.343,
-    "roll_mean": 0.421,
-    "pitch_mean": -6.103,
-    "z_min": 0.2447,
-    "L_rms": 0.7206,
-    "L_peak": 1.9646,
-    "ch_rms_mm": 51.312,
-    "ch_peak_mm": 81.956,
+    "roll_peak": 14.239,
+    "pitch_peak": 17.775,
+    "roll_rms": 5.462,
+    "pitch_rms": 8.273,
+    "roll_mean": 0.447,
+    "pitch_mean": -5.889,
+    "z_min": 0.2437,
+    "L_rms": 0.7575,
+    "L_peak": 2.0885,
+    "ch_rms_mm": 50.335,
+    "ch_peak_mm": 82.891,
     "phases": 10,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      4.75,
-     -5.06,
-     7.63,
-     -8.94,
-     7.97,
-     -8.61,
-     7.8,
-     -8.22,
-     7.5,
-     -7.81
+     -4.57,
+     6.26,
+     -8.03,
+     6.98,
+     -7.61,
+     6.95,
+     -7.33,
+     6.8,
+     -6.86
+    ],
+    "swing_height_mm": [
+     -3.0,
+     163.3
     ],
     "amb": {
      "acting_pct_of_two_foot": 0.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 5.237
+     "leg_travel_peak_deg": 5.079
     }
    },
    {
@@ -3163,8 +3351,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 81.2,
-     "tick_max_us": 143.3,
+     "tick_mean_us": 89.3,
+     "tick_max_us": 155.3,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3173,40 +3361,44 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.248,
-    "pitch_peak": 0.245,
-    "roll_rms": 0.079,
-    "pitch_rms": 0.093,
-    "roll_mean": 0.02,
-    "pitch_mean": 0.072,
-    "z_min": 0.2902,
-    "L_rms": 0.0105,
-    "L_peak": 0.0624,
-    "ch_rms_mm": 0.414,
-    "ch_peak_mm": 1.859,
+    "roll_peak": 0.27,
+    "pitch_peak": 0.276,
+    "roll_rms": 0.082,
+    "pitch_rms": 0.1,
+    "roll_mean": 0.021,
+    "pitch_mean": 0.075,
+    "z_min": 0.2901,
+    "L_rms": 0.0104,
+    "L_peak": 0.0593,
+    "ch_rms_mm": 0.445,
+    "ch_peak_mm": 1.989,
     "phases": 10,
     "phases_held": 10,
     "ch_at_liftoff_mm": [
      4.75,
-     -0.76,
-     0.01,
-     0.19,
-     -0.27,
-     -0.02,
-     -0.28,
-     -0.09,
-     -0.18,
-     -0.12
+     -0.8,
+     -0.01,
+     0.05,
+     -0.35,
+     0.07,
+     -0.29,
+     0.02,
+     -0.15,
+     -0.04
+    ],
+    "swing_height_mm": [
+     96.2,
+     185.2
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.08,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 12.992,
-     "leg_travel_peak_deg": 12.716,
-     "thdd_rms": 10.41,
-     "ff_acc_rms": 2.4054,
-     "pd_acc_rms": 0.1134,
-     "tau_hat_peak": 0.1155
+     "alpha_peak_deg": 15.143,
+     "leg_travel_peak_deg": 13.395,
+     "thdd_rms": 11.362,
+     "ff_acc_rms": 2.5821,
+     "pd_acc_rms": 0.1962,
+     "tau_hat_peak": 0.1157
     }
    },
    {
@@ -3224,8 +3416,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 88.2,
-     "tick_max_us": 138.8,
+     "tick_mean_us": 88.6,
+     "tick_max_us": 144.5,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3234,39 +3426,43 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.569,
-    "pitch_peak": 0.425,
-    "roll_rms": 0.119,
-    "pitch_rms": 0.096,
-    "roll_mean": -0.042,
+    "roll_peak": 0.548,
+    "pitch_peak": 0.421,
+    "roll_rms": 0.115,
+    "pitch_rms": 0.094,
+    "roll_mean": -0.041,
     "pitch_mean": 0.057,
     "z_min": 0.2902,
-    "L_rms": 0.0257,
-    "L_peak": 0.1973,
-    "ch_rms_mm": 0.908,
-    "ch_peak_mm": 3.757,
+    "L_rms": 0.0235,
+    "L_peak": 0.1854,
+    "ch_rms_mm": 0.872,
+    "ch_peak_mm": 3.704,
     "phases": 10,
     "phases_held": 10,
     "ch_at_liftoff_mm": [
      4.75,
-     1.08,
-     1.07,
-     1.05,
-     0.72,
-     0.77,
-     0.55,
-     0.58,
-     0.49,
-     0.49
+     1.04,
+     1.02,
+     1.04,
+     0.68,
+     0.78,
+     0.52,
+     0.57,
+     0.45,
+     0.48
+    ],
+    "swing_height_mm": [
+     80.3,
+     198.8
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.08,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 15.885,
-     "thdd_rms": 12.049,
-     "ff_acc_rms": 3.0139,
-     "pd_acc_rms": 2.6695,
+     "leg_travel_peak_deg": 15.868,
+     "thdd_rms": 11.752,
+     "ff_acc_rms": 2.9203,
+     "pd_acc_rms": 2.6049,
      "tau_hat_peak": 0.1153
     }
    },
@@ -3285,8 +3481,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 91.1,
-     "tick_max_us": 285.7,
+     "tick_mean_us": 85.6,
+     "tick_max_us": 248.9,
      "ticks": 16998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3295,28 +3491,32 @@
     },
     "failed": false,
     "survived_s": 15.996,
-    "roll_peak": 14.541,
-    "pitch_peak": 15.66,
-    "roll_rms": 8.504,
-    "pitch_rms": 10.611,
-    "roll_mean": 0.787,
-    "pitch_mean": -9.191,
-    "z_min": 0.237,
-    "L_rms": 0.6172,
-    "L_peak": 2.2446,
-    "ch_rms_mm": 77.449,
-    "ch_peak_mm": 95.785,
+    "roll_peak": 15.153,
+    "pitch_peak": 16.305,
+    "roll_rms": 8.711,
+    "pitch_rms": 11.202,
+    "roll_mean": 0.821,
+    "pitch_mean": -9.647,
+    "z_min": 0.2357,
+    "L_rms": 0.6376,
+    "L_peak": 2.3674,
+    "ch_rms_mm": 77.011,
+    "ch_peak_mm": 95.126,
     "phases": 8,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.16,
-     -22.75,
-     32.51,
-     -35.82,
-     33.99,
-     -33.94,
-     32.11,
-     -33.02
+     -21.92,
+     32.34,
+     -34.09,
+     32.73,
+     -32.98,
+     31.63,
+     -32.2
+    ],
+    "swing_height_mm": [
+     -3.7,
+     161.1
     ]
    },
    {
@@ -3334,8 +3534,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 90.8,
-     "tick_max_us": 157.6,
+     "tick_mean_us": 91.5,
+     "tick_max_us": 384.8,
      "ticks": 16998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3344,34 +3544,38 @@
     },
     "failed": false,
     "survived_s": 15.996,
-    "roll_peak": 11.154,
-    "pitch_peak": 16.717,
-    "roll_rms": 5.803,
-    "pitch_rms": 9.679,
-    "roll_mean": 0.744,
-    "pitch_mean": -7.675,
-    "z_min": 0.2371,
-    "L_rms": 0.5512,
-    "L_peak": 1.9419,
-    "ch_rms_mm": 58.696,
-    "ch_peak_mm": 83.599,
+    "roll_peak": 11.931,
+    "pitch_peak": 17.186,
+    "roll_rms": 6.197,
+    "pitch_rms": 9.733,
+    "roll_mean": 0.775,
+    "pitch_mean": -7.599,
+    "z_min": 0.236,
+    "L_rms": 0.573,
+    "L_peak": 2.1534,
+    "ch_rms_mm": 58.283,
+    "ch_peak_mm": 84.674,
     "phases": 8,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      4.73,
-     -8.14,
-     9.59,
-     -9.17,
-     7.59,
-     -7.86,
-     7.29,
-     -7.58
+     -7.8,
+     8.65,
+     -8.08,
+     6.65,
+     -6.77,
+     6.15,
+     -6.59
+    ],
+    "swing_height_mm": [
+     -3.2,
+     162.1
     ],
     "amb": {
      "acting_pct_of_two_foot": 0.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 6.186
+     "leg_travel_peak_deg": 6.046
     }
    },
    {
@@ -3389,8 +3593,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 93.0,
-     "tick_max_us": 156.1,
+     "tick_mean_us": 90.0,
+     "tick_max_us": 146.3,
      "ticks": 16998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3399,38 +3603,42 @@
     },
     "failed": false,
     "survived_s": 15.996,
-    "roll_peak": 0.561,
-    "pitch_peak": 1.105,
-    "roll_rms": 0.105,
-    "pitch_rms": 0.119,
+    "roll_peak": 0.619,
+    "pitch_peak": 1.185,
+    "roll_rms": 0.111,
+    "pitch_rms": 0.127,
     "roll_mean": -0.003,
-    "pitch_mean": 0.064,
+    "pitch_mean": 0.069,
     "z_min": 0.2903,
-    "L_rms": 0.012,
-    "L_peak": 0.08,
-    "ch_rms_mm": 0.423,
-    "ch_peak_mm": 2.338,
+    "L_rms": 0.0116,
+    "L_peak": 0.0719,
+    "ch_rms_mm": 0.47,
+    "ch_peak_mm": 2.545,
     "phases": 8,
     "phases_held": 8,
     "ch_at_liftoff_mm": [
      4.73,
-     -0.47,
-     -0.12,
-     0.04,
-     -0.23,
-     -0.03,
-     -0.12,
-     -0.08
+     -0.44,
+     -0.08,
+     0.03,
+     -0.28,
+     0.06,
+     -0.19,
+     0.01
+    ],
+    "swing_height_mm": [
+     96.2,
+     181.6
     ],
     "amb": {
      "acting_pct_of_two_foot": 76.68,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 9.711,
-     "leg_travel_peak_deg": 9.595,
-     "thdd_rms": 7.267,
-     "ff_acc_rms": 1.6342,
-     "pd_acc_rms": 0.1238,
-     "tau_hat_peak": 0.1158
+     "alpha_peak_deg": 11.837,
+     "leg_travel_peak_deg": 10.307,
+     "thdd_rms": 7.845,
+     "ff_acc_rms": 1.695,
+     "pd_acc_rms": 0.1886,
+     "tau_hat_peak": 0.1159
     }
    },
    {
@@ -3448,8 +3656,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 83.0,
-     "tick_max_us": 181.8,
+     "tick_mean_us": 84.5,
+     "tick_max_us": 464.8,
      "ticks": 16998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3458,37 +3666,41 @@
     },
     "failed": false,
     "survived_s": 15.996,
-    "roll_peak": 0.7,
-    "pitch_peak": 0.624,
-    "roll_rms": 0.131,
+    "roll_peak": 0.687,
+    "pitch_peak": 0.641,
+    "roll_rms": 0.128,
     "pitch_rms": 0.112,
-    "roll_mean": -0.054,
+    "roll_mean": -0.052,
     "pitch_mean": 0.053,
     "z_min": 0.2904,
-    "L_rms": 0.0257,
-    "L_peak": 0.2502,
-    "ch_rms_mm": 0.911,
-    "ch_peak_mm": 4.928,
+    "L_rms": 0.0242,
+    "L_peak": 0.2407,
+    "ch_rms_mm": 0.884,
+    "ch_peak_mm": 4.78,
     "phases": 8,
     "phases_held": 8,
     "ch_at_liftoff_mm": [
      4.73,
-     1.36,
-     1.12,
-     1.02,
-     0.86,
+     1.32,
+     1.07,
+     1.0,
+     0.81,
      0.78,
-     0.74,
+     0.7,
      0.64
+    ],
+    "swing_height_mm": [
+     79.2,
+     191.3
     ],
     "amb": {
      "acting_pct_of_two_foot": 76.68,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 20.123,
-     "thdd_rms": 9.467,
-     "ff_acc_rms": 2.4021,
-     "pd_acc_rms": 3.3998,
+     "leg_travel_peak_deg": 20.438,
+     "thdd_rms": 9.217,
+     "ff_acc_rms": 2.3165,
+     "pd_acc_rms": 3.2623,
      "tau_hat_peak": 0.1157
     }
    },
@@ -3507,8 +3719,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 78.8,
-     "tick_max_us": 165.3,
+     "tick_mean_us": 76.9,
+     "tick_max_us": 172.5,
      "ticks": 20998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3517,28 +3729,32 @@
     },
     "failed": false,
     "survived_s": 19.996,
-    "roll_peak": 14.37,
-    "pitch_peak": 16.854,
-    "roll_rms": 8.732,
-    "pitch_rms": 11.371,
-    "roll_mean": 0.574,
-    "pitch_mean": -10.182,
-    "z_min": 0.2337,
-    "L_rms": 0.5222,
-    "L_peak": 2.2271,
-    "ch_rms_mm": 78.212,
-    "ch_peak_mm": 95.475,
+    "roll_peak": 15.04,
+    "pitch_peak": 17.303,
+    "roll_rms": 9.032,
+    "pitch_rms": 12.063,
+    "roll_mean": 0.607,
+    "pitch_mean": -10.755,
+    "z_min": 0.2331,
+    "L_rms": 0.5391,
+    "L_peak": 2.35,
+    "ch_rms_mm": 77.119,
+    "ch_peak_mm": 94.945,
     "phases": 8,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.16,
-     -22.97,
-     33.48,
-     -37.04,
-     35.39,
-     -35.35,
-     32.44,
-     -33.71
+     -21.32,
+     33.1,
+     -35.01,
+     33.46,
+     -33.8,
+     31.66,
+     -32.04
+    ],
+    "swing_height_mm": [
+     -3.5,
+     160.1
     ]
    },
    {
@@ -3556,8 +3772,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 77.1,
-     "tick_max_us": 158.8,
+     "tick_mean_us": 75.7,
+     "tick_max_us": 133.9,
      "ticks": 20998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3566,34 +3782,38 @@
     },
     "failed": false,
     "survived_s": 19.996,
-    "roll_peak": 11.681,
-    "pitch_peak": 16.638,
-    "roll_rms": 6.398,
-    "pitch_rms": 10.669,
-    "roll_mean": 0.567,
-    "pitch_mean": -8.931,
-    "z_min": 0.2326,
-    "L_rms": 0.4555,
-    "L_peak": 1.8794,
-    "ch_rms_mm": 63.062,
-    "ch_peak_mm": 83.919,
+    "roll_peak": 12.183,
+    "pitch_peak": 17.082,
+    "roll_rms": 6.814,
+    "pitch_rms": 10.825,
+    "roll_mean": 0.595,
+    "pitch_mean": -8.961,
+    "z_min": 0.2317,
+    "L_rms": 0.4741,
+    "L_peak": 2.1402,
+    "ch_rms_mm": 62.838,
+    "ch_peak_mm": 84.849,
     "phases": 8,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      4.72,
-     -9.1,
-     9.21,
-     -8.75,
-     7.2,
-     -7.7,
-     6.74,
-     -7.28
+     -8.43,
+     8.66,
+     -8.02,
+     6.11,
+     -6.72,
+     5.78,
+     -6.27
+    ],
+    "swing_height_mm": [
+     -3.3,
+     159.3
     ],
     "amb": {
      "acting_pct_of_two_foot": 0.0,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 7.568
+     "leg_travel_peak_deg": 7.638
     }
    },
    {
@@ -3611,8 +3831,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 75.3,
-     "tick_max_us": 142.4,
+     "tick_mean_us": 80.3,
+     "tick_max_us": 180.6,
      "ticks": 20998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3621,38 +3841,42 @@
     },
     "failed": false,
     "survived_s": 19.996,
-    "roll_peak": 0.752,
-    "pitch_peak": 1.525,
-    "roll_rms": 0.116,
-    "pitch_rms": 0.17,
+    "roll_peak": 0.781,
+    "pitch_peak": 1.562,
+    "roll_rms": 0.119,
+    "pitch_rms": 0.174,
     "roll_mean": -0.014,
-    "pitch_mean": 0.042,
+    "pitch_mean": 0.044,
     "z_min": 0.2903,
-    "L_rms": 0.0219,
-    "L_peak": 0.2648,
-    "ch_rms_mm": 1.321,
-    "ch_peak_mm": 11.838,
+    "L_rms": 0.0218,
+    "L_peak": 0.2714,
+    "ch_rms_mm": 1.311,
+    "ch_peak_mm": 11.926,
     "phases": 8,
     "phases_held": 8,
     "ch_at_liftoff_mm": [
      4.72,
      -0.35,
-     -0.14,
-     0.09,
-     -0.29,
-     0.11,
-     -0.22,
-     0.06
+     -0.1,
+     0.05,
+     -0.26,
+     0.1,
+     -0.2,
+     0.04
+    ],
+    "swing_height_mm": [
+     96.2,
+     181.1
     ],
     "amb": {
      "acting_pct_of_two_foot": 80.7,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 35.229,
-     "leg_travel_peak_deg": 35.644,
-     "thdd_rms": 5.823,
-     "ff_acc_rms": 1.2868,
-     "pd_acc_rms": 0.115,
-     "tau_hat_peak": 0.1213
+     "alpha_peak_deg": 36.049,
+     "leg_travel_peak_deg": 36.291,
+     "thdd_rms": 6.449,
+     "ff_acc_rms": 1.386,
+     "pd_acc_rms": 0.1722,
+     "tau_hat_peak": 0.1214
     }
    },
    {
@@ -3670,8 +3894,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 74.2,
-     "tick_max_us": 165.3,
+     "tick_mean_us": 79.5,
+     "tick_max_us": 392.4,
      "ticks": 20998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3680,38 +3904,42 @@
     },
     "failed": false,
     "survived_s": 19.996,
-    "roll_peak": 0.716,
-    "pitch_peak": 0.884,
-    "roll_rms": 0.131,
-    "pitch_rms": 0.127,
-    "roll_mean": -0.056,
+    "roll_peak": 0.707,
+    "pitch_peak": 0.873,
+    "roll_rms": 0.127,
+    "pitch_rms": 0.125,
+    "roll_mean": -0.052,
     "pitch_mean": 0.04,
     "z_min": 0.2904,
-    "L_rms": 0.0245,
-    "L_peak": 0.2547,
-    "ch_rms_mm": 1.082,
-    "ch_peak_mm": 7.375,
+    "L_rms": 0.0232,
+    "L_peak": 0.2489,
+    "ch_rms_mm": 1.049,
+    "ch_peak_mm": 7.205,
     "phases": 8,
     "phases_held": 8,
     "ch_at_liftoff_mm": [
      4.72,
-     1.43,
-     1.19,
-     1.05,
-     0.89,
+     1.41,
+     1.1,
+     1.02,
+     0.84,
      0.8,
-     0.75,
-     0.66
+     0.74,
+     0.68
+    ],
+    "swing_height_mm": [
+     78.7,
+     190.3
     ],
     "amb": {
      "acting_pct_of_two_foot": 80.7,
      "invalid_ticks": 0,
      "alpha_peak_deg": 0.0,
-     "leg_travel_peak_deg": 33.232,
-     "thdd_rms": 8.034,
-     "ff_acc_rms": 2.0449,
-     "pd_acc_rms": 3.8668,
-     "tau_hat_peak": 0.122
+     "leg_travel_peak_deg": 33.179,
+     "thdd_rms": 7.855,
+     "ff_acc_rms": 1.9831,
+     "pd_acc_rms": 3.6787,
+     "tau_hat_peak": 0.1223
     }
    }
   ],
@@ -3726,43 +3954,47 @@
     "period": 3.0,
     "duty": 0.66667,
     "entry_t": 4.304,
-    "fall_t": 6.767,
+    "fall_t": 6.993,
     "error": "ERROR during trot stop, sitting down",
     "stop_completed": false,
     "warnings": [
-     "[WW] MdlSit: Leg 3 command failed at t=21.660",
+     "[WW] MdlSit: Leg 0 command failed at t=20.302",
      "[WW] MdlTrot: Tracking error exceeded at t=20.301"
     ],
     "wbc_closing": {
-     "tick_mean_us": 99.2,
-     "tick_max_us": 321.6,
+     "tick_mean_us": 98.0,
+     "tick_max_us": 236.7,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
-     "saturated_ticks": 11295,
-     "saturated_pct": 70.6026
+     "saturated_ticks": 13088,
+     "saturated_pct": 81.8102
     },
     "failed": true,
-    "survived_s": 2.463,
-    "L_rms": 0.9895,
-    "L_peak": 2.0262,
-    "ch_rms_mm": 105.01,
-    "ch_peak_mm": 169.226,
+    "survived_s": 2.689,
+    "L_rms": 1.0008,
+    "L_peak": 1.7176,
+    "ch_rms_mm": 91.254,
+    "ch_peak_mm": 132.401,
     "phases": 2,
     "phases_held": 0,
     "ch_at_liftoff_mm": [
      9.18,
-     -42.82
+     -32.47
+    ],
+    "swing_height_mm": [
+     10.2,
+     326.2
     ],
     "amb": {
-     "acting_pct_of_two_foot": 100.0,
+     "acting_pct_of_two_foot": 94.2,
      "invalid_ticks": 0,
      "alpha_peak_deg": 51.566,
-     "leg_travel_peak_deg": 73.608,
-     "thdd_rms": 9744.079,
-     "ff_acc_rms": 1819.1225,
-     "pd_acc_rms": 2.0067,
-     "tau_hat_peak": 59.2763
+     "leg_travel_peak_deg": 61.939,
+     "thdd_rms": 4440.642,
+     "ff_acc_rms": 827.6358,
+     "pd_acc_rms": 1.4423,
+     "tau_hat_peak": 34.2352
     }
    },
    {
@@ -3780,8 +4012,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 96.5,
-     "tick_max_us": 190.0,
+     "tick_mean_us": 96.8,
+     "tick_max_us": 176.1,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3791,41 +4023,45 @@
     "failed": false,
     "survived_s": 14.996,
     "roll_peak": 0.299,
-    "pitch_peak": 0.309,
-    "roll_rms": 0.083,
-    "pitch_rms": 0.111,
-    "roll_mean": 0.032,
-    "pitch_mean": 0.083,
+    "pitch_peak": 0.311,
+    "roll_rms": 0.086,
+    "pitch_rms": 0.114,
+    "roll_mean": 0.03,
+    "pitch_mean": 0.086,
     "z_min": 0.2904,
-    "L_rms": 0.0119,
-    "L_peak": 0.0693,
-    "ch_rms_mm": 0.484,
-    "ch_peak_mm": 2.14,
+    "L_rms": 0.0114,
+    "L_peak": 0.0603,
+    "ch_rms_mm": 0.476,
+    "ch_peak_mm": 2.193,
     "phases": 12,
     "phases_held": 12,
     "ch_at_liftoff_mm": [
      6.15,
-     -1.16,
-     -0.19,
-     0.15,
-     -0.39,
-     -0.05,
-     -0.34,
-     -0.1,
-     -0.18,
-     -0.12,
-     -0.09,
-     -0.1
+     -1.09,
+     -0.27,
+     0.06,
+     -0.41,
+     0.04,
+     -0.32,
+     0.01,
+     -0.13,
+     -0.03,
+     -0.02,
+     -0.06
+    ],
+    "swing_height_mm": [
+     76.8,
+     218.6
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.05,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 11.173,
-     "leg_travel_peak_deg": 11.482,
-     "thdd_rms": 9.645,
-     "ff_acc_rms": 2.1583,
-     "pd_acc_rms": 0.111,
-     "tau_hat_peak": 0.1156
+     "alpha_peak_deg": 12.613,
+     "leg_travel_peak_deg": 11.675,
+     "thdd_rms": 10.477,
+     "ff_acc_rms": 2.2908,
+     "pd_acc_rms": 0.1924,
+     "tau_hat_peak": 0.1158
     }
    },
    {
@@ -3843,8 +4079,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 95.7,
-     "tick_max_us": 194.1,
+     "tick_mean_us": 96.7,
+     "tick_max_us": 196.0,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3853,43 +4089,47 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.629,
-    "pitch_peak": 0.612,
-    "roll_rms": 0.116,
-    "pitch_rms": 0.139,
+    "roll_peak": 0.715,
+    "pitch_peak": 0.702,
+    "roll_rms": 0.129,
+    "pitch_rms": 0.158,
     "roll_mean": 0.039,
-    "pitch_mean": 0.099,
+    "pitch_mean": 0.108,
     "z_min": 0.2904,
-    "L_rms": 0.0189,
-    "L_peak": 0.1473,
-    "ch_rms_mm": 0.76,
-    "ch_peak_mm": 4.249,
+    "L_rms": 0.0203,
+    "L_peak": 0.1553,
+    "ch_rms_mm": 0.891,
+    "ch_peak_mm": 4.977,
     "phases": 13,
     "phases_held": 13,
     "ch_at_liftoff_mm": [
      7.06,
-     -1.65,
-     -0.93,
-     0.12,
-     -0.5,
-     -0.09,
-     -0.2,
-     -0.12,
-     -0.08,
-     -0.13,
-     -0.08,
-     -0.15,
-     -0.04
+     -1.96,
+     -1.15,
+     0.18,
+     -0.58,
+     0.05,
+     -0.24,
+     0.03,
+     -0.03,
+     -0.03,
+     0.06,
+     -0.01,
+     0.11
+    ],
+    "swing_height_mm": [
+     76.4,
+     226.2
     ],
     "amb": {
      "acting_pct_of_two_foot": 64.44,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 17.034,
-     "leg_travel_peak_deg": 16.576,
-     "thdd_rms": 9.621,
-     "ff_acc_rms": 2.1555,
-     "pd_acc_rms": 0.1195,
-     "tau_hat_peak": 0.1162
+     "alpha_peak_deg": 21.031,
+     "leg_travel_peak_deg": 19.854,
+     "thdd_rms": 10.539,
+     "ff_acc_rms": 2.3041,
+     "pd_acc_rms": 0.2076,
+     "tau_hat_peak": 0.1164
     }
    },
    {
@@ -3907,8 +4147,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 99.9,
-     "tick_max_us": 194.5,
+     "tick_mean_us": 96.3,
+     "tick_max_us": 184.3,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3917,40 +4157,44 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.248,
-    "pitch_peak": 0.197,
-    "roll_rms": 0.071,
-    "pitch_rms": 0.069,
-    "roll_mean": -0.024,
-    "pitch_mean": 0.047,
-    "z_min": 0.2902,
-    "L_rms": 0.0093,
-    "L_peak": 0.0486,
-    "ch_rms_mm": 0.366,
-    "ch_peak_mm": 1.306,
+    "roll_peak": 0.251,
+    "pitch_peak": 0.234,
+    "roll_rms": 0.073,
+    "pitch_rms": 0.075,
+    "roll_mean": -0.016,
+    "pitch_mean": 0.049,
+    "z_min": 0.2901,
+    "L_rms": 0.0092,
+    "L_peak": 0.0454,
+    "ch_rms_mm": 0.402,
+    "ch_peak_mm": 1.607,
     "phases": 10,
     "phases_held": 10,
     "ch_at_liftoff_mm": [
      4.75,
-     -0.76,
-     0.19,
-     0.15,
-     0.04,
-     0.12,
-     0.03,
-     0.11,
-     0.02,
-     0.11
+     -0.8,
+     0.18,
+     0.1,
+     -0.04,
+     0.1,
+     -0.09,
+     0.1,
+     -0.1,
+     0.1
+    ],
+    "swing_height_mm": [
+     96.2,
+     185.2
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.08,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 12.992,
-     "leg_travel_peak_deg": 12.716,
-     "thdd_rms": 10.578,
-     "ff_acc_rms": 2.4601,
-     "pd_acc_rms": 0.1137,
-     "tau_hat_peak": 0.1153
+     "alpha_peak_deg": 15.143,
+     "leg_travel_peak_deg": 13.395,
+     "thdd_rms": 11.482,
+     "ff_acc_rms": 2.6236,
+     "pd_acc_rms": 0.19,
+     "tau_hat_peak": 0.1154
     }
    },
    {
@@ -3968,8 +4212,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 100.0,
-     "tick_max_us": 251.9,
+     "tick_mean_us": 99.0,
+     "tick_max_us": 185.3,
      "ticks": 16998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -3978,38 +4222,42 @@
     },
     "failed": false,
     "survived_s": 15.996,
-    "roll_peak": 0.561,
-    "pitch_peak": 1.105,
-    "roll_rms": 0.099,
-    "pitch_rms": 0.111,
-    "roll_mean": -0.033,
-    "pitch_mean": 0.056,
+    "roll_peak": 0.619,
+    "pitch_peak": 1.185,
+    "roll_rms": 0.106,
+    "pitch_rms": 0.12,
+    "roll_mean": -0.034,
+    "pitch_mean": 0.063,
     "z_min": 0.2903,
-    "L_rms": 0.0113,
-    "L_peak": 0.0631,
-    "ch_rms_mm": 0.381,
-    "ch_peak_mm": 1.664,
+    "L_rms": 0.0111,
+    "L_peak": 0.0563,
+    "ch_rms_mm": 0.448,
+    "ch_peak_mm": 2.006,
     "phases": 8,
     "phases_held": 8,
     "ch_at_liftoff_mm": [
      4.73,
-     -0.47,
-     0.01,
-     0.05,
-     -0.04,
-     0.05,
-     -0.05,
-     0.05
+     -0.44,
+     0.04,
+     0.12,
+     -0.09,
+     0.12,
+     -0.13,
+     0.13
+    ],
+    "swing_height_mm": [
+     96.3,
+     181.6
     ],
     "amb": {
      "acting_pct_of_two_foot": 76.68,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 9.69,
-     "leg_travel_peak_deg": 9.595,
-     "thdd_rms": 7.298,
-     "ff_acc_rms": 1.6442,
-     "pd_acc_rms": 0.1244,
-     "tau_hat_peak": 0.1156
+     "alpha_peak_deg": 11.293,
+     "leg_travel_peak_deg": 9.781,
+     "thdd_rms": 7.834,
+     "ff_acc_rms": 1.6918,
+     "pd_acc_rms": 0.187,
+     "tau_hat_peak": 0.1159
     }
    },
    {
@@ -4027,8 +4275,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 94.3,
-     "tick_max_us": 286.8,
+     "tick_mean_us": 98.8,
+     "tick_max_us": 179.0,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -4037,40 +4285,44 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 0.807,
-    "pitch_peak": 0.931,
-    "roll_rms": 0.269,
-    "pitch_rms": 0.227,
-    "roll_mean": 0.102,
-    "pitch_mean": 0.023,
+    "roll_peak": 0.789,
+    "pitch_peak": 1.005,
+    "roll_rms": 0.271,
+    "pitch_rms": 0.231,
+    "roll_mean": 0.104,
+    "pitch_mean": 0.024,
     "z_min": 0.2874,
-    "L_rms": 0.0385,
-    "L_peak": 0.1938,
-    "ch_rms_mm": 2.236,
-    "ch_peak_mm": 8.248,
+    "L_rms": 0.0386,
+    "L_peak": 0.198,
+    "ch_rms_mm": 2.216,
+    "ch_peak_mm": 8.292,
     "phases": 10,
     "phases_held": 10,
     "ch_at_liftoff_mm": [
      4.67,
-     -1.77,
-     -0.11,
-     -1.17,
-     -0.41,
-     -1.42,
-     -0.24,
-     -1.24,
-     -0.22,
-     -0.96
+     -1.85,
+     0.05,
+     -1.11,
+     -0.44,
+     -1.36,
+     -0.3,
+     -1.21,
+     -0.26,
+     -0.94
+    ],
+    "swing_height_mm": [
+     95.3,
+     180.2
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.08,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 27.083,
-     "leg_travel_peak_deg": 26.409,
-     "thdd_rms": 21.946,
-     "ff_acc_rms": 5.8409,
-     "pd_acc_rms": 0.224,
-     "tau_hat_peak": 0.1143
+     "alpha_peak_deg": 26.956,
+     "leg_travel_peak_deg": 26.524,
+     "thdd_rms": 22.228,
+     "ff_acc_rms": 5.8721,
+     "pd_acc_rms": 0.2704,
+     "tau_hat_peak": 0.1149
     }
    },
    {
@@ -4088,8 +4340,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 71.7,
-     "tick_max_us": 297.4,
+     "tick_mean_us": 71.9,
+     "tick_max_us": 193.4,
      "ticks": 60998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -4098,54 +4350,58 @@
     },
     "failed": false,
     "survived_s": 59.996,
-    "roll_peak": 1.184,
-    "pitch_peak": 1.405,
-    "roll_rms": 0.378,
-    "pitch_rms": 0.292,
+    "roll_peak": 1.154,
+    "pitch_peak": 1.446,
+    "roll_rms": 0.381,
+    "pitch_rms": 0.294,
     "roll_mean": 0.03,
     "pitch_mean": 0.006,
-    "z_min": 0.2843,
-    "L_rms": 0.0372,
-    "L_peak": 0.2874,
-    "ch_rms_mm": 2.311,
-    "ch_peak_mm": 12.99,
+    "z_min": 0.2844,
+    "L_rms": 0.0376,
+    "L_peak": 0.2844,
+    "ch_rms_mm": 2.297,
+    "ch_peak_mm": 12.621,
     "phases": 24,
     "phases_held": 24,
     "ch_at_liftoff_mm": [
      4.57,
-     -1.93,
-     -0.34,
-     -2.38,
-     -0.39,
-     -2.04,
-     -0.39,
-     -1.61,
-     -0.44,
-     -1.9,
-     -0.15,
-     -1.83,
-     -0.31,
      -1.99,
-     -0.5,
-     -2.08,
-     -0.48,
-     -2.08,
-     -0.14,
-     -1.92,
-     -0.03,
-     -1.32,
-     0.05,
-     -1.56
+     -0.22,
+     -2.35,
+     -0.39,
+     -2.06,
+     -0.39,
+     -1.62,
+     -0.42,
+     -2.02,
+     -0.16,
+     -1.88,
+     -0.31,
+     -2.03,
+     -0.53,
+     -2.09,
+     -0.51,
+     -2.13,
+     -0.16,
+     -1.98,
+     -0.05,
+     -1.34,
+     0.03,
+     -1.62
+    ],
+    "swing_height_mm": [
+     94.2,
+     177.3
     ],
     "amb": {
      "acting_pct_of_two_foot": 81.97,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 39.169,
-     "leg_travel_peak_deg": 38.531,
-     "thdd_rms": 16.761,
-     "ff_acc_rms": 4.5041,
-     "pd_acc_rms": 0.2269,
-     "tau_hat_peak": 0.1201
+     "alpha_peak_deg": 38.062,
+     "leg_travel_peak_deg": 38.357,
+     "thdd_rms": 16.769,
+     "ff_acc_rms": 4.4803,
+     "pd_acc_rms": 0.265,
+     "tau_hat_peak": 0.1202
     }
    },
    {
@@ -4163,8 +4419,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 71.5,
-     "tick_max_us": 196.3,
+     "tick_mean_us": 71.9,
+     "tick_max_us": 521.3,
      "ticks": 60998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -4173,54 +4429,58 @@
     },
     "failed": false,
     "survived_s": 59.996,
-    "roll_peak": 0.752,
-    "pitch_peak": 1.525,
-    "roll_rms": 0.073,
-    "pitch_rms": 0.097,
-    "roll_mean": -0.001,
+    "roll_peak": 0.781,
+    "pitch_peak": 1.562,
+    "roll_rms": 0.076,
+    "pitch_rms": 0.1,
+    "roll_mean": -0.002,
     "pitch_mean": 0.018,
     "z_min": 0.2903,
-    "L_rms": 0.0132,
-    "L_peak": 0.2648,
-    "ch_rms_mm": 0.766,
-    "ch_peak_mm": 11.838,
+    "L_rms": 0.0129,
+    "L_peak": 0.2714,
+    "ch_rms_mm": 0.752,
+    "ch_peak_mm": 11.926,
     "phases": 24,
     "phases_held": 24,
     "ch_at_liftoff_mm": [
      4.72,
      -0.35,
-     -0.14,
-     0.09,
-     -0.29,
-     0.11,
-     -0.22,
-     0.06,
-     -0.12,
-     0.02,
-     -0.05,
-     -0.01,
-     -0.0,
-     -0.05,
-     -0.08,
-     -0.08,
      -0.1,
-     -0.08,
+     0.05,
+     -0.26,
+     0.1,
+     -0.2,
+     0.04,
      -0.09,
-     -0.08,
-     -0.1,
-     -0.07,
-     -0.1,
+     -0.01,
+     -0.01,
+     -0.05,
+     0.04,
+     -0.09,
+     -0.01,
+     -0.11,
+     0.01,
+     -0.05,
+     0.0,
+     -0.03,
+     -0.01,
+     -0.06,
+     -0.01,
      -0.06
+    ],
+    "swing_height_mm": [
+     96.2,
+     181.1
     ],
     "amb": {
      "acting_pct_of_two_foot": 81.97,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 35.229,
-     "leg_travel_peak_deg": 35.644,
-     "thdd_rms": 6.048,
-     "ff_acc_rms": 1.3554,
-     "pd_acc_rms": 0.1174,
-     "tau_hat_peak": 0.1213
+     "alpha_peak_deg": 36.049,
+     "leg_travel_peak_deg": 36.291,
+     "thdd_rms": 6.663,
+     "ff_acc_rms": 1.4616,
+     "pd_acc_rms": 0.1468,
+     "tau_hat_peak": 0.1214
     }
    },
    {
@@ -4238,8 +4498,8 @@
     "stop_completed": true,
     "warnings": [],
     "wbc_closing": {
-     "tick_mean_us": 76.8,
-     "tick_max_us": 166.6,
+     "tick_mean_us": 75.8,
+     "tick_max_us": 182.8,
      "ticks": 15998,
      "qp_failures": 0,
      "fallback_ticks": 0,
@@ -4248,40 +4508,44 @@
     },
     "failed": false,
     "survived_s": 14.996,
-    "roll_peak": 1.488,
-    "pitch_peak": 1.519,
-    "roll_rms": 0.514,
-    "pitch_rms": 0.428,
-    "roll_mean": -0.384,
-    "pitch_mean": 0.12,
-    "z_min": 0.287,
-    "L_rms": 0.0642,
-    "L_peak": 0.343,
-    "ch_rms_mm": 3.698,
-    "ch_peak_mm": 15.41,
+    "roll_peak": 1.594,
+    "pitch_peak": 1.821,
+    "roll_rms": 0.518,
+    "pitch_rms": 0.46,
+    "roll_mean": -0.381,
+    "pitch_mean": 0.109,
+    "z_min": 0.2869,
+    "L_rms": 0.0672,
+    "L_peak": 0.3796,
+    "ch_rms_mm": 3.877,
+    "ch_peak_mm": 17.002,
     "phases": 10,
     "phases_held": 10,
     "ch_at_liftoff_mm": [
      6.2,
-     -3.94,
-     2.51,
-     1.24,
-     1.19,
-     1.67,
-     0.94,
-     1.51,
-     0.67,
-     1.24
+     -4.57,
+     2.91,
+     1.12,
+     1.15,
+     1.72,
+     0.9,
+     1.59,
+     0.65,
+     1.33
+    ],
+    "swing_height_mm": [
+     84.7,
+     232.8
     ],
     "amb": {
      "acting_pct_of_two_foot": 65.08,
      "invalid_ticks": 0,
-     "alpha_peak_deg": 42.351,
-     "leg_travel_peak_deg": 41.999,
-     "thdd_rms": 54.086,
-     "ff_acc_rms": 11.7824,
-     "pd_acc_rms": 0.2607,
-     "tau_hat_peak": 0.6912
+     "alpha_peak_deg": 47.378,
+     "leg_travel_peak_deg": 47.071,
+     "thdd_rms": 55.315,
+     "ff_acc_rms": 12.067,
+     "pd_acc_rms": 0.3047,
+     "tau_hat_peak": 0.6759
     }
    }
   ],

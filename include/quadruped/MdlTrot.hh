@@ -62,9 +62,10 @@ class SwingTrajectory {
               Eigen::Vector3d& position, Eigen::Vector3d& velocity,
               Eigen::Vector3d& acceleration) const;
 
-  /** sample() with a different clearance profile: the foot rises to the full
-      height over the first `lift` seconds (a quintic step), holds it, and
-      comes down over the last `lift` seconds, while the start-to-end motion
+  /** sample() with a different vertical profile: the foot rises from its
+      lift-off height by the clearance over the first `lift` seconds (a
+      quintic step), holds that height, and comes down to the touchdown height
+      over the last `lift` seconds, while the horizontal start-to-end motion
       keeps its own clock. A long swing then leaves the ground as fast as a
       short one instead of creeping up over its whole duration. lift <= 0, or
       a segment no longer than 2 lift, is the plain sample(). */

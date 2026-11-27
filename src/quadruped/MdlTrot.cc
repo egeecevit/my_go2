@@ -151,22 +151,33 @@ void SwingTrajectory::sampleLifted(double time, double lift, double scale, doubl
     sample(time, scale, scale_dot, scale_ddot, position, velocity, acceleration);
     return;
   }
-  // The start-to-end polynomial on its own clock, without sample()'s
-  // clearance bump: that bump grows with the cube of the swing's progress.
+  // Horizontally, the start-to-end polynomial on its own clock. Vertically
+  // the foot rises from its lift-off height by the clearance over `lift`
+  // seconds, stays there, and comes down to the touchdown height over the last
+  // `lift` seconds. The polynomial's own vertical part is not used: it spreads
+  // the touchdown depth, and whatever vertical velocity the foot had at
+  // lift-off, over the whole swing, and the held foot sank 12 mm during a 2 s
+  // hold (2026-11-27).
   sample(time, 0.0, 0.0, 0.0, position, velocity, acceleration);
   const double t = std::max(0.0, std::min(_duration, time));
-  double b = 1.0, bd = 0.0, bdd = 0.0;
+  const double z0 = _coefficient[0].z(), z1 = _position1.z(), H = _height;
+  double b = 0.0, bd = 0.0, bdd = 0.0;
   if (t < lift) {
     TrajectoryUtils::sampleQuintic(t / lift, lift, b, bd, bdd);
+    position.z() = z0 + H * scale * b;
+    velocity.z() = H * (scale_dot * b + scale * bd);
+    acceleration.z() = H * (scale_ddot * b + 2.0 * scale_dot * bd + scale * bdd);
   } else if (t > _duration - lift) {
     TrajectoryUtils::sampleQuintic((t - (_duration - lift)) / lift, lift, b, bd, bdd);
-    b = 1.0 - b;
-    bd = -bd;
-    bdd = -bdd;
+    const double drop = z0 + H * scale - z1;
+    position.z() = z1 + drop * (1.0 - b);
+    velocity.z() = H * scale_dot * (1.0 - b) - drop * bd;
+    acceleration.z() = H * scale_ddot * (1.0 - b) - 2.0 * H * scale_dot * bd - drop * bdd;
+  } else {
+    position.z() = z0 + H * scale;
+    velocity.z() = H * scale_dot;
+    acceleration.z() = H * scale_ddot;
   }
-  position.z() += _height * scale * b;
-  velocity.z() += _height * (scale * bd + scale_dot * b);
-  acceleration.z() += _height * (scale * bdd + 2.0 * scale_dot * bd + scale_ddot * b);
 }
 
 // ---------------------------------------------------------------------------

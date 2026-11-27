@@ -179,7 +179,7 @@ def content(R, written):
                "`test_trot_wbc` gained a pass-through case). With `amb = false` and the other new keys at their "
                "defaults, the default trot on both paths, a slow whole-body trot and the key-B `MdlAMB` balance log "
                "the same values tick for tick as before the work (compared on 2026-11-27 with the final binary)."),
-         ("h2", "3. Three findings on the way"),
+         ("h2", "3. Four findings on the way"),
          ("ol", [
              "<b>A long swing did not leave the ground.</b> The trot's clearance profile grows with the cube of the "
              "swing's progress: an 8 s swing is 0.7 mm up after 0.4 s. The foot scheduled to swing stayed on the "
@@ -190,7 +190,19 @@ def content(R, written):
              "support line at the first lift-off, which is three times what the swing legs can absorb.",
              "<b>A foot must not land with AMB's offset on it.</b> With the lift profile the descent starts before "
              "the touchdown; a foot that met the ground while still rotated by AMB landed 3 to 7 cm off its target. "
-             "AMB now finishes its return before the descent begins."]),
+             "AMB now finishes its return before the descent begins.",
+             "<b>A held foot must stay up</b> (Ege saw this in the simulator: after the fast lift the legs came "
+             "down slowly, rose again before the switch, and could touch the ground). Two causes. The touchdown "
+             "depth was spread over the whole swing, so the planned height sank 12 mm during a 2 s hold; it is now "
+             "applied in the descent only. And AMB turns each free leg on an arc about its hip: the foot swinging "
+             "outward rises, the one swinging in under its hip comes down, 3 cm below its planned height at 35 "
+             "deg. In offset mode a foot no longer goes below its planned height (lowest swing foot over the "
+             f"Table 4 gaits: {min(grid[t, 'offset']['swing_height_mm'][0] for t in two):.0f} mm of the 100 mm "
+             f"clearance; pass-through, still on the arc: "
+             f"{min(grid[t, 'passthrough']['swing_height_mm'][0] for t in two):.0f} mm). The outward foot still "
+             f"rises, up to {max(grid[t, 'offset']['swing_height_mm'][1] for t in two):.0f} mm: held level, it "
+             "reached only half the angle asked for and the balance was lost. Plots: "
+             "`figs/foot_heights_before.png`, `figs/foot_heights_after.png`."]),
          ("h2", "4. Static hold on the trot's own footprint (step 1)"),
          ("p", f"One two-foot phase of {st['basin'][0]['t_two']:.0f} s. The footprint is moved fore-aft "
                "(`trot.origin`) so the CoM starts at different distances from the support line; no centring."),
@@ -232,7 +244,7 @@ def content(R, written):
           [0.34, 0.18, 0.10, 0.14, 0.14, 0.10]),
          ("p", "On ground truth the answer is yes for the offset mode: once the CoM is over the line and the body "
                "at rest, the swing legs settle at a constant angle and nothing drifts over the 30 s. The "
-               "pass-through's legs creep outward at about 5 deg/s, with a small constant L the law keeps answering, "
+               "pass-through's legs creep outward steadily, with a small constant L the law keeps answering, "
                "until they run out of travel: nothing in that mode ties the legs to a position. With the "
                "position/velocity filter in the loop a hold this long fails, and so does the same gait with AMB "
                "off: in the 2 s on four feet before the lift the body already sinks about 2 cm and slides several "
